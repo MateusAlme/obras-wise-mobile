@@ -1,0 +1,5338 @@
+import { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  Platform,
+  Image,
+  Modal,
+  Pressable,
+  ActivityIndicator,
+} from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { supabase } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import * as DocumentPicker from 'expo-document-picker';
+import {
+  checkInternetConnection,
+  saveObraOffline,
+  syncAllPendingObras,
+  getPendingObras,
+  startAutoSync,
+} from '../lib/offline-sync';
+import type { PendingObra } from '../lib/offline-sync';
+import { backupPhoto } from '../lib/photo-backup';
+import { processObraPhotos, addToUploadQueue } from '../lib/photo-queue';
+
+const TIPOS_SERVICO = [
+  'Emenda',
+  'Bandolamento',
+  'Linha Viva',
+  'Abertura e Fechamento de Chave',
+  'Ditais',
+  'Book de Aterramento',
+  'Transformador',
+  'Poda',
+  'Fundação Especial',
+  'Instalação do Medidor',
+  'Checklist de Fiscalização',
+  'Documentação',
+  'Cava em Rocha',
+  'Altimetria',
+  'Vazamento e Limpeza de Transformador',
+];
+
+const EQUIPES_DISPONIVEIS = [
+  'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
+  'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
+  'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
+  'APG 01', 'APG 02', 'APG 03',
+];
+
+export default function NovaObra() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ editMode?: string; obraData?: string }>();
+  const [loading, setLoading] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+
+  // Modo de edição
+  const isEditMode = params.editMode === 'true';
+  const [obraId, setObraId] = useState<string | null>(null);
+
+  // Detectar se é usuário COMP
+  const [isCompUser, setIsCompUser] = useState(false);
+
+  // Dados da obra
+  const [data, setData] = useState(new Date().toISOString().split('T')[0]);
+  const [obra, setObra] = useState('');
+  const [responsavel, setResponsavel] = useState('');
+  const [equipe, setEquipe] = useState('');
+  const [equipeExecutora, setEquipeExecutora] = useState(''); // Para COMP selecionar
+  const [tipoServico, setTipoServico] = useState<string>('');
+
+  // Tipo para fotos com localização UTM
+  type FotoData = {
+    uri: string;
+    latitude: number | null;
+    longitude: number | null;
+    utmX?: number | null;
+    utmY?: number | null;
+    utmZone?: string | null;
+    photoId?: string;
+  };
+
+  // Fotos com localização e backup (agora com photoId e UTM)
+  const [fotosAntes, setFotosAntes] = useState<FotoData[]>([]);
+  const [fotosDurante, setFotosDurante] = useState<FotoData[]>([]);
+  const [fotosDepois, setFotosDepois] = useState<FotoData[]>([]);
+  const [fotosAbertura, setFotosAbertura] = useState<FotoData[]>([]);
+  const [fotosFechamento, setFotosFechamento] = useState<FotoData[]>([]);
+
+  // Fotos DITAIS (5 campos)
+  const [fotosDitaisAbertura, setFotosDitaisAbertura] = useState<FotoData[]>([]);
+  const [fotosDitaisImpedir, setFotosDitaisImpedir] = useState<FotoData[]>([]);
+  const [fotosDitaisTestar, setFotosDitaisTestar] = useState<FotoData[]>([]);
+  const [fotosDitaisAterrar, setFotosDitaisAterrar] = useState<FotoData[]>([]);
+  const [fotosDitaisSinalizar, setFotosDitaisSinalizar] = useState<FotoData[]>([]);
+
+  // Fotos BOOK ATERRAMENTO (4 campos)
+  const [fotosAterramentoValaAberta, setFotosAterramentoValaAberta] = useState<FotoData[]>([]);
+  const [fotosAterramentoHastes, setFotosAterramentoHastes] = useState<FotoData[]>([]);
+  const [fotosAterramentoValaFechada, setFotosAterramentoValaFechada] = useState<FotoData[]>([]);
+  const [fotosAterramentoMedicao, setFotosAterramentoMedicao] = useState<FotoData[]>([]);
+
+  // Fotos TRANSFORMADOR
+  const [transformadorStatus, setTransformadorStatus] = useState<'Instalado' | 'Retirado' | null>(null);
+  const [fotosTransformadorLaudo, setFotosTransformadorLaudo] = useState<FotoData[]>([]);
+  const [fotosTransformadorComponenteInstalado, setFotosTransformadorComponenteInstalado] = useState<FotoData[]>([]);
+  const [fotosTransformadorTombamentoInstalado, setFotosTransformadorTombamentoInstalado] = useState<FotoData[]>([]);
+  const [fotosTransformadorTape, setFotosTransformadorTape] = useState<FotoData[]>([]);
+  const [fotosTransformadorPlacaInstalado, setFotosTransformadorPlacaInstalado] = useState<FotoData[]>([]);
+  const [fotosTransformadorInstalado, setFotosTransformadorInstalado] = useState<FotoData[]>([]);
+  const [fotosTransformadorAntesRetirar, setFotosTransformadorAntesRetirar] = useState<FotoData[]>([]);
+  const [fotosTransformadorTombamentoRetirado, setFotosTransformadorTombamentoRetirado] = useState<FotoData[]>([]);
+  const [fotosTransformadorPlacaRetirado, setFotosTransformadorPlacaRetirado] = useState<FotoData[]>([]);
+
+  // Fotos INSTALAÇÃO DO MEDIDOR (5 campos)
+  const [fotosMedidorPadrao, setFotosMedidorPadrao] = useState<FotoData[]>([]);
+  const [fotosMedidorLeitura, setFotosMedidorLeitura] = useState<FotoData[]>([]);
+  const [fotosMedidorSeloBorn, setFotosMedidorSeloBorn] = useState<FotoData[]>([]);
+  const [fotosMedidorSeloCaixa, setFotosMedidorSeloCaixa] = useState<FotoData[]>([]);
+  const [fotosMedidorIdentificadorFase, setFotosMedidorIdentificadorFase] = useState<FotoData[]>([]);
+
+  // Fotos CHECKLIST DE FISCALIZAÇÃO
+  // Fotos fixas (não dinâmicas)
+  const [fotosChecklistCroqui, setFotosChecklistCroqui] = useState<FotoData[]>([]);
+  const [fotosChecklistPanoramicaInicial, setFotosChecklistPanoramicaInicial] = useState<FotoData[]>([]);
+  const [fotosChecklistChaveComponente, setFotosChecklistChaveComponente] = useState<FotoData[]>([]);
+  const [fotosChecklistPadraoGeral, setFotosChecklistPadraoGeral] = useState<FotoData[]>([]);
+  const [fotosChecklistPadraoInterno, setFotosChecklistPadraoInterno] = useState<FotoData[]>([]);
+  const [fotosChecklistPanoramicaFinal, setFotosChecklistPanoramicaFinal] = useState<FotoData[]>([]);
+
+  // Estados dinâmicos para Postes (cada poste tem 4 fotos)
+  const [numPostes, setNumPostes] = useState(1);
+  const [fotosPostes, setFotosPostes] = useState<Array<{
+    posteInteiro: FotoData[];
+    engaste: FotoData[];
+    conexao1: FotoData[];
+    conexao2: FotoData[];
+  }>>([{
+    posteInteiro: [],
+    engaste: [],
+    conexao1: [],
+    conexao2: [],
+  }]);
+
+  // Estados dinâmicos para Seccionamento (cada ponto tem 1 foto)
+  const [numSeccionamentos, setNumSeccionamentos] = useState(0);
+  const [fotosSeccionamentos, setFotosSeccionamentos] = useState<Array<FotoData[]>>([]);
+
+  // Estados dinâmicos para Aterramento de Cerca (cada ponto tem 1 foto) - OPCIONAL
+  const [numAterramentosCerca, setNumAterramentosCerca] = useState(0);
+  const [fotosAterramentosCerca, setFotosAterramentosCerca] = useState<Array<FotoData[]>>([]);
+
+  // Fotos ALTIMETRIA (4 campos)
+  const [fotosAltimetriaLadoFonte, setFotosAltimetriaLadoFonte] = useState<FotoData[]>([]);
+  const [fotosAltimetriaMedicaoFonte, setFotosAltimetriaMedicaoFonte] = useState<FotoData[]>([]);
+  const [fotosAltimetriaLadoCarga, setFotosAltimetriaLadoCarga] = useState<FotoData[]>([]);
+  const [fotosAltimetriaMedicaoCarga, setFotosAltimetriaMedicaoCarga] = useState<FotoData[]>([]);
+
+  // Fotos VAZAMENTO E LIMPEZA DE TRANSFORMADOR (7 campos)
+  const [fotosVazamentoEvidencia, setFotosVazamentoEvidencia] = useState<FotoData[]>([]);
+  const [fotosVazamentoEquipamentosLimpeza, setFotosVazamentoEquipamentosLimpeza] = useState<FotoData[]>([]);
+  const [fotosVazamentoTombamentoRetirado, setFotosVazamentoTombamentoRetirado] = useState<FotoData[]>([]);
+  const [fotosVazamentoPlacaRetirado, setFotosVazamentoPlacaRetirado] = useState<FotoData[]>([]);
+  const [fotosVazamentoTombamentoInstalado, setFotosVazamentoTombamentoInstalado] = useState<FotoData[]>([]);
+  const [fotosVazamentoPlacaInstalado, setFotosVazamentoPlacaInstalado] = useState<FotoData[]>([]);
+  const [fotosVazamentoInstalacao, setFotosVazamentoInstalacao] = useState<FotoData[]>([]);
+
+  // Documentos PDF (DOCUMENTAÇÃO)
+  const [docCadastroMedidor, setDocCadastroMedidor] = useState<FotoData[]>([]);
+  const [docLaudoTransformador, setDocLaudoTransformador] = useState<FotoData[]>([]);
+  const [docLaudoRegulador, setDocLaudoRegulador] = useState<FotoData[]>([]);
+  const [docLaudoReligador, setDocLaudoReligador] = useState<FotoData[]>([]);
+  const [docApr, setDocApr] = useState<FotoData[]>([]);
+  const [docFvbt, setDocFvbt] = useState<FotoData[]>([]);
+  const [docTermoDesistenciaLpt, setDocTermoDesistenciaLpt] = useState<FotoData[]>([]);
+  const [docAutorizacaoPassagem, setDocAutorizacaoPassagem] = useState<FotoData[]>([]);
+
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [tempObraId, setTempObraId] = useState<string>(`temp_${Date.now()}`);
+  const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
+  const [syncingPending, setSyncingPending] = useState(false);
+
+  const renderUtmBadge = (foto: FotoData) => {
+    if (!foto.utmX || !foto.utmY) return null;
+    return (
+      <Text style={styles.photoLocationBadge} numberOfLines={1}>
+        📍 UTM: X={foto.utmX.toFixed(0)} Y={foto.utmY.toFixed(0)} ({foto.utmZone})
+      </Text>
+    );
+  };
+
+  // Modals
+  const [showServicoModal, setShowServicoModal] = useState(false);
+  const [showEquipeModal, setShowEquipeModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // Formatar data para exibição (DD/MM/AAAA)
+  const formatDateForDisplay = (dateString: string): string => {
+    if (!dateString) return 'Selecione a data';
+    const [year, month, day] = dateString.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
+  // Gerar dias do mês
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  // Abrir date picker e sincronizar com data atual
+  const openDatePicker = () => {
+    if (data) {
+      const [year, month, day] = data.split('-');
+      setSelectedDate(new Date(parseInt(year), parseInt(month) - 1, parseInt(day)));
+    }
+    setShowDatePicker(true);
+  };
+
+  // Confirmar seleção de data
+  const handleDateConfirm = () => {
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    setData(`${year}-${month}-${day}`);
+    setShowDatePicker(false);
+  };
+
+  // Alterar componente da data (dia/mês/ano)
+  const updateDateComponent = (component: 'day' | 'month' | 'year', value: number) => {
+    const newDate = new Date(selectedDate);
+    if (component === 'day') {
+      newDate.setDate(value);
+    } else if (component === 'month') {
+      newDate.setMonth(value);
+    } else {
+      newDate.setFullYear(value);
+    }
+    setSelectedDate(newDate);
+  };
+
+  const handleTipoServicoSelect = (tipo: string) => {
+    setTipoServico(tipo);
+    setShowServicoModal(false);
+  };
+
+  // Verificar tipo de serviço selecionado
+  const isServicoChave = tipoServico === 'Abertura e Fechamento de Chave';
+  const isServicoDitais = tipoServico === 'Ditais';
+  const isServicoBookAterramento = tipoServico === 'Book de Aterramento';
+  const isServicoTransformador = tipoServico === 'Transformador';
+  const isServicoMedidor = tipoServico === 'Instalação do Medidor';
+  const isServicoChecklist = tipoServico === 'Checklist de Fiscalização';
+  const isServicoDocumentacao = tipoServico === 'Documentação';
+  const isServicoAltimetria = tipoServico === 'Altimetria';
+  const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
+  const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento;
+
+  // Carregar equipe da sessão automaticamente
+  useEffect(() => {
+    const loadEquipeLogada = async () => {
+      try {
+        const equipeLogada = await AsyncStorage.getItem('@equipe_logada');
+        const userRole = await AsyncStorage.getItem('@user_role');
+
+        // Detectar se é COMP
+        if (userRole === 'compressor') {
+          setIsCompUser(true);
+          setEquipe('COMP');
+          setTipoServico('Cava em Rocha'); // Fixar serviço
+        } else if (equipeLogada) {
+          setEquipe(equipeLogada);
+        } else {
+          // Se não houver equipe logada, redirecionar para login
+          Alert.alert('Sessão expirada', 'Por favor, faça login novamente.');
+          router.replace('/login');
+        }
+      } catch (error) {
+        console.error('Erro ao carregar equipe logada:', error);
+      }
+    };
+    loadEquipeLogada();
+  }, []);
+
+  // Carregar dados da obra em modo de edição
+  useEffect(() => {
+    if (isEditMode && params.obraData) {
+      try {
+        const obraData = JSON.parse(params.obraData);
+        setObraId(obraData.id);
+        setData(obraData.data);
+        setObra(obraData.obra);
+        setResponsavel(obraData.responsavel);
+        setTipoServico(obraData.tipo_servico);
+
+        // Carregar fotos existentes
+        if (obraData.fotos_antes?.length) setFotosAntes(obraData.fotos_antes.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_durante?.length) setFotosDurante(obraData.fotos_durante.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_depois?.length) setFotosDepois(obraData.fotos_depois.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_abertura?.length) setFotosAbertura(obraData.fotos_abertura.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_fechamento?.length) setFotosFechamento(obraData.fotos_fechamento.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Carregar fotos DITAIS
+        if (obraData.fotos_ditais_abertura?.length) setFotosDitaisAbertura(obraData.fotos_ditais_abertura.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_ditais_impedir?.length) setFotosDitaisImpedir(obraData.fotos_ditais_impedir.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_ditais_testar?.length) setFotosDitaisTestar(obraData.fotos_ditais_testar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_ditais_aterrar?.length) setFotosDitaisAterrar(obraData.fotos_ditais_aterrar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_ditais_sinalizar?.length) setFotosDitaisSinalizar(obraData.fotos_ditais_sinalizar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Carregar fotos de aterramento
+        if (obraData.fotos_aterramento_vala_aberta?.length) setFotosAterramentoValaAberta(obraData.fotos_aterramento_vala_aberta.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_aterramento_hastes?.length) setFotosAterramentoHastes(obraData.fotos_aterramento_hastes.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_aterramento_vala_fechada?.length) setFotosAterramentoValaFechada(obraData.fotos_aterramento_vala_fechada.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_aterramento_medicao?.length) setFotosAterramentoMedicao(obraData.fotos_aterramento_medicao.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Transformador
+        if (obraData.transformador_status) setTransformadorStatus(obraData.transformador_status);
+        if (obraData.fotos_transformador_laudo?.length) setFotosTransformadorLaudo(obraData.fotos_transformador_laudo.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_componente_instalado?.length) setFotosTransformadorComponenteInstalado(obraData.fotos_transformador_componente_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_tombamento_instalado?.length) setFotosTransformadorTombamentoInstalado(obraData.fotos_transformador_tombamento_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_tape?.length) setFotosTransformadorTape(obraData.fotos_transformador_tape.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_placa_instalado?.length) setFotosTransformadorPlacaInstalado(obraData.fotos_transformador_placa_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_instalado?.length) setFotosTransformadorInstalado(obraData.fotos_transformador_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_antes_retirar?.length) setFotosTransformadorAntesRetirar(obraData.fotos_transformador_antes_retirar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_tombamento_retirado?.length) setFotosTransformadorTombamentoRetirado(obraData.fotos_transformador_tombamento_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_transformador_placa_retirado?.length) setFotosTransformadorPlacaRetirado(obraData.fotos_transformador_placa_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Medidor
+        if (obraData.fotos_medidor_padrao?.length) setFotosMedidorPadrao(obraData.fotos_medidor_padrao.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_medidor_leitura?.length) setFotosMedidorLeitura(obraData.fotos_medidor_leitura.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_medidor_selo_born?.length) setFotosMedidorSeloBorn(obraData.fotos_medidor_selo_born.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_medidor_selo_caixa?.length) setFotosMedidorSeloCaixa(obraData.fotos_medidor_selo_caixa.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_medidor_identificador_fase?.length) setFotosMedidorIdentificadorFase(obraData.fotos_medidor_identificador_fase.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Checklist
+        if (obraData.fotos_checklist_croqui?.length) setFotosChecklistCroqui(obraData.fotos_checklist_croqui.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_checklist_panoramica_inicial?.length) setFotosChecklistPanoramicaInicial(obraData.fotos_checklist_panoramica_inicial.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_checklist_chede?.length) setFotosChecklistChaveComponente(obraData.fotos_checklist_chede.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_checklist_padrao_geral?.length) setFotosChecklistPadraoGeral(obraData.fotos_checklist_padrao_geral.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_checklist_padrao_interno?.length) setFotosChecklistPadraoInterno(obraData.fotos_checklist_padrao_interno.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_checklist_panoramica_final?.length) setFotosChecklistPanoramicaFinal(obraData.fotos_checklist_panoramica_final.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Altimetria
+        if (obraData.fotos_altimetria_lado_fonte?.length) setFotosAltimetriaLadoFonte(obraData.fotos_altimetria_lado_fonte.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_altimetria_medicao_fonte?.length) setFotosAltimetriaMedicaoFonte(obraData.fotos_altimetria_medicao_fonte.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_altimetria_lado_carga?.length) setFotosAltimetriaLadoCarga(obraData.fotos_altimetria_lado_carga.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_altimetria_medicao_carga?.length) setFotosAltimetriaMedicaoCarga(obraData.fotos_altimetria_medicao_carga.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Vazamento e Limpeza
+        if (obraData.fotos_vazamento_evidencia?.length) setFotosVazamentoEvidencia(obraData.fotos_vazamento_evidencia.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_vazamento_equipamentos_limpeza?.length) setFotosVazamentoEquipamentosLimpeza(obraData.fotos_vazamento_equipamentos_limpeza.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_vazamento_tombamento_retirado?.length) setFotosVazamentoTombamentoRetirado(obraData.fotos_vazamento_tombamento_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_vazamento_placa_retirado?.length) setFotosVazamentoPlacaRetirado(obraData.fotos_vazamento_placa_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_vazamento_tombamento_instalado?.length) setFotosVazamentoTombamentoInstalado(obraData.fotos_vazamento_tombamento_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_vazamento_placa_instalado?.length) setFotosVazamentoPlacaInstalado(obraData.fotos_vazamento_placa_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.fotos_vazamento_instalacao?.length) setFotosVazamentoInstalacao(obraData.fotos_vazamento_instalacao.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+
+        // Documentação
+        if (obraData.doc_cadastro_medidor?.length) setDocCadastroMedidor(obraData.doc_cadastro_medidor.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_laudo_transformador?.length) setDocLaudoTransformador(obraData.doc_laudo_transformador.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_laudo_regulador?.length) setDocLaudoRegulador(obraData.doc_laudo_regulador.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_laudo_religador?.length) setDocLaudoReligador(obraData.doc_laudo_religador.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_apr?.length) setDocApr(obraData.doc_apr.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_fvbt?.length) setDocFvbt(obraData.doc_fvbt.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_termo_desistencia_lpt?.length) setDocTermoDesistenciaLpt(obraData.doc_termo_desistencia_lpt.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+        if (obraData.doc_autorizacao_passagem?.length) setDocAutorizacaoPassagem(obraData.doc_autorizacao_passagem.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+      } catch (error) {
+        console.error('Erro ao carregar dados da obra:', error);
+        Alert.alert('Erro', 'Não foi possível carregar os dados da obra.');
+      }
+    }
+  }, [isEditMode, params.obraData]);
+
+  const loadPendingObras = async () => {
+    try {
+      const obras = await getPendingObras();
+      setPendingObras(obras);
+    } catch (error) {
+      console.error('Erro ao carregar obras pendentes:', error);
+    }
+  };
+
+  const getSyncStatusLabel = (status: PendingObra['sync_status']) => {
+    if (status === 'syncing') return 'Sincronizando';
+    if (status === 'failed') return 'Falhou';
+    return 'Pendente';
+  };
+
+  useEffect(() => {
+    loadPendingObras();
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    checkInternetConnection().then(online => {
+      if (isMounted) {
+        setIsOnline(online);
+      }
+    });
+
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const online = state.isConnected === true && state.isInternetReachable === true;
+      setIsOnline(online);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = startAutoSync(async result => {
+      await loadPendingObras();
+
+      if (result.success > 0 && result.failed === 0) {
+        Alert.alert('Sincronizacao concluida', `${result.success} obra(s) sincronizadas com sucesso.`);
+      } else if (result.failed > 0) {
+        Alert.alert(
+          'Sincronizacao incompleta',
+          `${result.failed} obra(s) nao foram sincronizadas. Verifique e tente novamente.`
+        );
+      }
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+
+  const requestPermissions = async () => {
+    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
+    const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+
+    if (cameraStatus !== 'granted') {
+      Alert.alert('Permissão negada', 'É necessário permitir o acesso à câmera para tirar fotos.');
+      return false;
+    }
+
+    if (locationStatus !== 'granted') {
+      Alert.alert('Permissão negada', 'É necessário permitir o acesso à localização para registrar o local das fotos.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const getCurrentLocation = async () => {
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      return {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+    } catch (error) {
+      console.error('Erro ao obter localização:', error);
+      Alert.alert('Aviso', 'Não foi possível obter a localização. A foto será salva sem coordenadas.');
+      return { latitude: null, longitude: null };
+    }
+  };
+
+
+  const takePicture = async (
+    tipo: 'antes' | 'durante' | 'depois' | 'abertura' | 'fechamento' |
+    'ditais_abertura' | 'ditais_impedir' | 'ditais_testar' | 'ditais_aterrar' | 'ditais_sinalizar' |
+    'aterramento_vala_aberta' | 'aterramento_hastes' | 'aterramento_vala_fechada' | 'aterramento_medicao' |
+    'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
+    'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
+    'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
+    'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
+    'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
+    'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
+    'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
+    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
+    'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_seccionamento' | 'checklist_aterramento_cerca',
+    posteIndex?: number,
+    seccionamentoIndex?: number,
+    aterramentoCercaIndex?: number
+  ) => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    setUploadingPhoto(true);
+
+    try {
+      // Tirar foto com compressão otimizada
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'], // Corrigido: usando array ao invés de MediaTypeOptions
+        quality: 0.6, // Reduzido de 0.8 para 0.6 (60% - boa qualidade, tamanho menor)
+        allowsEditing: false,
+        aspect: [4, 3],
+        exif: false, // Não incluir dados EXIF (reduz tamanho)
+      });
+
+      if (result.canceled) {
+        setUploadingPhoto(false);
+        return;
+      }
+
+      // Obter localização
+      const location = await getCurrentLocation();
+
+      // Obter índice da próxima foto
+      let index = 0;
+      if (tipo === 'antes') index = fotosAntes.length;
+      else if (tipo === 'durante') index = fotosDurante.length;
+      else if (tipo === 'depois') index = fotosDepois.length;
+      else if (tipo === 'abertura') index = fotosAbertura.length;
+      else if (tipo === 'fechamento') index = fotosFechamento.length;
+      else if (tipo === 'ditais_abertura') index = fotosDitaisAbertura.length;
+      else if (tipo === 'ditais_impedir') index = fotosDitaisImpedir.length;
+      else if (tipo === 'ditais_testar') index = fotosDitaisTestar.length;
+      else if (tipo === 'ditais_aterrar') index = fotosDitaisAterrar.length;
+      else if (tipo === 'ditais_sinalizar') index = fotosDitaisSinalizar.length;
+      else if (tipo === 'aterramento_vala_aberta') index = fotosAterramentoValaAberta.length;
+      else if (tipo === 'aterramento_hastes') index = fotosAterramentoHastes.length;
+      else if (tipo === 'aterramento_vala_fechada') index = fotosAterramentoValaFechada.length;
+      else if (tipo === 'aterramento_medicao') index = fotosAterramentoMedicao.length;
+      else if (tipo === 'transformador_laudo') index = fotosTransformadorLaudo.length;
+      else if (tipo === 'transformador_componente_instalado') index = fotosTransformadorComponenteInstalado.length;
+      else if (tipo === 'transformador_tombamento_instalado') index = fotosTransformadorTombamentoInstalado.length;
+      else if (tipo === 'transformador_tape') index = fotosTransformadorTape.length;
+      else if (tipo === 'transformador_placa_instalado') index = fotosTransformadorPlacaInstalado.length;
+      else if (tipo === 'transformador_instalado') index = fotosTransformadorInstalado.length;
+      else if (tipo === 'transformador_antes_retirar') index = fotosTransformadorAntesRetirar.length;
+      else if (tipo === 'transformador_tombamento_retirado') index = fotosTransformadorTombamentoRetirado.length;
+      else if (tipo === 'transformador_placa_retirado') index = fotosTransformadorPlacaRetirado.length;
+      else if (tipo === 'medidor_padrao') index = fotosMedidorPadrao.length;
+      else if (tipo === 'medidor_leitura') index = fotosMedidorLeitura.length;
+      else if (tipo === 'medidor_selo_born') index = fotosMedidorSeloBorn.length;
+      else if (tipo === 'medidor_selo_caixa') index = fotosMedidorSeloCaixa.length;
+      else if (tipo === 'medidor_identificador_fase') index = fotosMedidorIdentificadorFase.length;
+      // Altimetria - 4 fotos
+      else if (tipo === 'altimetria_lado_fonte') index = fotosAltimetriaLadoFonte.length;
+      else if (tipo === 'altimetria_medicao_fonte') index = fotosAltimetriaMedicaoFonte.length;
+      else if (tipo === 'altimetria_lado_carga') index = fotosAltimetriaLadoCarga.length;
+      else if (tipo === 'altimetria_medicao_carga') index = fotosAltimetriaMedicaoCarga.length;
+      // Vazamento e Limpeza - 7 fotos
+      else if (tipo === 'vazamento_evidencia') index = fotosVazamentoEvidencia.length;
+      else if (tipo === 'vazamento_equipamentos_limpeza') index = fotosVazamentoEquipamentosLimpeza.length;
+      else if (tipo === 'vazamento_tombamento_retirado') index = fotosVazamentoTombamentoRetirado.length;
+      else if (tipo === 'vazamento_placa_retirado') index = fotosVazamentoPlacaRetirado.length;
+      else if (tipo === 'vazamento_tombamento_instalado') index = fotosVazamentoTombamentoInstalado.length;
+      else if (tipo === 'vazamento_placa_instalado') index = fotosVazamentoPlacaInstalado.length;
+      else if (tipo === 'vazamento_instalacao') index = fotosVazamentoInstalacao.length;
+      // Checklist - fotos fixas
+      else if (tipo === 'checklist_croqui') index = fotosChecklistCroqui.length;
+      else if (tipo === 'checklist_panoramica_inicial') index = fotosChecklistPanoramicaInicial.length;
+      else if (tipo === 'checklist_chede') index = fotosChecklistChaveComponente.length;
+      else if (tipo === 'checklist_padrao_geral') index = fotosChecklistPadraoGeral.length;
+      else if (tipo === 'checklist_padrao_interno') index = fotosChecklistPadraoInterno.length;
+      else if (tipo === 'checklist_panoramica_final') index = fotosChecklistPanoramicaFinal.length;
+      // Checklist - fotos dinâmicas (postes)
+      else if (tipo === 'checklist_poste_inteiro' && posteIndex !== undefined) index = fotosPostes[posteIndex].posteInteiro.length;
+      else if (tipo === 'checklist_poste_engaste' && posteIndex !== undefined) index = fotosPostes[posteIndex].engaste.length;
+      else if (tipo === 'checklist_poste_conexao1' && posteIndex !== undefined) index = fotosPostes[posteIndex].conexao1.length;
+      else if (tipo === 'checklist_poste_conexao2' && posteIndex !== undefined) index = fotosPostes[posteIndex].conexao2.length;
+      // Checklist - seccionamento
+      else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].length;
+      // Checklist - aterramento de cerca
+      else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].length;
+
+      // FAZER BACKUP PERMANENTE DA FOTO
+      const photoMetadata = await backupPhoto(
+        result.assets[0].uri,
+        tempObraId,
+        tipo,
+        index,
+        location.latitude,
+        location.longitude
+      );
+
+      const photoData: FotoData = {
+        uri: result.assets[0].uri,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        utmX: photoMetadata.utmX,
+        utmY: photoMetadata.utmY,
+        utmZone: photoMetadata.utmZone,
+        photoId: photoMetadata.id, // Guardar ID do backup
+      };
+
+      // Adicionar foto ao array correspondente (usando forma funcional para evitar stale closure)
+      if (tipo === 'antes') {
+        setFotosAntes(prev => [...prev, photoData]);
+      } else if (tipo === 'durante') {
+        setFotosDurante(prev => [...prev, photoData]);
+      } else if (tipo === 'depois') {
+        setFotosDepois(prev => [...prev, photoData]);
+      } else if (tipo === 'abertura') {
+        setFotosAbertura(prev => [...prev, photoData]);
+      } else if (tipo === 'fechamento') {
+        setFotosFechamento(prev => [...prev, photoData]);
+      } else if (tipo === 'ditais_abertura') {
+        setFotosDitaisAbertura(prev => [...prev, photoData]);
+      } else if (tipo === 'ditais_impedir') {
+        setFotosDitaisImpedir(prev => [...prev, photoData]);
+      } else if (tipo === 'ditais_testar') {
+        setFotosDitaisTestar(prev => [...prev, photoData]);
+      } else if (tipo === 'ditais_aterrar') {
+        setFotosDitaisAterrar(prev => [...prev, photoData]);
+      } else if (tipo === 'ditais_sinalizar') {
+        setFotosDitaisSinalizar(prev => [...prev, photoData]);
+      } else if (tipo === 'aterramento_vala_aberta') {
+        setFotosAterramentoValaAberta(prev => [...prev, photoData]);
+      } else if (tipo === 'aterramento_hastes') {
+        setFotosAterramentoHastes(prev => [...prev, photoData]);
+      } else if (tipo === 'aterramento_vala_fechada') {
+        setFotosAterramentoValaFechada(prev => [...prev, photoData]);
+      } else if (tipo === 'aterramento_medicao') {
+        setFotosAterramentoMedicao(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_laudo') {
+        setFotosTransformadorLaudo(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_componente_instalado') {
+        setFotosTransformadorComponenteInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_tombamento_instalado') {
+        setFotosTransformadorTombamentoInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_tape') {
+        setFotosTransformadorTape(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_placa_instalado') {
+        setFotosTransformadorPlacaInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_instalado') {
+        setFotosTransformadorInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_antes_retirar') {
+        setFotosTransformadorAntesRetirar(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_tombamento_retirado') {
+        setFotosTransformadorTombamentoRetirado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_placa_retirado') {
+        setFotosTransformadorPlacaRetirado(prev => [...prev, photoData]);
+      } else if (tipo === 'medidor_padrao') {
+        setFotosMedidorPadrao(prev => [...prev, photoData]);
+      } else if (tipo === 'medidor_leitura') {
+        setFotosMedidorLeitura(prev => [...prev, photoData]);
+      } else if (tipo === 'medidor_selo_born') {
+        setFotosMedidorSeloBorn(prev => [...prev, photoData]);
+      } else if (tipo === 'medidor_selo_caixa') {
+        setFotosMedidorSeloCaixa(prev => [...prev, photoData]);
+      } else if (tipo === 'medidor_identificador_fase') {
+        setFotosMedidorIdentificadorFase(prev => [...prev, photoData]);
+      } else if (tipo === 'altimetria_lado_fonte') {
+        setFotosAltimetriaLadoFonte(prev => [...prev, photoData]);
+      } else if (tipo === 'altimetria_medicao_fonte') {
+        setFotosAltimetriaMedicaoFonte(prev => [...prev, photoData]);
+      } else if (tipo === 'altimetria_lado_carga') {
+        setFotosAltimetriaLadoCarga(prev => [...prev, photoData]);
+      } else if (tipo === 'altimetria_medicao_carga') {
+        setFotosAltimetriaMedicaoCarga(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_evidencia') {
+        setFotosVazamentoEvidencia(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_equipamentos_limpeza') {
+        setFotosVazamentoEquipamentosLimpeza(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_tombamento_retirado') {
+        setFotosVazamentoTombamentoRetirado(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_placa_retirado') {
+        setFotosVazamentoPlacaRetirado(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_tombamento_instalado') {
+        setFotosVazamentoTombamentoInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_placa_instalado') {
+        setFotosVazamentoPlacaInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'vazamento_instalacao') {
+        setFotosVazamentoInstalacao(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_croqui') {
+        setFotosChecklistCroqui(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_panoramica_inicial') {
+        setFotosChecklistPanoramicaInicial(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_chede') {
+        setFotosChecklistChaveComponente(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_padrao_geral') {
+        setFotosChecklistPadraoGeral(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_padrao_interno') {
+        setFotosChecklistPadraoInterno(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_panoramica_final') {
+        setFotosChecklistPanoramicaFinal(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_poste_inteiro' && posteIndex !== undefined) {
+        setFotosPostes(prev => {
+          const updated = [...prev];
+          updated[posteIndex] = {
+            ...updated[posteIndex],
+            posteInteiro: [...updated[posteIndex].posteInteiro, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_poste_engaste' && posteIndex !== undefined) {
+        setFotosPostes(prev => {
+          const updated = [...prev];
+          updated[posteIndex] = {
+            ...updated[posteIndex],
+            engaste: [...updated[posteIndex].engaste, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_poste_conexao1' && posteIndex !== undefined) {
+        setFotosPostes(prev => {
+          const updated = [...prev];
+          updated[posteIndex] = {
+            ...updated[posteIndex],
+            conexao1: [...updated[posteIndex].conexao1, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_poste_conexao2' && posteIndex !== undefined) {
+        setFotosPostes(prev => {
+          const updated = [...prev];
+          updated[posteIndex] = {
+            ...updated[posteIndex],
+            conexao2: [...updated[posteIndex].conexao2, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) {
+        setFotosSeccionamentos(prev => {
+          const updated = [...prev];
+          updated[seccionamentoIndex] = [...updated[seccionamentoIndex], photoData];
+          return updated;
+        });
+      } else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) {
+        setFotosAterramentosCerca(prev => {
+          const updated = [...prev];
+          updated[aterramentoCercaIndex] = [...updated[aterramentoCercaIndex], photoData];
+          return updated;
+        });
+      }
+
+      Alert.alert(
+        '✅ Foto protegida!',
+        photoMetadata.utmX && photoMetadata.utmY
+          ? `📍 UTM: X=${photoMetadata.utmX.toFixed(0)} Y=${photoMetadata.utmY.toFixed(0)} (${photoMetadata.utmZone})\n💾 Backup salvo localmente`
+          : '💾 Foto salva com backup local (sem localização)'
+      );
+
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      Alert.alert('Erro', 'Não foi possível tirar a foto. Tente novamente.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  // Função para selecionar documentos PDF
+  const selectDocument = async (
+    tipo: 'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
+    'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem'
+  ) => {
+    setUploadingPhoto(true);
+
+    try {
+      // Selecionar documento PDF
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        setUploadingPhoto(false);
+        return;
+      }
+
+      // Obter localização
+      const location = await getCurrentLocation();
+
+      // Obter índice do próximo documento
+      let index = 0;
+      if (tipo === 'doc_cadastro_medidor') index = docCadastroMedidor.length;
+      else if (tipo === 'doc_laudo_transformador') index = docLaudoTransformador.length;
+      else if (tipo === 'doc_laudo_regulador') index = docLaudoRegulador.length;
+      else if (tipo === 'doc_laudo_religador') index = docLaudoReligador.length;
+      else if (tipo === 'doc_apr') index = docApr.length;
+      else if (tipo === 'doc_fvbt') index = docFvbt.length;
+      else if (tipo === 'doc_termo_desistencia_lpt') index = docTermoDesistenciaLpt.length;
+      else if (tipo === 'doc_autorizacao_passagem') index = docAutorizacaoPassagem.length;
+
+      // FAZER BACKUP PERMANENTE DO DOCUMENTO
+      const docMetadata = await backupPhoto(
+        result.assets[0].uri,
+        tempObraId,
+        tipo,
+        index,
+        location.latitude,
+        location.longitude
+      );
+
+      const docData: FotoData = {
+        uri: result.assets[0].uri,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        utmX: docMetadata.utmX,
+        utmY: docMetadata.utmY,
+        utmZone: docMetadata.utmZone,
+        photoId: docMetadata.id, // Guardar ID do backup
+      };
+
+      // Adicionar à fila de upload vinculando à obra temporária
+      await addToUploadQueue(docMetadata.id, tempObraId);
+
+      // Atualizar estado
+      if (tipo === 'doc_cadastro_medidor') {
+        setDocCadastroMedidor([...docCadastroMedidor, docData]);
+      } else if (tipo === 'doc_laudo_transformador') {
+        setDocLaudoTransformador([...docLaudoTransformador, docData]);
+      } else if (tipo === 'doc_laudo_regulador') {
+        setDocLaudoRegulador([...docLaudoRegulador, docData]);
+      } else if (tipo === 'doc_laudo_religador') {
+        setDocLaudoReligador([...docLaudoReligador, docData]);
+      } else if (tipo === 'doc_apr') {
+        setDocApr([...docApr, docData]);
+      } else if (tipo === 'doc_fvbt') {
+        setDocFvbt([...docFvbt, docData]);
+      } else if (tipo === 'doc_termo_desistencia_lpt') {
+        setDocTermoDesistenciaLpt([...docTermoDesistenciaLpt, docData]);
+      } else if (tipo === 'doc_autorizacao_passagem') {
+        setDocAutorizacaoPassagem([...docAutorizacaoPassagem, docData]);
+      }
+
+      Alert.alert(
+        '✅ Documento PDF protegido!',
+        docMetadata.utmX && docMetadata.utmY
+          ? `📍 UTM: X=${docMetadata.utmX.toFixed(0)} Y=${docMetadata.utmY.toFixed(0)} (${docMetadata.utmZone})\n💾 Backup salvo localmente`
+          : '💾 Documento salvo com backup local (sem localização)'
+      );
+
+    } catch (error) {
+      console.error('Erro ao selecionar documento:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar o documento. Tente novamente.');
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const removePhoto = (
+    tipo: 'antes' | 'durante' | 'depois' | 'abertura' | 'fechamento' |
+    'ditais_abertura' | 'ditais_impedir' | 'ditais_testar' | 'ditais_aterrar' | 'ditais_sinalizar' |
+    'aterramento_vala_aberta' | 'aterramento_hastes' | 'aterramento_vala_fechada' | 'aterramento_medicao' |
+    'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
+    'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
+    'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
+    'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
+    'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
+    'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
+    'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
+    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
+    'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_seccionamento' | 'checklist_aterramento_cerca' |
+    'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
+    'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem',
+    index: number,
+    posteIndex?: number,
+    seccionamentoIndex?: number,
+    aterramentoCercaIndex?: number
+  ) => {
+    if (tipo === 'antes') {
+      setFotosAntes(fotosAntes.filter((_, i) => i !== index));
+    } else if (tipo === 'durante') {
+      setFotosDurante(fotosDurante.filter((_, i) => i !== index));
+    } else if (tipo === 'depois') {
+      setFotosDepois(fotosDepois.filter((_, i) => i !== index));
+    } else if (tipo === 'abertura') {
+      setFotosAbertura(fotosAbertura.filter((_, i) => i !== index));
+    } else if (tipo === 'fechamento') {
+      setFotosFechamento(fotosFechamento.filter((_, i) => i !== index));
+    } else if (tipo === 'ditais_abertura') {
+      setFotosDitaisAbertura(fotosDitaisAbertura.filter((_, i) => i !== index));
+    } else if (tipo === 'ditais_impedir') {
+      setFotosDitaisImpedir(fotosDitaisImpedir.filter((_, i) => i !== index));
+    } else if (tipo === 'ditais_testar') {
+      setFotosDitaisTestar(fotosDitaisTestar.filter((_, i) => i !== index));
+    } else if (tipo === 'ditais_aterrar') {
+      setFotosDitaisAterrar(fotosDitaisAterrar.filter((_, i) => i !== index));
+    } else if (tipo === 'ditais_sinalizar') {
+      setFotosDitaisSinalizar(fotosDitaisSinalizar.filter((_, i) => i !== index));
+    } else if (tipo === 'aterramento_vala_aberta') {
+      setFotosAterramentoValaAberta(fotosAterramentoValaAberta.filter((_, i) => i !== index));
+    } else if (tipo === 'aterramento_hastes') {
+      setFotosAterramentoHastes(fotosAterramentoHastes.filter((_, i) => i !== index));
+    } else if (tipo === 'aterramento_vala_fechada') {
+      setFotosAterramentoValaFechada(fotosAterramentoValaFechada.filter((_, i) => i !== index));
+    } else if (tipo === 'aterramento_medicao') {
+      setFotosAterramentoMedicao(fotosAterramentoMedicao.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_laudo') {
+      setFotosTransformadorLaudo(fotosTransformadorLaudo.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_componente_instalado') {
+      setFotosTransformadorComponenteInstalado(fotosTransformadorComponenteInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_tombamento_instalado') {
+      setFotosTransformadorTombamentoInstalado(fotosTransformadorTombamentoInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_tape') {
+      setFotosTransformadorTape(fotosTransformadorTape.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_placa_instalado') {
+      setFotosTransformadorPlacaInstalado(fotosTransformadorPlacaInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_instalado') {
+      setFotosTransformadorInstalado(fotosTransformadorInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_antes_retirar') {
+      setFotosTransformadorAntesRetirar(fotosTransformadorAntesRetirar.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_tombamento_retirado') {
+      setFotosTransformadorTombamentoRetirado(fotosTransformadorTombamentoRetirado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_placa_retirado') {
+      setFotosTransformadorPlacaRetirado(fotosTransformadorPlacaRetirado.filter((_, i) => i !== index));
+    } else if (tipo === 'medidor_padrao') {
+      setFotosMedidorPadrao(fotosMedidorPadrao.filter((_, i) => i !== index));
+    } else if (tipo === 'medidor_leitura') {
+      setFotosMedidorLeitura(fotosMedidorLeitura.filter((_, i) => i !== index));
+    } else if (tipo === 'medidor_selo_born') {
+      setFotosMedidorSeloBorn(fotosMedidorSeloBorn.filter((_, i) => i !== index));
+    } else if (tipo === 'medidor_selo_caixa') {
+      setFotosMedidorSeloCaixa(fotosMedidorSeloCaixa.filter((_, i) => i !== index));
+    } else if (tipo === 'medidor_identificador_fase') {
+      setFotosMedidorIdentificadorFase(fotosMedidorIdentificadorFase.filter((_, i) => i !== index));
+    } else if (tipo === 'altimetria_lado_fonte') {
+      setFotosAltimetriaLadoFonte(fotosAltimetriaLadoFonte.filter((_, i) => i !== index));
+    } else if (tipo === 'altimetria_medicao_fonte') {
+      setFotosAltimetriaMedicaoFonte(fotosAltimetriaMedicaoFonte.filter((_, i) => i !== index));
+    } else if (tipo === 'altimetria_lado_carga') {
+      setFotosAltimetriaLadoCarga(fotosAltimetriaLadoCarga.filter((_, i) => i !== index));
+    } else if (tipo === 'altimetria_medicao_carga') {
+      setFotosAltimetriaMedicaoCarga(fotosAltimetriaMedicaoCarga.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_evidencia') {
+      setFotosVazamentoEvidencia(fotosVazamentoEvidencia.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_equipamentos_limpeza') {
+      setFotosVazamentoEquipamentosLimpeza(fotosVazamentoEquipamentosLimpeza.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_tombamento_retirado') {
+      setFotosVazamentoTombamentoRetirado(fotosVazamentoTombamentoRetirado.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_placa_retirado') {
+      setFotosVazamentoPlacaRetirado(fotosVazamentoPlacaRetirado.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_tombamento_instalado') {
+      setFotosVazamentoTombamentoInstalado(fotosVazamentoTombamentoInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_placa_instalado') {
+      setFotosVazamentoPlacaInstalado(fotosVazamentoPlacaInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'vazamento_instalacao') {
+      setFotosVazamentoInstalacao(fotosVazamentoInstalacao.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_croqui') {
+      setFotosChecklistCroqui(fotosChecklistCroqui.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_panoramica_inicial') {
+      setFotosChecklistPanoramicaInicial(fotosChecklistPanoramicaInicial.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_chede') {
+      setFotosChecklistChaveComponente(fotosChecklistChaveComponente.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_padrao_geral') {
+      setFotosChecklistPadraoGeral(fotosChecklistPadraoGeral.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_padrao_interno') {
+      setFotosChecklistPadraoInterno(fotosChecklistPadraoInterno.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_panoramica_final') {
+      setFotosChecklistPanoramicaFinal(fotosChecklistPanoramicaFinal.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_poste_inteiro' && posteIndex !== undefined) {
+      setFotosPostes(prev => {
+        const updated = [...prev];
+        updated[posteIndex] = {
+          ...updated[posteIndex],
+          posteInteiro: updated[posteIndex].posteInteiro.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_poste_engaste' && posteIndex !== undefined) {
+      setFotosPostes(prev => {
+        const updated = [...prev];
+        updated[posteIndex] = {
+          ...updated[posteIndex],
+          engaste: updated[posteIndex].engaste.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_poste_conexao1' && posteIndex !== undefined) {
+      setFotosPostes(prev => {
+        const updated = [...prev];
+        updated[posteIndex] = {
+          ...updated[posteIndex],
+          conexao1: updated[posteIndex].conexao1.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_poste_conexao2' && posteIndex !== undefined) {
+      setFotosPostes(prev => {
+        const updated = [...prev];
+        updated[posteIndex] = {
+          ...updated[posteIndex],
+          conexao2: updated[posteIndex].conexao2.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) {
+      setFotosSeccionamentos(prev => {
+        const updated = [...prev];
+        updated[seccionamentoIndex] = updated[seccionamentoIndex].filter((_, i) => i !== index);
+        return updated;
+      });
+    } else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) {
+      setFotosAterramentosCerca(prev => {
+        const updated = [...prev];
+        updated[aterramentoCercaIndex] = updated[aterramentoCercaIndex].filter((_, i) => i !== index);
+        return updated;
+      });
+    } else if (tipo === 'doc_cadastro_medidor') {
+      setDocCadastroMedidor(docCadastroMedidor.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_laudo_transformador') {
+      setDocLaudoTransformador(docLaudoTransformador.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_laudo_regulador') {
+      setDocLaudoRegulador(docLaudoRegulador.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_laudo_religador') {
+      setDocLaudoReligador(docLaudoReligador.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_apr') {
+      setDocApr(docApr.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_fvbt') {
+      setDocFvbt(docFvbt.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_termo_desistencia_lpt') {
+      setDocTermoDesistenciaLpt(docTermoDesistenciaLpt.filter((_, i) => i !== index));
+    } else if (tipo === 'doc_autorizacao_passagem') {
+      setDocAutorizacaoPassagem(docAutorizacaoPassagem.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleSyncPendingObras = async () => {
+    if (pendingObras.length === 0) {
+      return;
+    }
+
+    setSyncingPending(true);
+    try {
+      const result = await syncAllPendingObras();
+      await loadPendingObras();
+
+      if (result.success === 0 && result.failed === 0) {
+        Alert.alert('Sem conexao', 'Conecte-se a internet para sincronizar as obras pendentes.');
+        return;
+      }
+
+      if (result.failed > 0) {
+        Alert.alert('Atencao', `${result.failed} obra(s) ainda nao foram sincronizadas. Tente novamente em instantes.`);
+      } else {
+        Alert.alert('Sincronizado', `${result.success} obra(s) sincronizadas com sucesso!`);
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar obras pendentes:', error);
+      Alert.alert('Erro', 'Nao foi possivel sincronizar as obras pendentes. Tente novamente.');
+    } finally {
+      setSyncingPending(false);
+    }
+  };
+
+  const handleSalvarObra = async () => {
+    // Validações
+    if (!data || !obra || !responsavel || !tipoServico) {
+      Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios');
+      return;
+    }
+
+    // Validação específica para COMP
+    if (isCompUser && !equipeExecutora) {
+      Alert.alert('Erro', 'Selecione a equipe executora do serviço');
+      return;
+    }
+
+    // Validação para equipes normais
+    if (!isCompUser && !equipe) {
+      Alert.alert('Erro', 'Equipe não identificada. Faça login novamente.');
+      return;
+    }
+
+    // Validar número da obra (8-10 dígitos numéricos)
+    const obraNumero = obra.trim();
+    if (!/^\d{8,10}$/.test(obraNumero)) {
+      Alert.alert(
+        'Número da Obra Inválido',
+        'O número da obra deve conter entre 8 e 10 dígitos numéricos.\n\nExemplo: 0032401637'
+      );
+      return;
+    }
+
+    // TRANSFORMADOR - Status é obrigatório, mas fotos são opcionais
+    if (isServicoTransformador) {
+      if (!transformadorStatus) {
+        Alert.alert('Erro', 'Selecione se o transformador foi Instalado ou Retirado');
+        return;
+      }
+      // Fotos de transformador são OPCIONAIS - pode salvar sem fotos
+    }
+
+    // FOTOS AGORA SÃO OPCIONAIS - Obras parciais são permitidas
+    // Apenas avisar se não houver nenhuma foto
+    const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length +
+      fotosAbertura.length + fotosFechamento.length +
+      fotosDitaisAbertura.length + fotosDitaisImpedir.length + fotosDitaisTestar.length +
+      fotosDitaisAterrar.length + fotosDitaisSinalizar.length +
+      fotosAterramentoValaAberta.length + fotosAterramentoHastes.length +
+      fotosAterramentoValaFechada.length + fotosAterramentoMedicao.length +
+      fotosTransformadorLaudo.length + fotosTransformadorComponenteInstalado.length +
+      fotosTransformadorTombamentoInstalado.length + fotosTransformadorTape.length +
+      fotosTransformadorPlacaInstalado.length + fotosTransformadorInstalado.length +
+      fotosTransformadorAntesRetirar.length + fotosTransformadorTombamentoRetirado.length +
+      fotosTransformadorPlacaRetirado.length +
+      fotosMedidorPadrao.length + fotosMedidorLeitura.length + fotosMedidorSeloBorn.length +
+      fotosMedidorSeloCaixa.length + fotosMedidorIdentificadorFase.length +
+      fotosChecklistCroqui.length + fotosChecklistPanoramicaInicial.length +
+      fotosChecklistPanoramicaFinal.length +
+      fotosAltimetriaLadoFonte.length + fotosAltimetriaMedicaoFonte.length +
+      fotosAltimetriaLadoCarga.length + fotosAltimetriaMedicaoCarga.length +
+      fotosVazamentoEvidencia.length + fotosVazamentoEquipamentosLimpeza.length +
+      fotosVazamentoTombamentoRetirado.length + fotosVazamentoPlacaRetirado.length +
+      fotosVazamentoTombamentoInstalado.length + fotosVazamentoPlacaInstalado.length +
+      fotosVazamentoInstalacao.length;
+
+    if (totalFotos === 0 && !isServicoDocumentacao) {
+      // Apenas avisar, mas permitir salvar
+      Alert.alert(
+        'Obra Sem Fotos',
+        'Você está salvando uma obra sem nenhuma foto. Deseja continuar?',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Salvar Assim Mesmo', onPress: () => prosseguirSalvamento() }
+        ]
+      );
+      return;
+    }
+
+    // Se tem fotos ou é documentação, prossegue diretamente
+    await prosseguirSalvamento();
+  };
+
+  const prosseguirSalvamento = async () => {
+    setLoading(true);
+
+    try {
+      const isConnected = await checkInternetConnection();
+      setIsOnline(isConnected);
+
+      const createdAt = new Date().toISOString();
+
+      // Obter IDs das fotos com backup
+      const photoIds = {
+        antes: isServicoPadrao ? fotosAntes.map(f => f.photoId).filter(Boolean) as string[] : [],
+        durante: isServicoPadrao ? fotosDurante.map(f => f.photoId).filter(Boolean) as string[] : [],
+        depois: isServicoPadrao ? fotosDepois.map(f => f.photoId).filter(Boolean) as string[] : [],
+        abertura: isServicoChave ? fotosAbertura.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fechamento: isServicoChave ? fotosFechamento.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos DITAIS
+        ditais_abertura: isServicoDitais ? fotosDitaisAbertura.map(f => f.photoId).filter(Boolean) as string[] : [],
+        ditais_impedir: isServicoDitais ? fotosDitaisImpedir.map(f => f.photoId).filter(Boolean) as string[] : [],
+        ditais_testar: isServicoDitais ? fotosDitaisTestar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        ditais_aterrar: isServicoDitais ? fotosDitaisAterrar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        ditais_sinalizar: isServicoDitais ? fotosDitaisSinalizar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos BOOK ATERRAMENTO
+        aterramento_vala_aberta: isServicoBookAterramento ? fotosAterramentoValaAberta.map(f => f.photoId).filter(Boolean) as string[] : [],
+        aterramento_hastes: isServicoBookAterramento ? fotosAterramentoHastes.map(f => f.photoId).filter(Boolean) as string[] : [],
+        aterramento_vala_fechada: isServicoBookAterramento ? fotosAterramentoValaFechada.map(f => f.photoId).filter(Boolean) as string[] : [],
+        aterramento_medicao: isServicoBookAterramento ? fotosAterramentoMedicao.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos TRANSFORMADOR
+        transformador_laudo: isServicoTransformador ? fotosTransformadorLaudo.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_componente_instalado: isServicoTransformador ? fotosTransformadorComponenteInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_tombamento_instalado: isServicoTransformador ? fotosTransformadorTombamentoInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_tape: isServicoTransformador ? fotosTransformadorTape.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_placa_instalado: isServicoTransformador ? fotosTransformadorPlacaInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_instalado: isServicoTransformador ? fotosTransformadorInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_antes_retirar: isServicoTransformador ? fotosTransformadorAntesRetirar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_tombamento_retirado: isServicoTransformador ? fotosTransformadorTombamentoRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_placa_retirado: isServicoTransformador ? fotosTransformadorPlacaRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos INSTALAÇÃO DO MEDIDOR
+        medidor_padrao: isServicoMedidor ? fotosMedidorPadrao.map(f => f.photoId).filter(Boolean) as string[] : [],
+        medidor_leitura: isServicoMedidor ? fotosMedidorLeitura.map(f => f.photoId).filter(Boolean) as string[] : [],
+        medidor_selo_born: isServicoMedidor ? fotosMedidorSeloBorn.map(f => f.photoId).filter(Boolean) as string[] : [],
+        medidor_selo_caixa: isServicoMedidor ? fotosMedidorSeloCaixa.map(f => f.photoId).filter(Boolean) as string[] : [],
+        medidor_identificador_fase: isServicoMedidor ? fotosMedidorIdentificadorFase.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos ALTIMETRIA
+        altimetria_lado_fonte: isServicoAltimetria ? fotosAltimetriaLadoFonte.map(f => f.photoId).filter(Boolean) as string[] : [],
+        altimetria_medicao_fonte: isServicoAltimetria ? fotosAltimetriaMedicaoFonte.map(f => f.photoId).filter(Boolean) as string[] : [],
+        altimetria_lado_carga: isServicoAltimetria ? fotosAltimetriaLadoCarga.map(f => f.photoId).filter(Boolean) as string[] : [],
+        altimetria_medicao_carga: isServicoAltimetria ? fotosAltimetriaMedicaoCarga.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos VAZAMENTO E LIMPEZA
+        vazamento_evidencia: isServicoVazamento ? fotosVazamentoEvidencia.map(f => f.photoId).filter(Boolean) as string[] : [],
+        vazamento_equipamentos_limpeza: isServicoVazamento ? fotosVazamentoEquipamentosLimpeza.map(f => f.photoId).filter(Boolean) as string[] : [],
+        vazamento_tombamento_retirado: isServicoVazamento ? fotosVazamentoTombamentoRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        vazamento_placa_retirado: isServicoVazamento ? fotosVazamentoPlacaRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        vazamento_tombamento_instalado: isServicoVazamento ? fotosVazamentoTombamentoInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        vazamento_placa_instalado: isServicoVazamento ? fotosVazamentoPlacaInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        vazamento_instalacao: isServicoVazamento ? fotosVazamentoInstalacao.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos CHECKLIST DE FISCALIZAÇÃO
+        checklist_croqui: isServicoChecklist ? fotosChecklistCroqui.map(f => f.photoId).filter(Boolean) as string[] : [],
+        checklist_panoramica_inicial: isServicoChecklist ? fotosChecklistPanoramicaInicial.map(f => f.photoId).filter(Boolean) as string[] : [],
+        checklist_chede: isServicoChecklist ? fotosChecklistChaveComponente.map(f => f.photoId).filter(Boolean) as string[] : [],
+        checklist_padrao_geral: isServicoChecklist ? fotosChecklistPadraoGeral.map(f => f.photoId).filter(Boolean) as string[] : [],
+        checklist_padrao_interno: isServicoChecklist ? fotosChecklistPadraoInterno.map(f => f.photoId).filter(Boolean) as string[] : [],
+        checklist_panoramica_final: isServicoChecklist ? fotosChecklistPanoramicaFinal.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Fotos dinâmicas - postes (cada poste tem 4 fotos)
+        checklist_postes: isServicoChecklist ? fotosPostes.flatMap((poste, index) => [
+          ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.conexao1.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.conexao2.map(f => f.photoId).filter(Boolean) as string[],
+        ]) : [],
+        // Fotos dinâmicas - seccionamentos
+        checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]) : [],
+        // Fotos dinâmicas - aterramentos de cerca
+        checklist_aterramento_cerca: isServicoChecklist ? fotosAterramentosCerca.flatMap(aterr => aterr.map(f => f.photoId).filter(Boolean) as string[]) : [],
+        // Documentação (PDFs) - opcional
+        doc_cadastro_medidor: isServicoDocumentacao ? docCadastroMedidor.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_laudo_transformador: isServicoDocumentacao ? docLaudoTransformador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_laudo_regulador: isServicoDocumentacao ? docLaudoRegulador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_laudo_religador: isServicoDocumentacao ? docLaudoReligador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_apr: isServicoDocumentacao ? docApr.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_fvbt: isServicoDocumentacao ? docFvbt.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_termo_desistencia_lpt: isServicoDocumentacao ? docTermoDesistenciaLpt.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_autorizacao_passagem: isServicoDocumentacao ? docAutorizacaoPassagem.map(f => f.photoId).filter(Boolean) as string[] : [],
+      };
+
+      const obraData: any = {
+        data,
+        obra,
+        // WORKAROUND: Usar responsável "COMP" para identificar obras criadas pelo COMP
+        // até que a migration 20250213_comp_role.sql seja aplicada
+        responsavel: isCompUser ? 'COMP' : responsavel,
+        equipe: isCompUser ? equipeExecutora : equipe, // COMP usa equipeExecutora
+        tipo_servico: tipoServico,
+        transformador_status: isServicoTransformador ? transformadorStatus : null,
+        created_at: createdAt,
+      };
+
+      // Adicionar campos created_by e creator_role apenas se as colunas existirem no banco
+      // NOTA: Esses campos requerem a migration 20250213_comp_role.sql
+      // Por enquanto, comentados para funcionar sem a migration
+      // obraData.created_by = isCompUser ? 'COMP' : equipe;
+      // obraData.creator_role = isCompUser ? 'compressor' : 'equipe';
+
+      if (!isConnected) {
+        // MODO OFFLINE: Salvar obra com IDs das fotos
+        await saveObraOffline(obraData, photoIds, tempObraId);
+        await loadPendingObras();
+
+        const totalFotos = photoIds.antes.length + photoIds.durante.length + photoIds.depois.length +
+          photoIds.abertura.length + photoIds.fechamento.length +
+          photoIds.ditais_abertura.length + photoIds.ditais_impedir.length + photoIds.ditais_testar.length +
+          photoIds.ditais_aterrar.length + photoIds.ditais_sinalizar.length +
+          photoIds.aterramento_vala_aberta.length + photoIds.aterramento_hastes.length +
+          photoIds.aterramento_vala_fechada.length + photoIds.aterramento_medicao.length +
+          photoIds.transformador_laudo.length + photoIds.transformador_componente_instalado.length +
+          photoIds.transformador_tombamento_instalado.length + photoIds.transformador_tape.length +
+          photoIds.transformador_placa_instalado.length + photoIds.transformador_instalado.length +
+          photoIds.transformador_antes_retirar.length + photoIds.transformador_tombamento_retirado.length +
+          photoIds.transformador_placa_retirado.length +
+          photoIds.medidor_padrao.length + photoIds.medidor_leitura.length + photoIds.medidor_selo_born.length +
+          photoIds.medidor_selo_caixa.length + photoIds.medidor_identificador_fase.length +
+          photoIds.altimetria_lado_fonte.length + photoIds.altimetria_medicao_fonte.length +
+          photoIds.altimetria_lado_carga.length + photoIds.altimetria_medicao_carga.length +
+          photoIds.vazamento_evidencia.length + photoIds.vazamento_equipamentos_limpeza.length +
+          photoIds.vazamento_tombamento_retirado.length + photoIds.vazamento_placa_retirado.length +
+          photoIds.vazamento_tombamento_instalado.length + photoIds.vazamento_placa_instalado.length +
+          photoIds.vazamento_instalacao.length +
+          photoIds.checklist_croqui.length + photoIds.checklist_panoramica_inicial.length + photoIds.checklist_chede.length +
+          photoIds.checklist_aterramento_cerca.length + photoIds.checklist_padrao_geral.length + photoIds.checklist_padrao_interno.length +
+          photoIds.checklist_panoramica_final.length + photoIds.checklist_postes.length + photoIds.checklist_seccionamentos.length +
+          photoIds.doc_cadastro_medidor.length + photoIds.doc_laudo_transformador.length + photoIds.doc_laudo_regulador.length +
+          photoIds.doc_laudo_religador.length + photoIds.doc_apr.length + photoIds.doc_fvbt.length + photoIds.doc_termo_desistencia_lpt.length +
+          photoIds.doc_autorizacao_passagem.length;
+
+        const tipoArquivo = isServicoDocumentacao ? 'arquivo(s)' : 'foto(s)';
+        Alert.alert(
+          '📱 Salvo Offline',
+          `Obra salva localmente com ${totalFotos} ${tipoArquivo} protegida(s).\n\n✅ Todos os arquivos têm backup permanente\n🔄 Será sincronizada automaticamente quando houver internet`,
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+        return;
+      }
+
+      // MODO ONLINE: Fazer upload e salvar
+      // Login por equipe - não precisa verificar supabase.auth
+
+      // Adicionar fotos à fila de upload e processar
+      const allPhotoIds = [
+        ...photoIds.antes,
+        ...photoIds.durante,
+        ...photoIds.depois,
+        ...photoIds.abertura,
+        ...photoIds.fechamento,
+        ...photoIds.ditais_abertura,
+        ...photoIds.ditais_impedir,
+        ...photoIds.ditais_testar,
+        ...photoIds.ditais_aterrar,
+        ...photoIds.ditais_sinalizar,
+        ...photoIds.aterramento_vala_aberta,
+        ...photoIds.aterramento_hastes,
+        ...photoIds.aterramento_vala_fechada,
+        ...photoIds.aterramento_medicao,
+        ...photoIds.transformador_laudo,
+        ...photoIds.transformador_componente_instalado,
+        ...photoIds.transformador_tombamento_instalado,
+        ...photoIds.transformador_tape,
+        ...photoIds.transformador_placa_instalado,
+        ...photoIds.transformador_instalado,
+        ...photoIds.transformador_antes_retirar,
+        ...photoIds.transformador_tombamento_retirado,
+        ...photoIds.transformador_placa_retirado,
+        ...photoIds.medidor_padrao,
+        ...photoIds.medidor_leitura,
+        ...photoIds.medidor_selo_born,
+        ...photoIds.medidor_selo_caixa,
+        ...photoIds.medidor_identificador_fase,
+        ...photoIds.altimetria_lado_fonte,
+        ...photoIds.altimetria_medicao_fonte,
+        ...photoIds.altimetria_lado_carga,
+        ...photoIds.altimetria_medicao_carga,
+        ...photoIds.vazamento_evidencia,
+        ...photoIds.vazamento_equipamentos_limpeza,
+        ...photoIds.vazamento_tombamento_retirado,
+        ...photoIds.vazamento_placa_retirado,
+        ...photoIds.vazamento_tombamento_instalado,
+        ...photoIds.vazamento_placa_instalado,
+        ...photoIds.vazamento_instalacao,
+        ...photoIds.checklist_croqui,
+        ...photoIds.checklist_panoramica_inicial,
+        ...photoIds.checklist_chede,
+        ...photoIds.checklist_aterramento_cerca,
+        ...photoIds.checklist_padrao_geral,
+        ...photoIds.checklist_padrao_interno,
+        ...photoIds.checklist_panoramica_final,
+        ...photoIds.checklist_postes,
+        ...photoIds.checklist_seccionamentos,
+        ...photoIds.doc_cadastro_medidor,
+        ...photoIds.doc_laudo_transformador,
+        ...photoIds.doc_laudo_regulador,
+        ...photoIds.doc_laudo_religador,
+        ...photoIds.doc_apr,
+        ...photoIds.doc_fvbt,
+        ...photoIds.doc_termo_desistencia_lpt,
+        ...photoIds.doc_autorizacao_passagem
+      ];
+
+      // Adicionar à fila
+      for (const photoId of allPhotoIds) {
+        await addToUploadQueue(photoId, tempObraId);
+      }
+
+      // Processar uploads
+      const uploadResult = await processObraPhotos(tempObraId);
+
+      if (uploadResult.failed > 0) {
+        const totalPhotos = uploadResult.success + uploadResult.failed;
+
+        Alert.alert(
+          '⚠️ Atenção - Fotos não enviadas',
+          `${uploadResult.failed} de ${totalPhotos} foto(s) não puderam ser enviadas.\n\nO que deseja fazer?`,
+          [
+            {
+              text: 'Tentar Novamente',
+              onPress: async () => {
+                setLoading(false);
+                handleSalvarObra(); // Retry
+              }
+            },
+            {
+              text: 'Salvar Offline',
+              onPress: async () => {
+                await saveObraOffline(obraData, photoIds, tempObraId);
+                await loadPendingObras();
+                const tipoArquivoMsg = isServicoDocumentacao ? 'Documentos' : 'Fotos';
+                Alert.alert(
+                  'Salvo Offline',
+                  `Obra salva. ${tipoArquivoMsg} serão enviados posteriormente.`,
+                  [{ text: 'OK', onPress: () => router.back() }]
+                );
+                setLoading(false);
+              }
+            },
+            {
+              text: 'Cancelar',
+              style: 'cancel',
+              onPress: () => setLoading(false)
+            }
+          ]
+        );
+        return;
+      }
+
+      // Todas as fotos foram uploadadas - obter URLs
+      const { getAllPhotoMetadata } = await import('../lib/photo-backup');
+      const allPhotos = await getAllPhotoMetadata();
+
+      const fotosAntesUploaded = allPhotos.filter(p =>
+        photoIds.antes.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosDuranteUploaded = allPhotos.filter(p =>
+        photoIds.durante.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosDepoisUploaded = allPhotos.filter(p =>
+        photoIds.depois.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAberturaUploaded = allPhotos.filter(p =>
+        photoIds.abertura.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosFechamentoUploaded = allPhotos.filter(p =>
+        photoIds.fechamento.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos DITAIS
+      const fotosDitaisAberturaUploaded = allPhotos.filter(p =>
+        photoIds.ditais_abertura.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosDitaisImpedirUploaded = allPhotos.filter(p =>
+        photoIds.ditais_impedir.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosDitaisTestarUploaded = allPhotos.filter(p =>
+        photoIds.ditais_testar.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosDitaisAterrarUploaded = allPhotos.filter(p =>
+        photoIds.ditais_aterrar.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosDitaisSinalizarUploaded = allPhotos.filter(p =>
+        photoIds.ditais_sinalizar.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos BOOK ATERRAMENTO
+      const fotosAterramentoValaAbertaUploaded = allPhotos.filter(p =>
+        photoIds.aterramento_vala_aberta.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAterramentoHastesUploaded = allPhotos.filter(p =>
+        photoIds.aterramento_hastes.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAterramentoValaFechadaUploaded = allPhotos.filter(p =>
+        photoIds.aterramento_vala_fechada.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAterramentoMedicaoUploaded = allPhotos.filter(p =>
+        photoIds.aterramento_medicao.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos TRANSFORMADOR
+      const fotosTransformadorLaudoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_laudo.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorComponenteInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_componente_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorTombamentoInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_tombamento_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorTapeUploaded = allPhotos.filter(p =>
+        photoIds.transformador_tape.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorPlacaInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_placa_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorAntesRetirarUploaded = allPhotos.filter(p =>
+        photoIds.transformador_antes_retirar.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorTombamentoRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_tombamento_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorPlacaRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_placa_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos Instalação de Medidor
+      const fotosMedidorPadraoUploaded = allPhotos.filter(p =>
+        photoIds.medidor_padrao.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosMedidorLeituraUploaded = allPhotos.filter(p =>
+        photoIds.medidor_leitura.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosMedidorSeloBornUploaded = allPhotos.filter(p =>
+        photoIds.medidor_selo_born.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosMedidorSeloCaixaUploaded = allPhotos.filter(p =>
+        photoIds.medidor_selo_caixa.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosMedidorIdentificadorFaseUploaded = allPhotos.filter(p =>
+        photoIds.medidor_identificador_fase.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos Altimetria
+      const fotosAltimetriaLadoFonteUploaded = allPhotos.filter(p =>
+        photoIds.altimetria_lado_fonte.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAltimetriaMedicaoFonteUploaded = allPhotos.filter(p =>
+        photoIds.altimetria_medicao_fonte.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAltimetriaLadoCargaUploaded = allPhotos.filter(p =>
+        photoIds.altimetria_lado_carga.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosAltimetriaMedicaoCargaUploaded = allPhotos.filter(p =>
+        photoIds.altimetria_medicao_carga.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos Vazamento e Limpeza
+      const fotosVazamentoEvidenciaUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_evidencia.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosVazamentoEquipamentosLimpezaUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_equipamentos_limpeza.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosVazamentoTombamentoRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_tombamento_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosVazamentoPlacaRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_placa_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosVazamentoTombamentoInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_tombamento_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosVazamentoPlacaInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_placa_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosVazamentoInstalacaoUploaded = allPhotos.filter(p =>
+        photoIds.vazamento_instalacao.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos Checklist de Fiscalização
+      const fotosChecklistCroquiUploaded = allPhotos.filter(p =>
+        photoIds.checklist_croqui.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistPanoramicaInicialUploaded = allPhotos.filter(p =>
+        photoIds.checklist_panoramica_inicial.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistChaveComponenteUploaded = allPhotos.filter(p =>
+        photoIds.checklist_chede.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistPadraoGeralUploaded = allPhotos.filter(p =>
+        photoIds.checklist_padrao_geral.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistPadraoInternoUploaded = allPhotos.filter(p =>
+        photoIds.checklist_padrao_interno.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistPanoramicaFinalUploaded = allPhotos.filter(p =>
+        photoIds.checklist_panoramica_final.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistPostesUploaded = allPhotos.filter(p =>
+        photoIds.checklist_postes.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistSeccionamentosUploaded = allPhotos.filter(p =>
+        photoIds.checklist_seccionamentos.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosChecklistAterramentoCercaUploaded = allPhotos.filter(p =>
+        photoIds.checklist_aterramento_cerca.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Salvar ou atualizar obra no Supabase
+      let error;
+
+      if (isEditMode && obraId) {
+        // MODO DE EDIÇÃO: Mesclar novas fotos com as existentes
+        // Primeiro buscar a obra atual para pegar fotos existentes
+        const { data: obraAtual, error: fetchError } = await supabase
+          .from('obras')
+          .select('*')
+          .eq('id', obraId)
+          .single();
+
+        if (fetchError) {
+          console.error('Erro ao buscar obra atual:', fetchError);
+          Alert.alert('Erro', 'Não foi possível carregar a obra para atualização.');
+          return;
+        }
+
+        // Mesclar fotos antigas com novas (sem duplicar)
+        const mergePhotos = (existing: any[] = [], newPhotos: any[] = []) => {
+          return [...(existing || []), ...newPhotos];
+        };
+
+        const { error: updateError } = await supabase
+          .from('obras')
+          .update({
+            fotos_antes: mergePhotos(obraAtual.fotos_antes, fotosAntesUploaded),
+            fotos_durante: mergePhotos(obraAtual.fotos_durante, fotosDuranteUploaded),
+            fotos_depois: mergePhotos(obraAtual.fotos_depois, fotosDepoisUploaded),
+            fotos_abertura: mergePhotos(obraAtual.fotos_abertura, fotosAberturaUploaded),
+            fotos_fechamento: mergePhotos(obraAtual.fotos_fechamento, fotosFechamentoUploaded),
+            fotos_ditais_abertura: mergePhotos(obraAtual.fotos_ditais_abertura, fotosDitaisAberturaUploaded),
+            fotos_ditais_impedir: mergePhotos(obraAtual.fotos_ditais_impedir, fotosDitaisImpedirUploaded),
+            fotos_ditais_testar: mergePhotos(obraAtual.fotos_ditais_testar, fotosDitaisTestarUploaded),
+            fotos_ditais_aterrar: mergePhotos(obraAtual.fotos_ditais_aterrar, fotosDitaisAterrarUploaded),
+            fotos_ditais_sinalizar: mergePhotos(obraAtual.fotos_ditais_sinalizar, fotosDitaisSinalizarUploaded),
+            fotos_aterramento_vala_aberta: mergePhotos(obraAtual.fotos_aterramento_vala_aberta, fotosAterramentoValaAbertaUploaded),
+            fotos_aterramento_hastes: mergePhotos(obraAtual.fotos_aterramento_hastes, fotosAterramentoHastesUploaded),
+            fotos_aterramento_vala_fechada: mergePhotos(obraAtual.fotos_aterramento_vala_fechada, fotosAterramentoValaFechadaUploaded),
+            fotos_aterramento_medicao: mergePhotos(obraAtual.fotos_aterramento_medicao, fotosAterramentoMedicaoUploaded),
+            fotos_transformador_laudo: mergePhotos(obraAtual.fotos_transformador_laudo, fotosTransformadorLaudoUploaded),
+            fotos_transformador_componente_instalado: mergePhotos(obraAtual.fotos_transformador_componente_instalado, fotosTransformadorComponenteInstaladoUploaded),
+            fotos_transformador_tombamento_instalado: mergePhotos(obraAtual.fotos_transformador_tombamento_instalado, fotosTransformadorTombamentoInstaladoUploaded),
+            fotos_transformador_tape: mergePhotos(obraAtual.fotos_transformador_tape, fotosTransformadorTapeUploaded),
+            fotos_transformador_placa_instalado: mergePhotos(obraAtual.fotos_transformador_placa_instalado, fotosTransformadorPlacaInstaladoUploaded),
+            fotos_transformador_instalado: mergePhotos(obraAtual.fotos_transformador_instalado, fotosTransformadorInstaladoUploaded),
+            fotos_transformador_antes_retirar: mergePhotos(obraAtual.fotos_transformador_antes_retirar, fotosTransformadorAntesRetirarUploaded),
+            fotos_transformador_tombamento_retirado: mergePhotos(obraAtual.fotos_transformador_tombamento_retirado, fotosTransformadorTombamentoRetiradoUploaded),
+            fotos_transformador_placa_retirado: mergePhotos(obraAtual.fotos_transformador_placa_retirado, fotosTransformadorPlacaRetiradoUploaded),
+            fotos_medidor_padrao: mergePhotos(obraAtual.fotos_medidor_padrao, fotosMedidorPadraoUploaded),
+            fotos_medidor_leitura: mergePhotos(obraAtual.fotos_medidor_leitura, fotosMedidorLeituraUploaded),
+            fotos_medidor_selo_born: mergePhotos(obraAtual.fotos_medidor_selo_born, fotosMedidorSeloBornUploaded),
+            fotos_medidor_selo_caixa: mergePhotos(obraAtual.fotos_medidor_selo_caixa, fotosMedidorSeloCaixaUploaded),
+            fotos_medidor_identificador_fase: mergePhotos(obraAtual.fotos_medidor_identificador_fase, fotosMedidorIdentificadorFaseUploaded),
+            fotos_altimetria_lado_fonte: mergePhotos(obraAtual.fotos_altimetria_lado_fonte, fotosAltimetriaLadoFonteUploaded),
+            fotos_altimetria_medicao_fonte: mergePhotos(obraAtual.fotos_altimetria_medicao_fonte, fotosAltimetriaMedicaoFonteUploaded),
+            fotos_altimetria_lado_carga: mergePhotos(obraAtual.fotos_altimetria_lado_carga, fotosAltimetriaLadoCargaUploaded),
+            fotos_altimetria_medicao_carga: mergePhotos(obraAtual.fotos_altimetria_medicao_carga, fotosAltimetriaMedicaoCargaUploaded),
+            fotos_vazamento_evidencia: mergePhotos(obraAtual.fotos_vazamento_evidencia, fotosVazamentoEvidenciaUploaded),
+            fotos_vazamento_equipamentos_limpeza: mergePhotos(obraAtual.fotos_vazamento_equipamentos_limpeza, fotosVazamentoEquipamentosLimpezaUploaded),
+            fotos_vazamento_tombamento_retirado: mergePhotos(obraAtual.fotos_vazamento_tombamento_retirado, fotosVazamentoTombamentoRetiradoUploaded),
+            fotos_vazamento_placa_retirado: mergePhotos(obraAtual.fotos_vazamento_placa_retirado, fotosVazamentoPlacaRetiradoUploaded),
+            fotos_vazamento_tombamento_instalado: mergePhotos(obraAtual.fotos_vazamento_tombamento_instalado, fotosVazamentoTombamentoInstaladoUploaded),
+            fotos_vazamento_placa_instalado: mergePhotos(obraAtual.fotos_vazamento_placa_instalado, fotosVazamentoPlacaInstaladoUploaded),
+            fotos_vazamento_instalacao: mergePhotos(obraAtual.fotos_vazamento_instalacao, fotosVazamentoInstalacaoUploaded),
+            fotos_checklist_croqui: mergePhotos(obraAtual.fotos_checklist_croqui, fotosChecklistCroquiUploaded),
+            fotos_checklist_panoramica_inicial: mergePhotos(obraAtual.fotos_checklist_panoramica_inicial, fotosChecklistPanoramicaInicialUploaded),
+            fotos_checklist_chede: mergePhotos(obraAtual.fotos_checklist_chede, fotosChecklistChaveComponenteUploaded),
+            fotos_checklist_padrao_geral: mergePhotos(obraAtual.fotos_checklist_padrao_geral, fotosChecklistPadraoGeralUploaded),
+            fotos_checklist_padrao_interno: mergePhotos(obraAtual.fotos_checklist_padrao_interno, fotosChecklistPadraoInternoUploaded),
+            fotos_checklist_panoramica_final: mergePhotos(obraAtual.fotos_checklist_panoramica_final, fotosChecklistPanoramicaFinalUploaded),
+            fotos_checklist_postes: mergePhotos(obraAtual.fotos_checklist_postes, fotosChecklistPostesUploaded),
+            fotos_checklist_seccionamentos: mergePhotos(obraAtual.fotos_checklist_seccionamentos, fotosChecklistSeccionamentosUploaded),
+            fotos_checklist_aterramento_cerca: mergePhotos(obraAtual.fotos_checklist_aterramento_cerca, fotosChecklistAterramentoCercaUploaded),
+          })
+          .eq('id', obraId);
+
+        error = updateError;
+      } else {
+        // MODO NOVO: Fazer INSERT
+        const { error: insertError } = await supabase
+          .from('obras')
+          .insert([
+            {
+              ...obraData,
+              fotos_antes: fotosAntesUploaded,
+              fotos_durante: fotosDuranteUploaded,
+              fotos_depois: fotosDepoisUploaded,
+              fotos_abertura: fotosAberturaUploaded,
+              fotos_fechamento: fotosFechamentoUploaded,
+              fotos_ditais_abertura: fotosDitaisAberturaUploaded,
+              fotos_ditais_impedir: fotosDitaisImpedirUploaded,
+              fotos_ditais_testar: fotosDitaisTestarUploaded,
+              fotos_ditais_aterrar: fotosDitaisAterrarUploaded,
+              fotos_ditais_sinalizar: fotosDitaisSinalizarUploaded,
+              fotos_aterramento_vala_aberta: fotosAterramentoValaAbertaUploaded,
+              fotos_aterramento_hastes: fotosAterramentoHastesUploaded,
+              fotos_aterramento_vala_fechada: fotosAterramentoValaFechadaUploaded,
+              fotos_aterramento_medicao: fotosAterramentoMedicaoUploaded,
+              fotos_transformador_laudo: fotosTransformadorLaudoUploaded,
+              fotos_transformador_componente_instalado: fotosTransformadorComponenteInstaladoUploaded,
+              fotos_transformador_tombamento_instalado: fotosTransformadorTombamentoInstaladoUploaded,
+              fotos_transformador_tape: fotosTransformadorTapeUploaded,
+              fotos_transformador_placa_instalado: fotosTransformadorPlacaInstaladoUploaded,
+              fotos_transformador_instalado: fotosTransformadorInstaladoUploaded,
+              fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarUploaded,
+              fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoUploaded,
+              fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoUploaded,
+              fotos_medidor_padrao: fotosMedidorPadraoUploaded,
+              fotos_medidor_leitura: fotosMedidorLeituraUploaded,
+              fotos_medidor_selo_born: fotosMedidorSeloBornUploaded,
+              fotos_medidor_selo_caixa: fotosMedidorSeloCaixaUploaded,
+              fotos_medidor_identificador_fase: fotosMedidorIdentificadorFaseUploaded,
+              fotos_altimetria_lado_fonte: fotosAltimetriaLadoFonteUploaded,
+              fotos_altimetria_medicao_fonte: fotosAltimetriaMedicaoFonteUploaded,
+              fotos_altimetria_lado_carga: fotosAltimetriaLadoCargaUploaded,
+              fotos_altimetria_medicao_carga: fotosAltimetriaMedicaoCargaUploaded,
+              fotos_vazamento_evidencia: fotosVazamentoEvidenciaUploaded,
+              fotos_vazamento_equipamentos_limpeza: fotosVazamentoEquipamentosLimpezaUploaded,
+              fotos_vazamento_tombamento_retirado: fotosVazamentoTombamentoRetiradoUploaded,
+              fotos_vazamento_placa_retirado: fotosVazamentoPlacaRetiradoUploaded,
+              fotos_vazamento_tombamento_instalado: fotosVazamentoTombamentoInstaladoUploaded,
+              fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstaladoUploaded,
+              fotos_vazamento_instalacao: fotosVazamentoInstalacaoUploaded,
+              fotos_checklist_croqui: fotosChecklistCroquiUploaded,
+              fotos_checklist_panoramica_inicial: fotosChecklistPanoramicaInicialUploaded,
+              fotos_checklist_chede: fotosChecklistChaveComponenteUploaded,
+              fotos_checklist_padrao_geral: fotosChecklistPadraoGeralUploaded,
+              fotos_checklist_padrao_interno: fotosChecklistPadraoInternoUploaded,
+              fotos_checklist_panoramica_final: fotosChecklistPanoramicaFinalUploaded,
+              fotos_checklist_postes: fotosChecklistPostesUploaded,
+              fotos_checklist_seccionamentos: fotosChecklistSeccionamentosUploaded,
+              fotos_checklist_aterramento_cerca: fotosChecklistAterramentoCercaUploaded,
+              user_id: null,
+            },
+          ]);
+
+        error = insertError;
+      }
+
+      if (error) {
+        console.error('Erro ao salvar obra:', error);
+        Alert.alert('Erro', 'Não foi possível salvar a obra no banco de dados. Tente novamente.');
+        return;
+      }
+
+      const tipoArquivoFinal = isServicoDocumentacao ? 'documento(s)' : 'foto(s)';
+      const mensagemSucesso = isEditMode
+        ? `Fotos adicionadas com sucesso! ${allPhotoIds.length} ${tipoArquivoFinal} enviado(s).`
+        : `Obra cadastrada com ${allPhotoIds.length} ${tipoArquivoFinal} enviado(s)!`;
+
+      Alert.alert(
+        '✅ Sucesso!',
+        mensagemSucesso,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+
+    } catch (err) {
+      console.error('Erro inesperado:', err);
+      Alert.alert('Erro', 'Ocorreu um erro inesperado. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <View
+            style={[
+              styles.connectionCard,
+              isOnline ? styles.connectionCardOnline : styles.connectionCardOffline,
+            ]}
+          >
+            <View style={styles.connectionInfo}>
+              <View
+                style={[
+                  styles.connectionDot,
+                  isOnline ? styles.connectionDotOnline : styles.connectionDotOffline,
+                ]}
+              />
+              <View style={styles.connectionTextWrapper}>
+                <Text style={styles.connectionTitle}>
+                  {isOnline ? 'Voce esta online' : 'Modo offline'}
+                </Text>
+                <Text style={styles.connectionSubtitle}>
+                  {isOnline
+                    ? pendingObras.length > 0
+                      ? `${pendingObras.length} obra(s) aguardando sincronizacao`
+                      : 'Tudo sincronizado'
+                    : 'As obras serao salvas no dispositivo e sincronizadas depois'}
+                </Text>
+              </View>
+            </View>
+            {pendingObras.length > 0 && (
+              <TouchableOpacity
+                style={[
+                  styles.connectionAction,
+                  (!isOnline || syncingPending) && styles.connectionActionDisabled,
+                ]}
+                onPress={handleSyncPendingObras}
+                disabled={!isOnline || syncingPending}
+              >
+                {syncingPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.connectionActionText}>Sincronizar agora</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {pendingObras.length > 0 && (
+            <View style={styles.pendingContainer}>
+              <View style={styles.pendingHeader}>
+                <Text style={styles.pendingTitle}>Obras pendentes</Text>
+                <Text style={styles.pendingCount}>{`${pendingObras.length} itens`}</Text>
+              </View>
+
+              {pendingObras.map((obra, index) => (
+                <View
+                  key={obra.id}
+                  style={[styles.pendingItem, index === 0 && styles.pendingItemFirst]}
+                >
+                  <View
+                    style={[
+                      styles.pendingStatusBadge,
+                      obra.sync_status === 'failed'
+                        ? styles.pendingStatusFailed
+                        : obra.sync_status === 'syncing'
+                        ? styles.pendingStatusSyncing
+                        : styles.pendingStatusPending,
+                    ]}
+                  >
+                    <Text style={styles.pendingStatusText}>
+                      {getSyncStatusLabel(obra.sync_status)}
+                    </Text>
+                  </View>
+                  <View style={styles.pendingInfo}>
+                    <Text style={styles.pendingObraName}>{obra.obra || 'Obra sem titulo'}</Text>
+                    <Text style={styles.pendingMeta}>
+                      {(obra.responsavel || 'Sem responsavel') + ' - ' + formatDateForDisplay(obra.data)}
+                    </Text>
+                    {obra.error_message ? (
+                      <Text style={styles.pendingErrorText}>{obra.error_message}</Text>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <Text style={styles.title}>{isEditMode ? 'Continuar Obra' : 'Nova Obra'}</Text>
+
+          {/* Data */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Data *</Text>
+            <TouchableOpacity
+              style={[styles.dropdownButton, isEditMode && styles.inputDisabled]}
+              onPress={openDatePicker}
+              disabled={loading || isEditMode}
+            >
+              <Text style={styles.dropdownButtonText}>
+                {formatDateForDisplay(data)}
+              </Text>
+              <Text style={styles.dropdownIcon}>📅</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Obra */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Número da Obra *</Text>
+            <TextInput
+              style={[styles.input, isEditMode && styles.inputDisabled]}
+              value={obra}
+              onChangeText={(text) => {
+                // Aceitar apenas números e limitar a 10 dígitos
+                const numericText = text.replace(/[^0-9]/g, '').slice(0, 10);
+                setObra(numericText);
+              }}
+              placeholder="Ex: 0032401637"
+              keyboardType="numeric"
+              maxLength={10}
+              editable={!loading && !isEditMode}
+            />
+            <Text style={styles.hint}>
+              {obra.length > 0 ? `${obra.length}/10 dígitos` : 'Digite entre 8 e 10 dígitos'}
+            </Text>
+          </View>
+
+          {/* Encarregado */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Encarregado *</Text>
+            <TextInput
+              style={[styles.input, isEditMode && styles.inputDisabled]}
+              value={responsavel}
+              onChangeText={setResponsavel}
+              placeholder="Nome do responsável"
+              editable={!loading && !isEditMode}
+            />
+          </View>
+
+          {/* Tipo de Serviço */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Tipo de Serviço *</Text>
+            <TouchableOpacity
+              style={[styles.dropdownButton, (isEditMode || isCompUser) && styles.inputDisabled]}
+              onPress={() => setShowServicoModal(true)}
+              disabled={loading || isEditMode || isCompUser}
+            >
+              <Text style={styles.dropdownButtonText}>
+                {!tipoServico ? 'Selecione o serviço' : tipoServico}
+              </Text>
+              <Text style={styles.dropdownIcon}>▼</Text>
+            </TouchableOpacity>
+            {isCompUser && (
+              <Text style={styles.hint}>
+                Fixado em "Cava em Rocha" para perfil COMP
+              </Text>
+            )}
+          </View>
+
+          {/* Equipe Executora - Apenas para COMP */}
+          {isCompUser && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Equipe Executora *</Text>
+              <TouchableOpacity
+                style={[styles.dropdownButton, isEditMode && styles.inputDisabled]}
+                onPress={() => setShowEquipeModal(true)}
+                disabled={loading || isEditMode}
+              >
+                <Text style={[styles.dropdownButtonText, !equipeExecutora && { color: '#999' }]}>
+                  {equipeExecutora || 'Selecione a equipe'}
+                </Text>
+                <Text style={styles.dropdownIcon}>▼</Text>
+              </TouchableOpacity>
+              <Text style={styles.hint}>
+                Selecione a equipe que está executando o serviço
+              </Text>
+            </View>
+          )}
+
+          {/* Fotos - Apenas mostrar quando um serviço for selecionado */}
+          {tipoServico && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Fotos</Text>
+              <Text style={styles.hint}>
+                {isServicoChave
+                  ? 'Fotos opcionais: Abertura e Fechamento da Chave'
+                  : isServicoDitais
+                  ? 'Fotos opcionais: DITAIS (Abertura, Impedir, Testar, Aterrar, Sinalizar)'
+                  : isServicoBookAterramento
+                  ? 'Fotos opcionais: Aterramento (Vala Aberta, Hastes, Vala Fechada, Medição)'
+                  : isServicoTransformador
+                  ? 'Selecione o status do transformador. Fotos são opcionais'
+                  : isServicoMedidor
+                  ? 'Fotos opcionais: Padrão, Leitura, Selos e Identificador de Fase'
+                  : isServicoAltimetria
+                  ? 'Fotos opcionais: Lado Fonte, Medição Fonte, Lado Carga, Medição Carga'
+                  : isServicoVazamento
+                  ? 'Fotos opcionais: Evidência, Limpeza, Tombamentos, Placas e Instalação'
+                  : isServicoChecklist
+                  ? 'Fotos opcionais: Croqui, Panorâmicas, Postes, etc. Obras parciais permitidas'
+                  : isServicoDocumentacao
+                  ? 'Anexe documentos conforme necessário'
+                  : 'Fotos opcionais: Antes, Durante e Depois. Obras parciais permitidas'}
+              </Text>
+
+              {isServicoPadrao && (
+              <>
+                {/* Fotos Antes */}
+                <Text style={styles.photoSectionLabel}>📷 Fotos Antes ({fotosAntes.length})</Text>
+            <TouchableOpacity
+              style={styles.photoButton}
+              onPress={() => takePicture('antes')}
+              disabled={loading || uploadingPhoto}
+            >
+              <View style={styles.photoButtonContent}>
+                <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                <Text style={styles.photoButtonText}>
+                  {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Antes'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {fotosAntes.length > 0 && (
+              <View style={styles.photoGrid}>
+                {fotosAntes.map((foto, index) => (
+                  <View key={index} style={styles.photoCard}>
+                    <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                    <TouchableOpacity
+                      style={styles.photoRemoveButton}
+                      onPress={() => removePhoto('antes', index)}
+                    >
+                      <Text style={styles.photoRemoveText}>×</Text>
+                    </TouchableOpacity>
+                    {renderUtmBadge(foto)}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Fotos Durante */}
+            <Text style={styles.photoSectionLabel}>📷 Fotos Durante ({fotosDurante.length})</Text>
+            <TouchableOpacity
+              style={styles.photoButton}
+              onPress={() => takePicture('durante')}
+              disabled={loading || uploadingPhoto}
+            >
+              <View style={styles.photoButtonContent}>
+                <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                <Text style={styles.photoButtonText}>
+                  {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Durante'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {fotosDurante.length > 0 && (
+              <View style={styles.photoGrid}>
+                {fotosDurante.map((foto, index) => (
+                  <View key={index} style={styles.photoCard}>
+                    <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                    <TouchableOpacity
+                      style={styles.photoRemoveButton}
+                      onPress={() => removePhoto('durante', index)}
+                    >
+                      <Text style={styles.photoRemoveText}>×</Text>
+                    </TouchableOpacity>
+                    {renderUtmBadge(foto)}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Fotos Depois */}
+            <Text style={styles.photoSectionLabel}>📷 Fotos Depois ({fotosDepois.length})</Text>
+            <TouchableOpacity
+              style={styles.photoButton}
+              onPress={() => takePicture('depois')}
+              disabled={loading || uploadingPhoto}
+            >
+              <View style={styles.photoButtonContent}>
+                <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                <Text style={styles.photoButtonText}>
+                  {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Depois'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+            {fotosDepois.length > 0 && (
+              <View style={styles.photoGrid}>
+                {fotosDepois.map((foto, index) => (
+                  <View key={index} style={styles.photoCard}>
+                    <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                    <TouchableOpacity
+                      style={styles.photoRemoveButton}
+                      onPress={() => removePhoto('depois', index)}
+                    >
+                      <Text style={styles.photoRemoveText}>×</Text>
+                    </TouchableOpacity>
+                    {renderUtmBadge(foto)}
+                  </View>
+                ))}
+              </View>
+            )}
+              </>
+            )}
+
+            {isServicoChave && (
+              <>
+                {/* Fotos Abertura */}
+                <Text style={styles.photoSectionLabel}>🔓 Fotos Abertura ({fotosAbertura.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('abertura')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Abertura'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAbertura.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAbertura.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('abertura', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Fotos Fechamento */}
+                <Text style={styles.photoSectionLabel}>🔒 Fotos Fechamento ({fotosFechamento.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('fechamento')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Fechamento'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosFechamento.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosFechamento.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('fechamento', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* SEÇÃO DITAIS - 5 FOTOS */}
+            {isServicoDitais && (
+              <>
+                {/* Ditais - Abertura */}
+                <Text style={styles.photoSectionLabel}>📋 Ditais - Abertura ({fotosDitaisAbertura.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('ditais_abertura')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Abertura'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosDitaisAbertura.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosDitaisAbertura.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('ditais_abertura', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Ditais - Impedir */}
+                <Text style={styles.photoSectionLabel}>🚫 Ditais - Impedir ({fotosDitaisImpedir.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('ditais_impedir')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Impedir'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosDitaisImpedir.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosDitaisImpedir.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('ditais_impedir', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Ditais - Testar */}
+                <Text style={styles.photoSectionLabel}>🔍 Ditais - Testar ({fotosDitaisTestar.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('ditais_testar')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Testar'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosDitaisTestar.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosDitaisTestar.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('ditais_testar', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Ditais - Aterrar */}
+                <Text style={styles.photoSectionLabel}>⚡ Ditais - Aterrar ({fotosDitaisAterrar.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('ditais_aterrar')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Aterrar'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosDitaisAterrar.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosDitaisAterrar.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('ditais_aterrar', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Ditais - Sinalizar */}
+                <Text style={styles.photoSectionLabel}>⚠️ Ditais - Sinalizar ({fotosDitaisSinalizar.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('ditais_sinalizar')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Sinalizar'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosDitaisSinalizar.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosDitaisSinalizar.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('ditais_sinalizar', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* SEÇÃO BOOK DE ATERRAMENTO - 4 FOTOS */}
+            {isServicoBookAterramento && (
+              <>
+                {/* Aterramento - Vala Aberta */}
+                <Text style={styles.photoSectionLabel}>🕳️ Vala Aberta ({fotosAterramentoValaAberta.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('aterramento_vala_aberta')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Vala Aberta'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAterramentoValaAberta.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAterramentoValaAberta.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('aterramento_vala_aberta', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Aterramento - Hastes Aplicadas */}
+                <Text style={styles.photoSectionLabel}>🔩 Hastes Aplicadas ({fotosAterramentoHastes.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('aterramento_hastes')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Hastes'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAterramentoHastes.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAterramentoHastes.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('aterramento_hastes', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Aterramento - Vala Fechada */}
+                <Text style={styles.photoSectionLabel}>✅ Vala Fechada ({fotosAterramentoValaFechada.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('aterramento_vala_fechada')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Vala Fechada'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAterramentoValaFechada.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAterramentoValaFechada.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('aterramento_vala_fechada', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Aterramento - Medição Terrômetro */}
+                <Text style={styles.photoSectionLabel}>📊 Medição Terrômetro ({fotosAterramentoMedicao.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('aterramento_medicao')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Medição'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAterramentoMedicao.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAterramentoMedicao.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('aterramento_medicao', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* SEÇÃO TRANSFORMADOR */}
+            {isServicoTransformador && (
+              <>
+                {/* Seleção de Status do Transformador */}
+                <Text style={styles.sectionLabel}>Status do Transformador *</Text>
+                <View style={styles.statusContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.statusButton,
+                      transformadorStatus === 'Instalado' && styles.statusButtonActive
+                    ]}
+                    onPress={() => setTransformadorStatus('Instalado')}
+                  >
+                    <Text style={[
+                      styles.statusButtonText,
+                      transformadorStatus === 'Instalado' && styles.statusButtonTextActive
+                    ]}>
+                      ✅ Instalado
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.statusButton,
+                      transformadorStatus === 'Retirado' && styles.statusButtonActive
+                    ]}
+                    onPress={() => setTransformadorStatus('Retirado')}
+                  >
+                    <Text style={[
+                      styles.statusButtonText,
+                      transformadorStatus === 'Retirado' && styles.statusButtonTextActive
+                    ]}>
+                      ❌ Retirado
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* FOTOS TRANSFORMADOR INSTALADO */}
+                {transformadorStatus === 'Instalado' && (
+                  <>
+                    {/* Componente Instalado */}
+                    <Text style={styles.photoSectionLabel}>🔧 Componente Instalado * ({fotosTransformadorComponenteInstalado.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Componente do transformador instalado</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_componente_instalado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Componente'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorComponenteInstalado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorComponenteInstalado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_componente_instalado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Tombamento */}
+                    <Text style={styles.photoSectionLabel}>🏷️ Tombamento * ({fotosTransformadorTombamentoInstalado.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Plaqueta de identificação/tombamento</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_tombamento_instalado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Tombamento'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorTombamentoInstalado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorTombamentoInstalado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_tombamento_instalado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Tape do Transformador */}
+                    <Text style={styles.photoSectionLabel}>📏 Tape do Transformador * ({fotosTransformadorTape.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Posição do tape no transformador</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_tape')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Tape'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorTape.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorTape.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_tape', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Placa do Transformador */}
+                    <Text style={styles.photoSectionLabel}>🪧 Placa do Transformador * ({fotosTransformadorPlacaInstalado.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Placa de identificação do transformador</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_placa_instalado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Placa'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorPlacaInstalado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorPlacaInstalado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_placa_instalado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Transformador Instalado - 2 fotos */}
+                    <Text style={styles.photoSectionLabel}>⚡ Transformador Instalado * ({fotosTransformadorInstalado.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Vista geral do transformador instalado</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_instalado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Transformador Instalado'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorInstalado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorInstalado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_instalado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                )}
+
+                {/* FOTOS TRANSFORMADOR RETIRADO */}
+                {transformadorStatus === 'Retirado' && (
+                  <>
+                    {/* Antes de Retirar */}
+                    <Text style={styles.photoSectionLabel}>📸 Antes de Retirar * ({fotosTransformadorAntesRetirar.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Transformador antes da retirada</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_antes_retirar')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Antes de Retirar'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorAntesRetirar.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorAntesRetirar.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_antes_retirar', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Tombamento */}
+                    <Text style={styles.photoSectionLabel}>🏷️ Tombamento * ({fotosTransformadorTombamentoRetirado.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Plaqueta de identificação/tombamento do retirado</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_tombamento_retirado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Tombamento'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorTombamentoRetirado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorTombamentoRetirado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_tombamento_retirado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Placa do Transformador */}
+                    <Text style={styles.photoSectionLabel}>🪧 Placa do Transformador * ({fotosTransformadorPlacaRetirado.length})</Text>
+                    <Text style={styles.photoHint}>Obrigatório: Mínimo 1 foto - Placa de identificação do transformador retirado</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_placa_retirado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Placa'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorPlacaRetirado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorPlacaRetirado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_placa_retirado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                            {renderUtmBadge(foto)}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* SEÇÃO INSTALAÇÃO DO MEDIDOR - 5 FOTOS */}
+            {isServicoMedidor && (
+              <>
+                {/* Padrão c/ Medidor Instalado */}
+                <Text style={styles.photoSectionLabel}>📸 Padrão c/ Medidor Instalado ({fotosMedidorPadrao.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('medidor_padrao')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Padrão'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosMedidorPadrao.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosMedidorPadrao.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('medidor_padrao', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Leitura c/ Medidor Instalado */}
+                <Text style={styles.photoSectionLabel}>📊 Leitura c/ Medidor Instalado ({fotosMedidorLeitura.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('medidor_leitura')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Leitura'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosMedidorLeitura.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosMedidorLeitura.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('medidor_leitura', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Selo do Born do Medidor */}
+                <Text style={styles.photoSectionLabel}>🔒 Selo do Born do Medidor ({fotosMedidorSeloBorn.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('medidor_selo_born')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Selo do Born'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosMedidorSeloBorn.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosMedidorSeloBorn.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('medidor_selo_born', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Selo da Caixa */}
+                <Text style={styles.photoSectionLabel}>🔐 Selo da Caixa ({fotosMedidorSeloCaixa.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('medidor_selo_caixa')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Selo da Caixa'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosMedidorSeloCaixa.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosMedidorSeloCaixa.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('medidor_selo_caixa', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Identificador de Fase */}
+                <Text style={styles.photoSectionLabel}>🏷️ Identificador de Fase ({fotosMedidorIdentificadorFase.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('medidor_identificador_fase')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Identificador'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosMedidorIdentificadorFase.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosMedidorIdentificadorFase.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('medidor_identificador_fase', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* ALTIMETRIA - 4 FOTOS */}
+            {isServicoAltimetria && (
+              <>
+                <Text style={styles.sectionTitle}>📏 Altimetria - Medições</Text>
+
+                {/* Lado Fonte */}
+                <Text style={styles.photoSectionLabel}>📍 Lado Fonte ({fotosAltimetriaLadoFonte.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('altimetria_lado_fonte')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Lado Fonte'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAltimetriaLadoFonte.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAltimetriaLadoFonte.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('altimetria_lado_fonte', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Medição Fonte */}
+                <Text style={styles.photoSectionLabel}>📐 Medição Fonte ({fotosAltimetriaMedicaoFonte.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('altimetria_medicao_fonte')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Medição Fonte'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAltimetriaMedicaoFonte.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAltimetriaMedicaoFonte.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('altimetria_medicao_fonte', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Lado Carga */}
+                <Text style={styles.photoSectionLabel}>📍 Lado Carga ({fotosAltimetriaLadoCarga.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('altimetria_lado_carga')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Lado Carga'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAltimetriaLadoCarga.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAltimetriaLadoCarga.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('altimetria_lado_carga', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Medição Carga */}
+                <Text style={styles.photoSectionLabel}>📐 Medição Carga ({fotosAltimetriaMedicaoCarga.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('altimetria_medicao_carga')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Medição Carga'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosAltimetriaMedicaoCarga.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosAltimetriaMedicaoCarga.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('altimetria_medicao_carga', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* VAZAMENTO E LIMPEZA DE TRANSFORMADOR - 7 FOTOS */}
+            {isServicoVazamento && (
+              <>
+                <Text style={styles.sectionTitle}>🛢️ Vazamento e Limpeza de Transformador</Text>
+
+                {/* Evidência do Vazamento */}
+                <Text style={styles.photoSectionLabel}>⚠️ Evidência do Vazamento de Óleo ({fotosVazamentoEvidencia.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_evidencia')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Evidência'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoEvidencia.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoEvidencia.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_evidencia', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Equipamentos de Limpeza */}
+                <Text style={styles.photoSectionLabel}>🧹 Equipamentos de Limpeza (contendo o óleo) ({fotosVazamentoEquipamentosLimpeza.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_equipamentos_limpeza')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto dos Equipamentos'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoEquipamentosLimpeza.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoEquipamentosLimpeza.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_equipamentos_limpeza', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Tombamento Transformador Retirado */}
+                <Text style={styles.photoSectionLabel}>📦 Tombamento do Transformador Retirado ({fotosVazamentoTombamentoRetirado.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_tombamento_retirado')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Tombamento (Retirado)'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoTombamentoRetirado.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoTombamentoRetirado.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_tombamento_retirado', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Placa Transformador Retirado */}
+                <Text style={styles.photoSectionLabel}>🪧 Placa do Transformador Retirado ({fotosVazamentoPlacaRetirado.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_placa_retirado')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Placa (Retirado)'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoPlacaRetirado.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoPlacaRetirado.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_placa_retirado', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Tombamento Transformador Instalado */}
+                <Text style={styles.photoSectionLabel}>📦 Tombamento do Transformador Instalado ({fotosVazamentoTombamentoInstalado.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_tombamento_instalado')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto do Tombamento (Instalado)'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoTombamentoInstalado.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoTombamentoInstalado.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_tombamento_instalado', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Placa Transformador Instalado */}
+                <Text style={styles.photoSectionLabel}>🪧 Placa do Transformador Instalado ({fotosVazamentoPlacaInstalado.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_placa_instalado')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Placa (Instalado)'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoPlacaInstalado.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoPlacaInstalado.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_placa_instalado', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Instalação do Transformador */}
+                <Text style={styles.photoSectionLabel}>⚡ Instalação do Transformador ({fotosVazamentoInstalacao.length})</Text>
+                <TouchableOpacity
+                  style={styles.photoButton}
+                  onPress={() => takePicture('vazamento_instalacao')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto da Instalação'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                {fotosVazamentoInstalacao.length > 0 && (
+                  <View style={styles.photoGrid}>
+                    {fotosVazamentoInstalacao.map((foto, index) => (
+                      <View key={index} style={styles.photoCard}>
+                        <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                        <TouchableOpacity
+                          style={styles.photoRemoveButton}
+                          onPress={() => removePhoto('vazamento_instalacao', index)}
+                        >
+                          <Text style={styles.photoRemoveText}>×</Text>
+                        </TouchableOpacity>
+                        {renderUtmBadge(foto)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* CHECKLIST DE FISCALIZAÇÃO */}
+            {isServicoChecklist && (
+              <>
+                <Text style={styles.sectionTitle}>📋 Checklist de Fiscalização - Registro Fotográfico</Text>
+
+                {/* 1. Croqui da Obra */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>1️⃣ Croqui da Obra {fotosChecklistCroqui.length >= 1 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Croqui atualizado da obra (opcional)</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_croqui')}
+                    disabled={loading || uploadingPhoto || fotosChecklistCroqui.length >= 1}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      {fotosChecklistCroqui.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto do Croqui'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistCroqui.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistCroqui.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_croqui', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                          {renderUtmBadge(foto)}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 2. Panorâmica Inicial */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>2️⃣ Panorâmica Inicial {fotosChecklistPanoramicaInicial.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Recomendado: 2 fotos - Vista geral antes de iniciar</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_panoramica_inicial')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      + Adicionar Foto ({fotosChecklistPanoramicaInicial.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistPanoramicaInicial.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistPanoramicaInicial.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_panoramica_inicial', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                          {renderUtmBadge(foto)}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 3. Foto da Chave com Componente - OPCIONAL */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>3️⃣ Foto da Chave com Componente (Opcional) {fotosChecklistChaveComponente.length >= 1 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Opcional - Chave com componente visível</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_chede')}
+                    disabled={loading || uploadingPhoto || fotosChecklistChaveComponente.length >= 1}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      {fotosChecklistChaveComponente.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto da Chave'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistChaveComponente.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistChaveComponente.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_chede', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                          {renderUtmBadge(foto)}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 4. Postes - Seção Dinâmica */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>4️⃣ Registro dos Postes</Text>
+                  <Text style={styles.checklistHint}>Recomendado: 4 fotos por poste</Text>
+
+                  <View style={styles.posteControls}>
+                    <Text style={styles.posteCount}>Pontos: {numPostes}</Text>
+                    <TouchableOpacity
+                      style={styles.posteAddButton}
+                      onPress={() => {
+                        setNumPostes(numPostes + 1);
+                        setFotosPostes([...fotosPostes, {
+                          posteInteiro: [],
+                          engaste: [],
+                          conexao1: [],
+                          conexao2: [],
+                        }]);
+                      }}
+                    >
+                      <Text style={styles.posteButtonText}>➕ Adicionar Poste</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {fotosPostes.map((poste, posteIndex) => (
+                    <View key={posteIndex} style={styles.posteCard}>
+                      <Text style={styles.posteTitle}>
+                        Poste {posteIndex + 1}
+                        {poste.posteInteiro.length > 0 && poste.engaste.length > 0 &&
+                         poste.conexao1.length > 0 && poste.conexao2.length > 0 && ' ✓'}
+                      </Text>
+
+                      {/* Poste Inteiro */}
+                      <View style={styles.postePhotoSection}>
+                        <Text style={styles.postePhotoLabel}>
+                          📸 Poste Inteiro {poste.posteInteiro.length > 0 && '✓'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.photoButtonSmall}
+                          onPress={() => takePicture('checklist_poste_inteiro', posteIndex)}
+                          disabled={loading || uploadingPhoto || poste.posteInteiro.length >= 1}
+                        >
+                          <Text style={styles.photoButtonTextSmall}>
+                            {poste.posteInteiro.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                          </Text>
+                        </TouchableOpacity>
+                        {poste.posteInteiro.length > 0 && (
+                          <View style={styles.photoGrid}>
+                            {poste.posteInteiro.map((foto, fotoIndex) => (
+                              <View key={fotoIndex} style={styles.photoCard}>
+                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity
+                                  style={styles.photoRemoveButton}
+                                  onPress={() => removePhoto('checklist_poste_inteiro', fotoIndex, posteIndex)}
+                                >
+                                  <Text style={styles.photoRemoveText}>×</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Engaste */}
+                      <View style={styles.postePhotoSection}>
+                        <Text style={styles.postePhotoLabel}>
+                          📸 Engaste e Descrição {poste.engaste.length > 0 && '✓'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.photoButtonSmall}
+                          onPress={() => takePicture('checklist_poste_engaste', posteIndex)}
+                          disabled={loading || uploadingPhoto || poste.engaste.length >= 1}
+                        >
+                          <Text style={styles.photoButtonTextSmall}>
+                            {poste.engaste.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                          </Text>
+                        </TouchableOpacity>
+                        {poste.engaste.length > 0 && (
+                          <View style={styles.photoGrid}>
+                            {poste.engaste.map((foto, fotoIndex) => (
+                              <View key={fotoIndex} style={styles.photoCard}>
+                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity
+                                  style={styles.photoRemoveButton}
+                                  onPress={() => removePhoto('checklist_poste_engaste', fotoIndex, posteIndex)}
+                                >
+                                  <Text style={styles.photoRemoveText}>×</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Conexão 1 */}
+                      <View style={styles.postePhotoSection}>
+                        <Text style={styles.postePhotoLabel}>
+                          📸 Conexão 1 {poste.conexao1.length > 0 && '✓'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.photoButtonSmall}
+                          onPress={() => takePicture('checklist_poste_conexao1', posteIndex)}
+                          disabled={loading || uploadingPhoto || poste.conexao1.length >= 1}
+                        >
+                          <Text style={styles.photoButtonTextSmall}>
+                            {poste.conexao1.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                          </Text>
+                        </TouchableOpacity>
+                        {poste.conexao1.length > 0 && (
+                          <View style={styles.photoGrid}>
+                            {poste.conexao1.map((foto, fotoIndex) => (
+                              <View key={fotoIndex} style={styles.photoCard}>
+                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity
+                                  style={styles.photoRemoveButton}
+                                  onPress={() => removePhoto('checklist_poste_conexao1', fotoIndex, posteIndex)}
+                                >
+                                  <Text style={styles.photoRemoveText}>×</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Conexão 2 */}
+                      <View style={styles.postePhotoSection}>
+                        <Text style={styles.postePhotoLabel}>
+                          📸 Conexão 2 {poste.conexao2.length > 0 && '✓'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.photoButtonSmall}
+                          onPress={() => takePicture('checklist_poste_conexao2', posteIndex)}
+                          disabled={loading || uploadingPhoto || poste.conexao2.length >= 1}
+                        >
+                          <Text style={styles.photoButtonTextSmall}>
+                            {poste.conexao2.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                          </Text>
+                        </TouchableOpacity>
+                        {poste.conexao2.length > 0 && (
+                          <View style={styles.photoGrid}>
+                            {poste.conexao2.map((foto, fotoIndex) => (
+                              <View key={fotoIndex} style={styles.photoCard}>
+                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity
+                                  style={styles.photoRemoveButton}
+                                  onPress={() => removePhoto('checklist_poste_conexao2', fotoIndex, posteIndex)}
+                                >
+                                  <Text style={styles.photoRemoveText}>×</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Botão Remover Poste */}
+                      <TouchableOpacity
+                        style={styles.posteRemoveButton}
+                        onPress={() => {
+                          setNumPostes(numPostes - 1);
+                          setFotosPostes(fotosPostes.filter((_, i) => i !== posteIndex));
+                        }}
+                      >
+                        <Text style={styles.posteButtonText}>🗑️ Remover Poste</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+
+                {/* 5. Seccionamento de Cerca */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>5️⃣ Seccionamento de Cerca (Opcional)</Text>
+                  <Text style={styles.checklistHint}>1 foto por ponto de seccionamento</Text>
+
+                  <View style={styles.posteControls}>
+                    <Text style={styles.posteCount}>Pontos: {numSeccionamentos}</Text>
+                    <TouchableOpacity
+                      style={styles.posteAddButton}
+                      onPress={() => {
+                        setNumSeccionamentos(numSeccionamentos + 1);
+                        setFotosSeccionamentos([...fotosSeccionamentos, []]);
+                      }}
+                    >
+                      <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {fotosSeccionamentos.map((sec, secIndex) => (
+                    <View key={secIndex} style={styles.seccionamentoCard}>
+                      <Text style={styles.seccionamentoTitle}>
+                        Seccionamento {secIndex + 1} {sec.length > 0 && '✓'}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.photoButtonSmall}
+                        onPress={() => takePicture('checklist_seccionamento', undefined, secIndex)}
+                        disabled={loading || uploadingPhoto || sec.length >= 1}
+                      >
+                        <Text style={styles.photoButtonTextSmall}>
+                          {sec.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto'}
+                        </Text>
+                      </TouchableOpacity>
+                      {sec.length > 0 && (
+                        <View style={styles.photoGrid}>
+                          {sec.map((foto, fotoIndex) => (
+                            <View key={fotoIndex} style={styles.photoCard}>
+                              <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                              <TouchableOpacity
+                                style={styles.photoRemoveButton}
+                                onPress={() => removePhoto('checklist_seccionamento', fotoIndex, undefined, secIndex)}
+                              >
+                                <Text style={styles.photoRemoveText}>×</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        style={styles.posteRemoveButton}
+                        onPress={() => {
+                          setNumSeccionamentos(numSeccionamentos - 1);
+                          setFotosSeccionamentos(fotosSeccionamentos.filter((_, i) => i !== secIndex));
+                        }}
+                      >
+                        <Text style={styles.posteButtonText}>🗑️ Remover Ponto</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+
+                {/* 6. Aterramento de Cerca - Seção Dinâmica (OPCIONAL) */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>6️⃣ Aterramento de Cerca (Opcional)</Text>
+                  <Text style={styles.checklistHint}>1 foto por ponto de aterramento - Detalhar haste, condutor e fixação</Text>
+
+                  <View style={styles.posteControls}>
+                    <Text style={styles.posteCount}>Pontos: {numAterramentosCerca}</Text>
+                    <TouchableOpacity
+                      style={styles.posteAddButton}
+                      onPress={() => {
+                        setNumAterramentosCerca(prev => prev + 1);
+                        setFotosAterramentosCerca(prev => [...prev, []]);
+                      }}
+                    >
+                      <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {fotosAterramentosCerca.map((aterrFotos, aterrIndex) => (
+                    <View key={aterrIndex} style={styles.seccionamentoCard}>
+                      <Text style={styles.seccionamentoTitle}>
+                        Aterramento {aterrIndex + 1} {aterrFotos.length > 0 && '✓'}
+                      </Text>
+
+                      <TouchableOpacity
+                        style={styles.photoButtonSmall}
+                        onPress={() => takePicture('checklist_aterramento_cerca', undefined, undefined, aterrIndex)}
+                        disabled={loading || uploadingPhoto || aterrFotos.length >= 1}
+                      >
+                        <Text style={styles.photoButtonTextSmall}>
+                          {aterrFotos.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {aterrFotos.length > 0 && (
+                        <View style={styles.photoGrid}>
+                          {aterrFotos.map((foto, fotoIndex) => (
+                            <View key={fotoIndex} style={styles.photoCard}>
+                              <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                              <TouchableOpacity
+                                style={styles.photoRemoveButton}
+                                onPress={() => removePhoto('checklist_aterramento_cerca', fotoIndex, undefined, undefined, aterrIndex)}
+                              >
+                                <Text style={styles.photoRemoveText}>×</Text>
+                              </TouchableOpacity>
+                              {renderUtmBadge(foto)}
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      <TouchableOpacity
+                        style={styles.posteRemoveButton}
+                        onPress={() => {
+                          setNumAterramentosCerca(numAterramentosCerca - 1);
+                          setFotosAterramentosCerca(fotosAterramentosCerca.filter((_, i) => i !== aterrIndex));
+                        }}
+                      >
+                        <Text style={styles.posteButtonText}>🗑️ Remover Ponto</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+
+                {/* 7. Padrão de Ligação - Vista Geral - OPCIONAL */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>7️⃣ Padrão de Ligação - Vista Geral (Opcional) {fotosChecklistPadraoGeral.length >= 1 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Opcional - Vista geral do padrão</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_padrao_geral')}
+                    disabled={loading || uploadingPhoto || fotosChecklistPadraoGeral.length >= 1}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      {fotosChecklistPadraoGeral.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto do Padrão'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistPadraoGeral.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistPadraoGeral.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_padrao_geral', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                          {renderUtmBadge(foto)}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 8. Padrão de Ligação - Interno - OPCIONAL */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>8️⃣ Padrão de Ligação - Interno (Opcional) {fotosChecklistPadraoInterno.length >= 1 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Opcional - Disjuntores, barramentos e identificação</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_padrao_interno')}
+                    disabled={loading || uploadingPhoto || fotosChecklistPadraoInterno.length >= 1}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      {fotosChecklistPadraoInterno.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto Interna'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistPadraoInterno.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistPadraoInterno.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_padrao_interno', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                          {renderUtmBadge(foto)}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 9. Panorâmica Final */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>9️⃣ Panorâmica Final {fotosChecklistPanoramicaFinal.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Recomendado: 2 fotos - Obra finalizada e limpa</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_panoramica_final')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      + Adicionar Foto ({fotosChecklistPanoramicaFinal.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistPanoramicaFinal.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistPanoramicaFinal.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_panoramica_final', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                          {renderUtmBadge(foto)}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+
+            {/* DOCUMENTAÇÃO */}
+            {isServicoDocumentacao && (
+              <>
+                <Text style={styles.sectionTitle}>📄 Documentação - Arquivos PDF (Opcional)</Text>
+                <Text style={styles.docHint}>Selecione os documentos que deseja enviar. Todos os documentos são opcionais.</Text>
+
+                {/* 1. Cadastro de Medidor */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>📋 Cadastro de Medidor {docCadastroMedidor.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_cadastro_medidor')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docCadastroMedidor.length > 0 && (
+                    <View style={styles.docList}>
+                      {docCadastroMedidor.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_cadastro_medidor', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 2. Laudo de Transformador */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>⚡ Laudo de Transformador {docLaudoTransformador.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_laudo_transformador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docLaudoTransformador.length > 0 && (
+                    <View style={styles.docList}>
+                      {docLaudoTransformador.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_laudo_transformador', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 3. Laudo de Regulador */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>🔧 Laudo de Regulador {docLaudoRegulador.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_laudo_regulador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docLaudoRegulador.length > 0 && (
+                    <View style={styles.docList}>
+                      {docLaudoRegulador.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_laudo_regulador', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 4. Laudo de Religador */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>🔌 Laudo de Religador {docLaudoReligador.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_laudo_religador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docLaudoReligador.length > 0 && (
+                    <View style={styles.docList}>
+                      {docLaudoReligador.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_laudo_religador', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 5. APR - Análise Preliminar de Risco */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>⚠️ Análise Preliminar de Risco (APR) {docApr.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_apr')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docApr.length > 0 && (
+                    <View style={styles.docList}>
+                      {docApr.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_apr', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 6. FVBT - Formulário de Vistoria de Baixa Tensão */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>📝 Formulário de Vistoria de Baixa Tensão (FVBT) {docFvbt.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_fvbt')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docFvbt.length > 0 && (
+                    <View style={styles.docList}>
+                      {docFvbt.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_fvbt', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 7. Termo de Desistência - LPT */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>📋 Termo de Desistência - LPT {docTermoDesistenciaLpt.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_termo_desistencia_lpt')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docTermoDesistenciaLpt.length > 0 && (
+                    <View style={styles.docList}>
+                      {docTermoDesistenciaLpt.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_termo_desistencia_lpt', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 8. Autorização de Passagem */}
+                <View style={styles.docSection}>
+                  <Text style={styles.docSectionTitle}>🚧 Autorização de Passagem {docAutorizacaoPassagem.length > 0 && '✅'}</Text>
+                  <TouchableOpacity
+                    style={styles.docButton}
+                    onPress={() => selectDocument('doc_autorizacao_passagem')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  {docAutorizacaoPassagem.length > 0 && (
+                    <View style={styles.docList}>
+                      {docAutorizacaoPassagem.map((doc, index) => (
+                        <View key={index} style={styles.docItem}>
+                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          <TouchableOpacity
+                            style={styles.docRemoveButton}
+                            onPress={() => removePhoto('doc_autorizacao_passagem', index)}
+                          >
+                            <Text style={styles.docRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+            </View>
+          )}
+
+          {/* Botões */}
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleSalvarObra}
+            disabled={loading}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? 'Salvando...' : 'Salvar Obra'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => router.back()}
+            disabled={loading}
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* Modal de Seleção de Serviços */}
+      <Modal
+        visible={showServicoModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowServicoModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowServicoModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <Pressable>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Tipo de Serviço</Text>
+                <TouchableOpacity onPress={() => setShowServicoModal(false)}>
+                  <Text style={styles.modalClose}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.modalSubtitle}>Selecione apenas um serviço</Text>
+
+              <ScrollView style={styles.modalList}>
+                {TIPOS_SERVICO.map((tipo) => (
+                  <TouchableOpacity
+                    key={tipo}
+                    style={[
+                      styles.modalItem,
+                      tipoServico === tipo && styles.modalItemActive,
+                    ]}
+                    onPress={() => handleTipoServicoSelect(tipo)}
+                  >
+                    <Text
+                      style={[
+                        styles.modalItemText,
+                        tipoServico === tipo && styles.modalItemTextActive,
+                      ]}
+                    >
+                      {tipo}
+                    </Text>
+                    {tipoServico === tipo && (
+                      <Text style={styles.modalCheckmark}>✓</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Modal de Seleção de Equipe Executora (COMP) */}
+      {isCompUser && (
+        <Modal
+          visible={showEquipeModal}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowEquipeModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowEquipeModal(false)}
+          >
+            <View style={styles.modalContent}>
+              <Pressable>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Selecione a Equipe Executora</Text>
+                  <TouchableOpacity onPress={() => setShowEquipeModal(false)}>
+                    <Text style={styles.modalClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.modalList}>
+                  {EQUIPES_DISPONIVEIS.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.modalItem,
+                        equipeExecutora === item && styles.modalItemSelected,
+                      ]}
+                      onPress={() => {
+                        setEquipeExecutora(item);
+                        setShowEquipeModal(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.modalItemText,
+                          equipeExecutora === item && styles.modalItemTextSelected,
+                        ]}
+                      >
+                        {item}
+                      </Text>
+                      {equipeExecutora === item && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+      )}
+
+      {/* Modal de Seleção de Data */}
+      <Modal
+        visible={showDatePicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowDatePicker(false)}
+        >
+          <View style={styles.modalContent}>
+            <Pressable>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Selecionar Data</Text>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.modalClose}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.datePickerContainer}>
+                {/* Display da data selecionada */}
+                <View style={styles.dateDisplay}>
+                  <Text style={styles.dateDisplayText}>
+                    {selectedDate.toLocaleDateString('pt-BR', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </Text>
+                </View>
+
+                {/* Controles de Data */}
+                <View style={styles.dateControls}>
+                  {/* Dia */}
+                  <View style={styles.dateControl}>
+                    <Text style={styles.dateControlLabel}>Dia</Text>
+                    <View style={styles.dateControlButtons}>
+                      <TouchableOpacity
+                        style={styles.dateControlButton}
+                        onPress={() => {
+                          const newDay = selectedDate.getDate() - 1;
+                          if (newDay >= 1) updateDateComponent('day', newDay);
+                        }}
+                      >
+                        <Text style={styles.dateControlButtonText}>▲</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.dateControlValue}>{selectedDate.getDate()}</Text>
+                      <TouchableOpacity
+                        style={styles.dateControlButton}
+                        onPress={() => {
+                          const maxDays = getDaysInMonth(selectedDate.getFullYear(), selectedDate.getMonth());
+                          const newDay = selectedDate.getDate() + 1;
+                          if (newDay <= maxDays) updateDateComponent('day', newDay);
+                        }}
+                      >
+                        <Text style={styles.dateControlButtonText}>▼</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Mês */}
+                  <View style={styles.dateControl}>
+                    <Text style={styles.dateControlLabel}>Mês</Text>
+                    <View style={styles.dateControlButtons}>
+                      <TouchableOpacity
+                        style={styles.dateControlButton}
+                        onPress={() => {
+                          const newMonth = selectedDate.getMonth() - 1;
+                          if (newMonth >= 0) updateDateComponent('month', newMonth);
+                        }}
+                      >
+                        <Text style={styles.dateControlButtonText}>▲</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.dateControlValue}>{selectedDate.getMonth() + 1}</Text>
+                      <TouchableOpacity
+                        style={styles.dateControlButton}
+                        onPress={() => {
+                          const newMonth = selectedDate.getMonth() + 1;
+                          if (newMonth <= 11) updateDateComponent('month', newMonth);
+                        }}
+                      >
+                        <Text style={styles.dateControlButtonText}>▼</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Ano */}
+                  <View style={styles.dateControl}>
+                    <Text style={styles.dateControlLabel}>Ano</Text>
+                    <View style={styles.dateControlButtons}>
+                      <TouchableOpacity
+                        style={styles.dateControlButton}
+                        onPress={() => updateDateComponent('year', selectedDate.getFullYear() - 1)}
+                      >
+                        <Text style={styles.dateControlButtonText}>▲</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.dateControlValue}>{selectedDate.getFullYear()}</Text>
+                      <TouchableOpacity
+                        style={styles.dateControlButton}
+                        onPress={() => updateDateComponent('year', selectedDate.getFullYear() + 1)}
+                      >
+                        <Text style={styles.dateControlButtonText}>▼</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Botões de ação rápida */}
+                <View style={styles.dateQuickActions}>
+                  <TouchableOpacity
+                    style={styles.dateQuickButton}
+                    onPress={() => setSelectedDate(new Date())}
+                  >
+                    <Text style={styles.dateQuickButtonText}>Hoje</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={handleDateConfirm}
+              >
+                <Text style={styles.modalButtonText}>Confirmar</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 40,
+  },
+  content: {
+    padding: 20,
+  },
+  connectionCard: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e8e8e8',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+    gap: 12,
+  },
+  connectionCardOnline: {
+    backgroundColor: '#f1f8e9',
+    borderColor: '#dcedc8',
+  },
+  connectionCardOffline: {
+    backgroundColor: '#fff8e1',
+    borderColor: '#ffe0b2',
+  },
+  connectionInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 12,
+  },
+  connectionTextWrapper: {
+    flex: 1,
+  },
+  connectionDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    marginRight: 12,
+  },
+  connectionDotOnline: {
+    backgroundColor: '#2e7d32',
+  },
+  connectionDotOffline: {
+    backgroundColor: '#ff6f00',
+  },
+  connectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  connectionSubtitle: {
+    fontSize: 13,
+    color: '#4a4a4a',
+    marginTop: 2,
+    lineHeight: 18,
+    flexShrink: 1,
+  },
+  connectionAction: {
+    backgroundColor: '#dc3545',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 44,
+  },
+  connectionActionDisabled: {
+    opacity: 0.5,
+  },
+  connectionActionText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  pendingContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    padding: 16,
+    marginBottom: 32,
+  },
+  pendingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pendingTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  pendingCount: {
+    fontSize: 13,
+    color: '#888',
+  },
+  pendingItem: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f5f5f5',
+  },
+  pendingItemFirst: {
+    borderTopWidth: 0,
+    paddingTop: 4,
+  },
+  pendingStatusBadge: {
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  pendingStatusPending: {
+    backgroundColor: '#fff3e0',
+  },
+  pendingStatusSyncing: {
+    backgroundColor: '#e3f2fd',
+  },
+  pendingStatusFailed: {
+    backgroundColor: '#ffebee',
+  },
+  pendingStatusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#333',
+  },
+  pendingInfo: {
+    flex: 1,
+  },
+  pendingObraName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  pendingMeta: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 2,
+  },
+  pendingErrorText: {
+    fontSize: 12,
+    color: '#c62828',
+    marginTop: 4,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  hint: {
+    fontSize: 13,
+    color: '#999',
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#1a1a1a',
+  },
+  textArea: {
+    minHeight: 100,
+    paddingTop: 12,
+  },
+  dropdownButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownButtonText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  dropdownIcon: {
+    fontSize: 12,
+    color: '#999',
+  },
+  inputDisabled: {
+    backgroundColor: '#f5f5f5',
+    opacity: 0.6,
+  },
+  dropdownButtonDisabled: {
+    backgroundColor: '#f5f5f5',
+    opacity: 0.7,
+  },
+  lockIcon: {
+    fontSize: 16,
+    color: '#999',
+  },
+  selectedItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 12,
+    gap: 8,
+  },
+  selectedBadge: {
+    backgroundColor: '#ffe6e6',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  selectedBadgeText: {
+    fontSize: 14,
+    color: '#dc3545',
+    fontWeight: '600',
+  },
+  removeBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeBadgeText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  radioGroup: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  radioButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  radioButtonActive: {
+    backgroundColor: '#dc3545',
+    borderColor: '#dc3545',
+  },
+  radioText: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '600',
+  },
+  radioTextActive: {
+    color: '#fff',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+  },
+  modalClose: {
+    fontSize: 28,
+    color: '#999',
+    fontWeight: '300',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  modalList: {
+    maxHeight: 400,
+    paddingHorizontal: 20,
+  },
+  modalItem: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalItemActive: {
+    backgroundColor: '#ffe6e6',
+    borderWidth: 2,
+    borderColor: '#dc3545',
+  },
+  modalItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  modalItemTextActive: {
+    color: '#dc3545',
+    fontWeight: '600',
+  },
+  modalCheckmark: {
+    fontSize: 20,
+    color: '#dc3545',
+    fontWeight: 'bold',
+  },
+  modalButton: {
+    backgroundColor: '#dc3545',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 20,
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  photoButton: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#dc3545',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  photoButtonSuccess: {
+    backgroundColor: '#e8f5e9',
+    borderColor: '#4caf50',
+    borderWidth: 2,
+  },
+  photoButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  photoButtonIcon: {
+    fontSize: 20,
+    color: '#fff',
+    fontWeight: 'bold',
+    backgroundColor: '#dc3545',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    textAlign: 'center',
+    lineHeight: 36,
+    overflow: 'hidden',
+  },
+  photoButtonText: {
+    fontSize: 15,
+    color: '#dc3545',
+    fontWeight: '600',
+  },
+  photoSectionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  photoHint: {
+    fontSize: 13,
+    color: '#666',
+    marginBottom: 12,
+    marginTop: -4,
+    fontStyle: 'italic',
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  photoCard: {
+    width: '31%',
+    aspectRatio: 1,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  photoThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  photoRemoveButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  photoRemoveText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    lineHeight: 22,
+  },
+  photoLocationBadge: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    fontSize: 9,
+    color: '#fff',
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  button: {
+    backgroundColor: '#dc3545',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  buttonDisabled: {
+    backgroundColor: '#f5a3aa',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  datePickerContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  dateDisplay: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  dateDisplayText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  dateControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+  },
+  dateControl: {
+    alignItems: 'center',
+  },
+  dateControlLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  dateControlButtons: {
+    alignItems: 'center',
+  },
+  dateControlButton: {
+    width: 50,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    marginVertical: 4,
+  },
+  dateControlButtonText: {
+    fontSize: 18,
+    color: '#dc3545',
+    fontWeight: 'bold',
+  },
+  dateControlValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1a1a1a',
+    paddingVertical: 8,
+    minWidth: 50,
+    textAlign: 'center',
+  },
+  dateQuickActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  dateQuickButton: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  dateQuickButtonText: {
+    fontSize: 14,
+    color: '#dc3545',
+    fontWeight: '600',
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  countBadge: {
+    backgroundColor: '#ff9800',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    position: 'relative',
+  },
+  searchInput: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 12,
+    padding: 14,
+    paddingRight: 45,
+    fontSize: 15,
+    color: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  searchClearButton: {
+    position: 'absolute',
+    right: 28,
+    top: '50%',
+    transform: [{ translateY: -6 }],
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#ddd',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchClearText: {
+    color: '#666',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  emptyState: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#bbb',
+  },
+  // Estilos do Transformador
+  statusContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  statusButton: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusButtonActive: {
+    backgroundColor: '#fff',
+    borderColor: '#007AFF',
+  },
+  statusButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  statusButtonTextActive: {
+    color: '#007AFF',
+  },
+  // Estilos do Checklist de Fiscalização
+  checklistSection: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 18,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  checklistSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 10,
+    letterSpacing: 0.3,
+  },
+  checklistHint: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 14,
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+  posteControls: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    padding: 14,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  posteCount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  posteButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  posteAddButton: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  posteRemoveButton: {
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  posteButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  posteCard: {
+    marginTop: 12,
+    padding: 18,
+    backgroundColor: '#fffbeb',
+    borderRadius: 14,
+    borderLeftWidth: 5,
+    borderLeftColor: '#f59e0b',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#fef3c7',
+  },
+  posteTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#78350f',
+    marginBottom: 14,
+  },
+  posteCardTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#78350f',
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  postePhotoSection: {
+    marginTop: 12,
+  },
+  postePhotoLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#92400e',
+    marginBottom: 10,
+  },
+  photoButtonSmall: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  photoButtonTextSmall: {
+    fontSize: 14,
+    color: '#374151',
+    fontWeight: '600',
+  },
+  seccionamentoCard: {
+    marginTop: 12,
+    padding: 16,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 12,
+    borderLeftWidth: 5,
+    borderLeftColor: '#0ea5e9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e0f2fe',
+  },
+  seccionamentoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#075985',
+    marginBottom: 12,
+  },
+  // Estilos do Documentação
+  docHint: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  docSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  docSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 12,
+  },
+  docButton: {
+    backgroundColor: '#f3f4f6',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  docList: {
+    marginTop: 12,
+  },
+  docItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#3b82f6',
+  },
+  docFileName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e40af',
+  },
+  docRemoveButton: {
+    backgroundColor: '#ef4444',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  docRemoveText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+});
