@@ -1373,25 +1373,53 @@ export default function NovaObra() {
         return;
       }
 
-      // Validar fotos de conexões (obrigatório: 2 fotos de cada)
+      // Validar fotos de conexões (avisar se incompleto, mas permitir salvar)
       if (transformadorStatus === 'Instalado') {
-        if (fotosTransformadorConexoesPrimariasInstalado.length < 2) {
-          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Primárias do transformador instalado.');
-          return;
-        }
-        if (fotosTransformadorConexoesSecundariasInstalado.length < 2) {
-          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Secundárias do transformador instalado.');
+        const primariasOk = fotosTransformadorConexoesPrimariasInstalado.length >= 2;
+        const secundariasOk = fotosTransformadorConexoesSecundariasInstalado.length >= 2;
+
+        if (!primariasOk || !secundariasOk) {
+          const mensagens = [];
+          if (!primariasOk) {
+            mensagens.push(`- Conexões Primárias: ${fotosTransformadorConexoesPrimariasInstalado.length}/2 fotos`);
+          }
+          if (!secundariasOk) {
+            mensagens.push(`- Conexões Secundárias: ${fotosTransformadorConexoesSecundariasInstalado.length}/2 fotos`);
+          }
+
+          Alert.alert(
+            'Obra Incompleta',
+            `A obra será salva, mas está INCOMPLETA.\n\nFaltam fotos obrigatórias:\n${mensagens.join('\n')}\n\nVocê pode editar a obra depois para adicionar as fotos faltantes.`,
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Salvar Mesmo Assim', onPress: () => prosseguirSalvamento() }
+            ]
+          );
           return;
         }
       }
 
       if (transformadorStatus === 'Retirado') {
-        if (fotosTransformadorConexoesPrimariasRetirado.length < 2) {
-          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Primárias do transformador retirado.');
-          return;
-        }
-        if (fotosTransformadorConexoesSecundariasRetirado.length < 2) {
-          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Secundárias do transformador retirado.');
+        const primariasOk = fotosTransformadorConexoesPrimariasRetirado.length >= 2;
+        const secundariasOk = fotosTransformadorConexoesSecundariasRetirado.length >= 2;
+
+        if (!primariasOk || !secundariasOk) {
+          const mensagens = [];
+          if (!primariasOk) {
+            mensagens.push(`- Conexões Primárias: ${fotosTransformadorConexoesPrimariasRetirado.length}/2 fotos`);
+          }
+          if (!secundariasOk) {
+            mensagens.push(`- Conexões Secundárias: ${fotosTransformadorConexoesSecundariasRetirado.length}/2 fotos`);
+          }
+
+          Alert.alert(
+            'Obra Incompleta',
+            `A obra será salva, mas está INCOMPLETA.\n\nFaltam fotos obrigatórias:\n${mensagens.join('\n')}\n\nVocê pode editar a obra depois para adicionar as fotos faltantes.`,
+            [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Salvar Mesmo Assim', onPress: () => prosseguirSalvamento() }
+            ]
+          );
           return;
         }
       }

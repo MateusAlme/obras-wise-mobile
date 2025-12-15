@@ -20,11 +20,17 @@ Para serviços de tipo "Transformador", são obrigatórias **2 fotos** de cada t
 
 ### 2. Validação
 
-O sistema **NÃO permite** salvar a obra se:
+O sistema **PERMITE salvar parcialmente**, mas **AVISA** que a obra está incompleta se:
 - Transformador Instalado selecionado E menos de 2 fotos de Conexões Primárias
 - Transformador Instalado selecionado E menos de 2 fotos de Conexões Secundárias
 - Transformador Retirado selecionado E menos de 2 fotos de Conexões Primárias
 - Transformador Retirado selecionado E menos de 2 fotos de Conexões Secundárias
+
+**Comportamento**:
+- Um alerta é exibido mostrando quais fotos estão faltando
+- O usuário pode escolher:
+  - **"Cancelar"**: Volta para a tela e pode adicionar as fotos
+  - **"Salvar Mesmo Assim"**: Salva a obra incompleta para editar depois
 
 ### 3. Contador de Fotos
 
@@ -150,34 +156,41 @@ Clicar em "Salvar Obra"
     ↓
 Sistema valida se há 2 fotos de cada tipo
     ↓
-Se OK: Obra é salva
-Se NÃO: Alerta exibido indicando qual seção precisa de mais fotos
+Se COMPLETO: Obra é salva diretamente
+Se INCOMPLETO: Alerta exibido com opções:
+    → Cancelar: Volta para adicionar fotos
+    → Salvar Mesmo Assim: Salva obra incompleta
 ```
 
 ## Mensagens de Validação
 
-### Conexões Primárias - Transformador Instalado
+### Obra Incompleta - Exemplo 1 (apenas primárias faltando)
 ```
-Fotos Obrigatórias
-Você precisa anexar 2 fotos das Conexões Primárias do transformador instalado.
+Obra Incompleta
+
+A obra será salva, mas está INCOMPLETA.
+
+Faltam fotos obrigatórias:
+- Conexões Primárias: 0/2 fotos
+
+Você pode editar a obra depois para adicionar as fotos faltantes.
+
+[Cancelar]  [Salvar Mesmo Assim]
 ```
 
-### Conexões Secundárias - Transformador Instalado
+### Obra Incompleta - Exemplo 2 (ambas faltando)
 ```
-Fotos Obrigatórias
-Você precisa anexar 2 fotos das Conexões Secundárias do transformador instalado.
-```
+Obra Incompleta
 
-### Conexões Primárias - Transformador Retirado
-```
-Fotos Obrigatórias
-Você precisa anexar 2 fotos das Conexões Primárias do transformador retirado.
-```
+A obra será salva, mas está INCOMPLETA.
 
-### Conexões Secundárias - Transformador Retirado
-```
-Fotos Obrigatórias
-Você precisa anexar 2 fotos das Conexões Secundárias do transformador retirado.
+Faltam fotos obrigatórias:
+- Conexões Primárias: 1/2 fotos
+- Conexões Secundárias: 0/2 fotos
+
+Você pode editar a obra depois para adicionar as fotos faltantes.
+
+[Cancelar]  [Salvar Mesmo Assim]
 ```
 
 ## Estrutura de Dados
@@ -252,31 +265,40 @@ Borda: Azul (#2563eb)
    - Selecionar "Instalado"
    - NÃO anexar nenhuma foto de conexões
    - Tentar salvar
-   - ✅ Deve exibir alerta de fotos obrigatórias
+   - ✅ Deve exibir alerta "Obra Incompleta" com opção de salvar mesmo assim
 
 2. **Validação - Apenas 1 foto de Conexões Primárias**
    - Anexar 1 foto de Conexões Primárias
    - Anexar 2 fotos de Conexões Secundárias
    - Tentar salvar
-   - ✅ Deve exibir alerta de Conexões Primárias incompletas
+   - ✅ Deve exibir alerta mostrando "Conexões Primárias: 1/2 fotos"
+   - ✅ Opções: Cancelar ou Salvar Mesmo Assim
 
 3. **Sucesso - 2 fotos de cada tipo**
    - Anexar 2 fotos de Conexões Primárias
    - Anexar 2 fotos de Conexões Secundárias
    - Salvar obra
-   - ✅ Obra deve ser salva com sucesso
+   - ✅ Obra deve ser salva diretamente sem alertas
 
-4. **Remoção de foto**
+4. **Salvamento Parcial**
+   - Anexar 0 fotos de Conexões Primárias
+   - Anexar 1 foto de Conexões Secundárias
+   - Clicar em "Salvar Obra"
+   - Ver alerta "Obra Incompleta"
+   - Clicar em "Salvar Mesmo Assim"
+   - ✅ Obra deve ser salva no estado incompleto
+
+5. **Remoção de foto**
    - Anexar 2 fotos de Conexões Primárias
    - Remover 1 foto
    - Tentar salvar
-   - ✅ Deve exibir alerta de fotos obrigatórias
+   - ✅ Deve exibir alerta de obra incompleta
 
-5. **Transformador Retirado**
+6. **Transformador Retirado**
    - Mesmos testes acima para status "Retirado"
    - ✅ Validação deve funcionar igualmente
 
-6. **Modo offline**
+7. **Modo offline**
    - Desconectar internet
    - Anexar fotos (sem endereço)
    - Salvar obra
