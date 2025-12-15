@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from './supabase';
 import { Alert } from 'react-native';
-import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId } from './photo-backup';
+import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata } from './photo-backup';
 import { processObraPhotos, UploadProgress } from './photo-queue';
 
 const PENDING_OBRAS_KEY = '@obras_pending_sync';
@@ -372,26 +372,44 @@ export const updatePendingObraStatus = async (
 
 /**
  * Obtém metadatas de fotos a partir dos IDs
+ * IMPORTANTE: Busca TODAS as fotos (uploaded ou não) para poder sincronizar corretamente
  */
 const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoMetadata[]> => {
-  const allPending = await getPendingPhotos();
-  return allPending.filter(p => photoIds.includes(p.id));
+  const allMetadata = await getAllPhotoMetadata();  // Busca TODAS, não só pendentes
+  return allMetadata.filter(p => photoIds.includes(p.id));
 };
 
 /**
  * Converte metadados de fotos para o formato do banco de dados
  */
 const convertPhotosToData = (metadata: PhotoMetadata[]) => {
-  return metadata
-    .filter(p => p.uploaded && p.uploadUrl)
-    .map(p => ({
-      url: p.uploadUrl!,
-      latitude: p.latitude,
-      longitude: p.longitude,
-      utm_x: p.utmX,
-      utm_y: p.utmY,
-      utm_zone: p.utmZone,
-    }));
+  console.log(`🔍 [convertPhotosToData] Recebeu ${metadata.length} foto(s)`);
+
+  metadata.forEach((p, idx) => {
+    console.log(`📸 Foto ${idx + 1}:`, {
+      id: p.id,
+      type: p.type,
+      uploaded: p.uploaded,
+      hasUploadUrl: !!p.uploadUrl,
+      uploadUrl: p.uploadUrl ? p.uploadUrl.substring(0, 50) + '...' : 'NULL',
+    });
+  });
+
+  const filtered = metadata.filter(p => p.uploaded && p.uploadUrl);
+  console.log(`✅ Após filtro: ${filtered.length} de ${metadata.length} foto(s) serão salvas no banco`);
+
+  if (filtered.length < metadata.length) {
+    console.warn(`⚠️ ATENÇÃO: ${metadata.length - filtered.length} foto(s) foram DESCARTADAS (uploaded=false ou uploadUrl vazio)`);
+  }
+
+  return filtered.map(p => ({
+    url: p.uploadUrl!,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    utm_x: p.utmX,
+    utm_y: p.utmY,
+    utm_zone: p.utmZone,
+  }));
 };
 
 const translateErrorMessage = (message?: string): string => {
@@ -431,7 +449,9 @@ export const syncObra = async (
     // O user_id será NULL no banco (definido como opcional)
 
     // Processar upload das fotos através da fila
+    console.log(`🚀 [syncObra] Iniciando upload de fotos para obra ${obra.obra}`);
     const uploadResult = await processObraPhotos(obra.id, onProgress);
+    console.log(`📊 [syncObra] Upload concluído: ${uploadResult.success} sucesso, ${uploadResult.failed} falhas`);
 
     // SYNC PARCIAL: Permitir salvar obra mesmo se algumas fotos falharem
     // Log de aviso se houver falhas, mas não bloqueia o sync
@@ -445,6 +465,11 @@ export const syncObra = async (
     }
 
     // Obter URLs das fotos uploadadas
+    console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas...`);
+    console.log(`   - fotos_antes: ${obra.fotos_antes.length} IDs`);
+    console.log(`   - fotos_durante: ${obra.fotos_durante.length} IDs`);
+    console.log(`   - fotos_depois: ${obra.fotos_depois.length} IDs`);
+
     const fotosAntesMetadata = await getPhotoMetadatasByIds(obra.fotos_antes);
     const fotosDuranteMetadata = await getPhotoMetadatasByIds(obra.fotos_durante);
     const fotosDepoisMetadata = await getPhotoMetadatasByIds(obra.fotos_depois);

@@ -57,7 +57,13 @@
       "Bash(npx eas build:configure)",
       "Bash(npx eas build:*)",
       "Bash(find:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: Sistema completo de gestão de obras com mobile e web\n\n- App mobile React Native/Expo com suporte offline\n- Sistema de sincronização automática de fotos\n- Validação de fotos por tipo de serviço\n- Suporte a múltiplos tipos de serviços (Transformador, Ditais, etc)\n- Armazenamento de coordenadas GPS em formato UTM\n- Visualização de fotos em tela cheia com opção de refazer\n- Dashboard web Next.js com autenticação\n- Integração completa com Supabase\n- Documentação técnica e guias de teste\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(gh:*)",
+      "Bash(if exist \".next\" rmdir /s /q \".next\")",
+      "Bash(cmd.exe /c \"if exist .next rmdir /s /q .next\")",
+      "Bash(cmd.exe /c \"if exist .next\\dev\\lock del .next\\dev\\lock\")",
+      "Bash(python scripts/update-photo-thumbnails.py:*)"
     ],
     "deny": [],
     "ask": []
