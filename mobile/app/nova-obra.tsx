@@ -120,9 +120,13 @@ export default function NovaObra() {
   const [fotosTransformadorTape, setFotosTransformadorTape] = useState<FotoData[]>([]);
   const [fotosTransformadorPlacaInstalado, setFotosTransformadorPlacaInstalado] = useState<FotoData[]>([]);
   const [fotosTransformadorInstalado, setFotosTransformadorInstalado] = useState<FotoData[]>([]);
+  const [fotosTransformadorConexoesPrimariasInstalado, setFotosTransformadorConexoesPrimariasInstalado] = useState<FotoData[]>([]);
+  const [fotosTransformadorConexoesSecundariasInstalado, setFotosTransformadorConexoesSecundariasInstalado] = useState<FotoData[]>([]);
   const [fotosTransformadorAntesRetirar, setFotosTransformadorAntesRetirar] = useState<FotoData[]>([]);
   const [fotosTransformadorTombamentoRetirado, setFotosTransformadorTombamentoRetirado] = useState<FotoData[]>([]);
   const [fotosTransformadorPlacaRetirado, setFotosTransformadorPlacaRetirado] = useState<FotoData[]>([]);
+  const [fotosTransformadorConexoesPrimariasRetirado, setFotosTransformadorConexoesPrimariasRetirado] = useState<FotoData[]>([]);
+  const [fotosTransformadorConexoesSecundariasRetirado, setFotosTransformadorConexoesSecundariasRetirado] = useState<FotoData[]>([]);
 
   // Fotos INSTALAÇÃO DO MEDIDOR (5 campos)
   const [fotosMedidorPadrao, setFotosMedidorPadrao] = useState<FotoData[]>([]);
@@ -532,7 +536,9 @@ export default function NovaObra() {
     'aterramento_vala_aberta' | 'aterramento_hastes' | 'aterramento_vala_fechada' | 'aterramento_medicao' |
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
+    'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
     'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
     'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
@@ -689,12 +695,20 @@ export default function NovaObra() {
         setFotosTransformadorPlacaInstalado(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_instalado') {
         setFotosTransformadorInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_conexoes_primarias_instalado') {
+        setFotosTransformadorConexoesPrimariasInstalado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_conexoes_secundarias_instalado') {
+        setFotosTransformadorConexoesSecundariasInstalado(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_antes_retirar') {
         setFotosTransformadorAntesRetirar(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_tombamento_retirado') {
         setFotosTransformadorTombamentoRetirado(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_placa_retirado') {
         setFotosTransformadorPlacaRetirado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_conexoes_primarias_retirado') {
+        setFotosTransformadorConexoesPrimariasRetirado(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_conexoes_secundarias_retirado') {
+        setFotosTransformadorConexoesSecundariasRetirado(prev => [...prev, photoData]);
       } else if (tipo === 'medidor_padrao') {
         setFotosMedidorPadrao(prev => [...prev, photoData]);
       } else if (tipo === 'medidor_leitura') {
@@ -861,12 +875,20 @@ export default function NovaObra() {
       setFotosTransformadorPlacaInstalado(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_instalado') {
       setFotosTransformadorInstalado(prev => [...prev, photoData]);
+    } else if (tipo === 'transformador_conexoes_primarias_instalado') {
+      setFotosTransformadorConexoesPrimariasInstalado(prev => [...prev, photoData]);
+    } else if (tipo === 'transformador_conexoes_secundarias_instalado') {
+      setFotosTransformadorConexoesSecundariasInstalado(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_antes_retirar') {
       setFotosTransformadorAntesRetirar(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_tombamento_retirado') {
       setFotosTransformadorTombamentoRetirado(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_placa_retirado') {
       setFotosTransformadorPlacaRetirado(prev => [...prev, photoData]);
+    } else if (tipo === 'transformador_conexoes_primarias_retirado') {
+      setFotosTransformadorConexoesPrimariasRetirado(prev => [...prev, photoData]);
+    } else if (tipo === 'transformador_conexoes_secundarias_retirado') {
+      setFotosTransformadorConexoesSecundariasRetirado(prev => [...prev, photoData]);
     } else if (tipo === 'medidor_padrao') {
       setFotosMedidorPadrao(prev => [...prev, photoData]);
     } else if (tipo === 'medidor_leitura') {
@@ -1099,7 +1121,9 @@ export default function NovaObra() {
     'aterramento_vala_aberta' | 'aterramento_hastes' | 'aterramento_vala_fechada' | 'aterramento_medicao' |
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
+    'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
     'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
     'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
@@ -1156,12 +1180,20 @@ export default function NovaObra() {
       setFotosTransformadorPlacaInstalado(fotosTransformadorPlacaInstalado.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_instalado') {
       setFotosTransformadorInstalado(fotosTransformadorInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_conexoes_primarias_instalado') {
+      setFotosTransformadorConexoesPrimariasInstalado(fotosTransformadorConexoesPrimariasInstalado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_conexoes_secundarias_instalado') {
+      setFotosTransformadorConexoesSecundariasInstalado(fotosTransformadorConexoesSecundariasInstalado.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_antes_retirar') {
       setFotosTransformadorAntesRetirar(fotosTransformadorAntesRetirar.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_tombamento_retirado') {
       setFotosTransformadorTombamentoRetirado(fotosTransformadorTombamentoRetirado.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_placa_retirado') {
       setFotosTransformadorPlacaRetirado(fotosTransformadorPlacaRetirado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_conexoes_primarias_retirado') {
+      setFotosTransformadorConexoesPrimariasRetirado(fotosTransformadorConexoesPrimariasRetirado.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_conexoes_secundarias_retirado') {
+      setFotosTransformadorConexoesSecundariasRetirado(fotosTransformadorConexoesSecundariasRetirado.filter((_, i) => i !== index));
     } else if (tipo === 'medidor_padrao') {
       setFotosMedidorPadrao(fotosMedidorPadrao.filter((_, i) => i !== index));
     } else if (tipo === 'medidor_leitura') {
@@ -1340,7 +1372,29 @@ export default function NovaObra() {
         Alert.alert('Erro', 'Selecione se o transformador foi Instalado ou Retirado');
         return;
       }
-      // Fotos de transformador são OPCIONAIS - pode salvar sem fotos
+
+      // Validar fotos de conexões (obrigatório: 2 fotos de cada)
+      if (transformadorStatus === 'Instalado') {
+        if (fotosTransformadorConexoesPrimariasInstalado.length < 2) {
+          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Primárias do transformador instalado.');
+          return;
+        }
+        if (fotosTransformadorConexoesSecundariasInstalado.length < 2) {
+          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Secundárias do transformador instalado.');
+          return;
+        }
+      }
+
+      if (transformadorStatus === 'Retirado') {
+        if (fotosTransformadorConexoesPrimariasRetirado.length < 2) {
+          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Primárias do transformador retirado.');
+          return;
+        }
+        if (fotosTransformadorConexoesSecundariasRetirado.length < 2) {
+          Alert.alert('Fotos Obrigatórias', 'Você precisa anexar 2 fotos das Conexões Secundárias do transformador retirado.');
+          return;
+        }
+      }
     }
 
     // FOTOS AGORA SÃO OPCIONAIS - Obras parciais são permitidas
@@ -1354,8 +1408,10 @@ export default function NovaObra() {
       fotosTransformadorLaudo.length + fotosTransformadorComponenteInstalado.length +
       fotosTransformadorTombamentoInstalado.length + fotosTransformadorTape.length +
       fotosTransformadorPlacaInstalado.length + fotosTransformadorInstalado.length +
+      fotosTransformadorConexoesPrimariasInstalado.length + fotosTransformadorConexoesSecundariasInstalado.length +
       fotosTransformadorAntesRetirar.length + fotosTransformadorTombamentoRetirado.length +
       fotosTransformadorPlacaRetirado.length +
+      fotosTransformadorConexoesPrimariasRetirado.length + fotosTransformadorConexoesSecundariasRetirado.length +
       fotosMedidorPadrao.length + fotosMedidorLeitura.length + fotosMedidorSeloBorn.length +
       fotosMedidorSeloCaixa.length + fotosMedidorIdentificadorFase.length +
       fotosChecklistCroqui.length + fotosChecklistPanoramicaInicial.length +
@@ -1418,9 +1474,13 @@ export default function NovaObra() {
         transformador_tape: isServicoTransformador ? fotosTransformadorTape.map(f => f.photoId).filter(Boolean) as string[] : [],
         transformador_placa_instalado: isServicoTransformador ? fotosTransformadorPlacaInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
         transformador_instalado: isServicoTransformador ? fotosTransformadorInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_conexoes_primarias_instalado: isServicoTransformador ? fotosTransformadorConexoesPrimariasInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_conexoes_secundarias_instalado: isServicoTransformador ? fotosTransformadorConexoesSecundariasInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
         transformador_antes_retirar: isServicoTransformador ? fotosTransformadorAntesRetirar.map(f => f.photoId).filter(Boolean) as string[] : [],
         transformador_tombamento_retirado: isServicoTransformador ? fotosTransformadorTombamentoRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
         transformador_placa_retirado: isServicoTransformador ? fotosTransformadorPlacaRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_conexoes_primarias_retirado: isServicoTransformador ? fotosTransformadorConexoesPrimariasRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        transformador_conexoes_secundarias_retirado: isServicoTransformador ? fotosTransformadorConexoesSecundariasRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
         // Fotos INSTALAÇÃO DO MEDIDOR
         medidor_padrao: isServicoMedidor ? fotosMedidorPadrao.map(f => f.photoId).filter(Boolean) as string[] : [],
         medidor_leitura: isServicoMedidor ? fotosMedidorLeitura.map(f => f.photoId).filter(Boolean) as string[] : [],
@@ -3278,6 +3338,94 @@ export default function NovaObra() {
                         ))}
                       </View>
                     )}
+
+                    {/* Conexões Primárias do Transformador Instalado */}
+                    <Text style={styles.photoSectionLabel}>📸 Conexões Primárias * ({fotosTransformadorConexoesPrimariasInstalado.length}/2)</Text>
+                    <Text style={styles.photoHint}>Obrigatório: 2 fotos - Conexões primárias do transformador</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_conexoes_primarias_instalado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto das Conexões Primárias'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorConexoesPrimariasInstalado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorConexoesPrimariasInstalado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_conexoes_primarias_instalado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Conexões Secundárias do Transformador Instalado */}
+                    <Text style={styles.photoSectionLabel}>📸 Conexões Secundárias * ({fotosTransformadorConexoesSecundariasInstalado.length}/2)</Text>
+                    <Text style={styles.photoHint}>Obrigatório: 2 fotos - Conexões secundárias do transformador</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_conexoes_secundarias_instalado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto das Conexões Secundárias'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorConexoesSecundariasInstalado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorConexoesSecundariasInstalado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_conexoes_secundarias_instalado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </>
                 )}
 
@@ -3408,6 +3556,94 @@ export default function NovaObra() {
                             <TouchableOpacity
                               style={styles.photoRemoveButton}
                               onPress={() => removePhoto('transformador_placa_retirado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Conexões Primárias do Transformador Retirado */}
+                    <Text style={styles.photoSectionLabel}>📸 Conexões Primárias * ({fotosTransformadorConexoesPrimariasRetirado.length}/2)</Text>
+                    <Text style={styles.photoHint}>Obrigatório: 2 fotos - Conexões primárias do transformador</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_conexoes_primarias_retirado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto das Conexões Primárias'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorConexoesPrimariasRetirado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorConexoesPrimariasRetirado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_conexoes_primarias_retirado', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Conexões Secundárias do Transformador Retirado */}
+                    <Text style={styles.photoSectionLabel}>📸 Conexões Secundárias * ({fotosTransformadorConexoesSecundariasRetirado.length}/2)</Text>
+                    <Text style={styles.photoHint}>Obrigatório: 2 fotos - Conexões secundárias do transformador</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_conexoes_secundarias_retirado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Foto das Conexões Secundárias'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorConexoesSecundariasRetirado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorConexoesSecundariasRetirado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_conexoes_secundarias_retirado', index)}
                             >
                               <Text style={styles.photoRemoveText}>×</Text>
                             </TouchableOpacity>
