@@ -88,6 +88,12 @@ export interface FotoInfo {
   url: string
   latitude?: number | null
   longitude?: number | null
+  placaData?: {
+    obraNumero?: string
+    tipoServico?: string
+    equipe?: string
+    dataHora?: string
+  } | null
 }
 
 export interface Equipe {

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect } from 'react';
@@ -32,33 +32,48 @@ export default function Profile() {
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert(
-      'Sair',
-      'Tem certeza que deseja sair?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Sair',
-          style: 'destructive',
-          onPress: async () => {
-            setLoading(true);
-            try {
-              await AsyncStorage.clear();
-              router.replace('/login');
-            } catch (error) {
-              console.error('Erro ao fazer logout:', error);
-              Alert.alert('Erro', 'Não foi possível sair. Tente novamente.');
-            } finally {
-              setLoading(false);
-            }
+  const handleLogout = async () => {
+    const doLogout = async () => {
+      try {
+        setLoading(true);
+        await AsyncStorage.clear();
+
+        // Usar setTimeout para garantir que o estado é limpo antes da navegação
+        setTimeout(() => {
+          router.replace('/login' as any);
+        }, 100);
+      } catch (error) {
+        console.error('Erro ao fazer logout:', error);
+        if (Platform.OS === 'web') {
+          alert('Não foi possível sair. Tente novamente.');
+        } else {
+          Alert.alert('Erro', 'Não foi possível sair. Tente novamente.');
+        }
+        setLoading(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (confirm('Tem certeza que deseja sair?')) {
+        await doLogout();
+      }
+    } else {
+      Alert.alert(
+        'Sair',
+        'Tem certeza que deseja sair?',
+        [
+          {
+            text: 'Cancelar',
+            style: 'cancel',
           },
-        },
-      ]
-    );
+          {
+            text: 'Sair',
+            style: 'destructive',
+            onPress: doLogout,
+          },
+        ]
+      );
+    }
   };
 
   return (

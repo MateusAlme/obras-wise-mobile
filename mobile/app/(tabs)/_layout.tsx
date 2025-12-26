@@ -70,9 +70,11 @@ function TabBarIcon({ name, color }: { name: string; color: string }) {
     person: '👤',
   };
 
+  const iconText = icons[name] || '📱';
+
   return (
-    <Text style={{ fontSize: 22, marginTop: 2 }}>
-      {icons[name] || '📱'}
+    <Text style={{ fontSize: 22, marginTop: 2, color }}>
+      {iconText}
     </Text>
   );
 }

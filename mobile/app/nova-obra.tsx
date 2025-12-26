@@ -34,6 +34,8 @@ import { processObraPhotos, addToUploadQueue } from '../lib/photo-queue';
 import { PlacaScanner } from '../components/PlacaScanner';
 import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
+// Import dinâmico (lazy) para evitar erro no web
+// import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
 const TIPOS_SERVICO = [
   'Emenda',
@@ -151,11 +153,15 @@ export default function NovaObra() {
     engaste: FotoData[];
     conexao1: FotoData[];
     conexao2: FotoData[];
+    maiorEsforco: FotoData[];
+    menorEsforco: FotoData[];
   }>>([{
     posteInteiro: [],
     engaste: [],
     conexao1: [],
     conexao2: [],
+    maiorEsforco: [],
+    menorEsforco: [],
   }]);
 
   // Estados dinâmicos para Seccionamento (cada ponto tem 1 foto)
@@ -546,6 +552,7 @@ export default function NovaObra() {
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca',
     posteIndex?: number,
     seccionamentoIndex?: number,
@@ -573,6 +580,40 @@ export default function NovaObra() {
 
       // Obter localização
       const location = await getCurrentLocation();
+
+      // Preparar dados da placa
+      const placaData = {
+        obraNumero: obra || tempObraId.substring(0, 8),
+        tipoServico: Array.isArray(tipoServico) ? tipoServico[0] : tipoServico || 'Obra',
+        equipe: equipe || equipeExecutora || 'Equipe',
+        dataHora: new Date().toLocaleString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
+
+      // Renderizar foto com placa "gravada" (burned-in)
+      // WEB: Canvas API | MOBILE: Skia Canvas
+      let photoUri = result.assets[0].uri;
+      console.log('📸 URI ORIGINAL:', photoUri);
+
+      try {
+        // Import dinâmico do módulo de placa (funciona em web e mobile)
+        const { renderPhotoWithPlacaBurnedIn } = await import('../lib/photo-with-placa');
+        const photoWithPlaca = await renderPhotoWithPlacaBurnedIn(photoUri, placaData);
+        photoUri = photoWithPlaca;
+        console.log('✅ Placa gravada na foto');
+        console.log('📸 URI COM PLACA:', photoUri);
+      } catch (error) {
+        console.error('❌ ERRO CRÍTICO ao gravar placa:', error);
+        console.warn('⚠️ Erro ao gravar placa, usando foto original:', error);
+        // Continua com foto original
+      }
 
       // Obter índice da próxima foto
       let index = 0;
@@ -629,14 +670,16 @@ export default function NovaObra() {
       else if (tipo === 'checklist_poste_engaste' && posteIndex !== undefined) index = fotosPostes[posteIndex].engaste.length;
       else if (tipo === 'checklist_poste_conexao1' && posteIndex !== undefined) index = fotosPostes[posteIndex].conexao1.length;
       else if (tipo === 'checklist_poste_conexao2' && posteIndex !== undefined) index = fotosPostes[posteIndex].conexao2.length;
+      else if (tipo === 'checklist_poste_maior_esforco' && posteIndex !== undefined) index = fotosPostes[posteIndex].maiorEsforco.length;
+      else if (tipo === 'checklist_poste_menor_esforco' && posteIndex !== undefined) index = fotosPostes[posteIndex].menorEsforco.length;
       // Checklist - seccionamento
       else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].length;
       // Checklist - aterramento de cerca
       else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].length;
 
-      // FAZER BACKUP PERMANENTE DA FOTO
+      // FAZER BACKUP PERMANENTE DA FOTO (já com placa gravada)
       const photoMetadata = await backupPhoto(
-        result.assets[0].uri,
+        photoUri,
         tempObraId,
         tipo,
         index,
@@ -645,7 +688,7 @@ export default function NovaObra() {
       );
 
       const photoData: FotoData = {
-        uri: result.assets[0].uri,
+        uri: photoUri,
         latitude: location.latitude,
         longitude: location.longitude,
         utmX: photoMetadata.utmX,
@@ -786,6 +829,24 @@ export default function NovaObra() {
           updated[posteIndex] = {
             ...updated[posteIndex],
             conexao2: [...updated[posteIndex].conexao2, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_poste_maior_esforco' && posteIndex !== undefined) {
+        setFotosPostes(prev => {
+          const updated = [...prev];
+          updated[posteIndex] = {
+            ...updated[posteIndex],
+            maiorEsforco: [...updated[posteIndex].maiorEsforco, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_poste_menor_esforco' && posteIndex !== undefined) {
+        setFotosPostes(prev => {
+          const updated = [...prev];
+          updated[posteIndex] = {
+            ...updated[posteIndex],
+            menorEsforco: [...updated[posteIndex].menorEsforco, photoData]
           };
           return updated;
         });
@@ -1131,6 +1192,7 @@ export default function NovaObra() {
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
     'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
     'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem' |
@@ -1271,6 +1333,24 @@ export default function NovaObra() {
         updated[posteIndex] = {
           ...updated[posteIndex],
           conexao2: updated[posteIndex].conexao2.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_poste_maior_esforco' && posteIndex !== undefined) {
+      setFotosPostes(prev => {
+        const updated = [...prev];
+        updated[posteIndex] = {
+          ...updated[posteIndex],
+          maiorEsforco: updated[posteIndex].maiorEsforco.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_poste_menor_esforco' && posteIndex !== undefined) {
+      setFotosPostes(prev => {
+        const updated = [...prev];
+        updated[posteIndex] = {
+          ...updated[posteIndex],
+          menorEsforco: updated[posteIndex].menorEsforco.filter((_, i) => i !== index)
         };
         return updated;
       });
@@ -1425,6 +1505,38 @@ export default function NovaObra() {
       }
     }
 
+    // CHECKLIST - Validar fotos dos postes (Maior Esforço e Menor Esforço - 2 fotos cada)
+    if (isServicoChecklist && numPostes > 0) {
+      const postesIncompletos = [];
+      fotosPostes.forEach((poste, index) => {
+        const faltaMaiorEsforco = poste.maiorEsforco.length < 2;
+        const faltaMenorEsforco = poste.menorEsforco.length < 2;
+
+        if (faltaMaiorEsforco || faltaMenorEsforco) {
+          const mensagens = [];
+          if (faltaMaiorEsforco) {
+            mensagens.push(`  - Maior Esforço: ${poste.maiorEsforco.length}/2 fotos`);
+          }
+          if (faltaMenorEsforco) {
+            mensagens.push(`  - Menor Esforço: ${poste.menorEsforco.length}/2 fotos`);
+          }
+          postesIncompletos.push(`Poste ${index + 1}:\n${mensagens.join('\n')}`);
+        }
+      });
+
+      if (postesIncompletos.length > 0) {
+        Alert.alert(
+          'Postes Incompletos',
+          `A obra será salva, mas está INCOMPLETA.\n\nFaltam fotos obrigatórias:\n\n${postesIncompletos.join('\n\n')}\n\nVocê pode editar a obra depois para adicionar as fotos faltantes.`,
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Salvar Mesmo Assim', onPress: () => prosseguirSalvamento() }
+          ]
+        );
+        return;
+      }
+    }
+
     // FOTOS AGORA SÃO OPCIONAIS - Obras parciais são permitidas
     // Apenas avisar se não houver nenhuma foto
     const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length +
@@ -1535,12 +1647,14 @@ export default function NovaObra() {
         checklist_padrao_geral: isServicoChecklist ? fotosChecklistPadraoGeral.map(f => f.photoId).filter(Boolean) as string[] : [],
         checklist_padrao_interno: isServicoChecklist ? fotosChecklistPadraoInterno.map(f => f.photoId).filter(Boolean) as string[] : [],
         checklist_panoramica_final: isServicoChecklist ? fotosChecklistPanoramicaFinal.map(f => f.photoId).filter(Boolean) as string[] : [],
-        // Fotos dinâmicas - postes (cada poste tem 4 fotos)
+        // Fotos dinâmicas - postes (cada poste tem 6 fotos: 4 unitárias + 2 com mínimo de 2 fotos cada)
         checklist_postes: isServicoChecklist ? fotosPostes.flatMap((poste, index) => [
           ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.conexao1.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.conexao2.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.maiorEsforco.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.menorEsforco.map(f => f.photoId).filter(Boolean) as string[],
         ]) : [],
         // Fotos dinâmicas - seccionamentos
         checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]) : [],
@@ -4547,6 +4661,8 @@ export default function NovaObra() {
                           engaste: [],
                           conexao1: [],
                           conexao2: [],
+                          maiorEsforco: [],
+                          menorEsforco: [],
                         }]);
                       }}
                     >
@@ -4559,7 +4675,8 @@ export default function NovaObra() {
                       <Text style={styles.posteTitle}>
                         Poste {posteIndex + 1}
                         {poste.posteInteiro.length > 0 && poste.engaste.length > 0 &&
-                         poste.conexao1.length > 0 && poste.conexao2.length > 0 && ' ✓'}
+                         poste.conexao1.length > 0 && poste.conexao2.length > 0 &&
+                         poste.maiorEsforco.length >= 2 && poste.menorEsforco.length >= 2 && ' ✓'}
                       </Text>
 
                       {/* Poste Inteiro */}
@@ -4677,6 +4794,68 @@ export default function NovaObra() {
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_conexao2', fotoIndex, posteIndex)}
+                                >
+                                  <Text style={styles.photoRemoveText}>×</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Maior Esforço */}
+                      <View style={styles.postePhotoSection}>
+                        <Text style={styles.postePhotoLabel}>
+                          📸 Maior Esforço ({poste.maiorEsforco.length}/2) {poste.maiorEsforco.length >= 2 && '✓'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.photoButtonSmall}
+                          onPress={() => takePicture('checklist_poste_maior_esforco', posteIndex)}
+                          disabled={loading || uploadingPhoto || poste.maiorEsforco.length >= 2}
+                        >
+                          <Text style={styles.photoButtonTextSmall}>
+                            {poste.maiorEsforco.length >= 2 ? '✓ Completo' : `+ Adicionar (${poste.maiorEsforco.length}/2)`}
+                          </Text>
+                        </TouchableOpacity>
+                        {poste.maiorEsforco.length > 0 && (
+                          <View style={styles.photoGrid}>
+                            {poste.maiorEsforco.map((foto, fotoIndex) => (
+                              <View key={fotoIndex} style={styles.photoCard}>
+                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity
+                                  style={styles.photoRemoveButton}
+                                  onPress={() => removePhoto('checklist_poste_maior_esforco', fotoIndex, posteIndex)}
+                                >
+                                  <Text style={styles.photoRemoveText}>×</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Menor Esforço */}
+                      <View style={styles.postePhotoSection}>
+                        <Text style={styles.postePhotoLabel}>
+                          📸 Menor Esforço ({poste.menorEsforco.length}/2) {poste.menorEsforco.length >= 2 && '✓'}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.photoButtonSmall}
+                          onPress={() => takePicture('checklist_poste_menor_esforco', posteIndex)}
+                          disabled={loading || uploadingPhoto || poste.menorEsforco.length >= 2}
+                        >
+                          <Text style={styles.photoButtonTextSmall}>
+                            {poste.menorEsforco.length >= 2 ? '✓ Completo' : `+ Adicionar (${poste.menorEsforco.length}/2)`}
+                          </Text>
+                        </TouchableOpacity>
+                        {poste.menorEsforco.length > 0 && (
+                          <View style={styles.photoGrid}>
+                            {poste.menorEsforco.map((foto, fotoIndex) => (
+                              <View key={fotoIndex} style={styles.photoCard}>
+                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity
+                                  style={styles.photoRemoveButton}
+                                  onPress={() => removePhoto('checklist_poste_menor_esforco', fotoIndex, posteIndex)}
                                 >
                                   <Text style={styles.photoRemoveText}>×</Text>
                                 </TouchableOpacity>
@@ -5303,7 +5482,14 @@ export default function NovaObra() {
 
           <TouchableOpacity
             style={styles.cancelButton}
-            onPress={() => router.back()}
+            onPress={() => {
+              // Tentar voltar, se não conseguir ir para dashboard
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)');
+              }
+            }}
             disabled={loading}
           >
             <Text style={styles.cancelButtonText}>Cancelar</Text>

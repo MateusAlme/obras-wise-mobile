@@ -80,7 +80,9 @@ export default function Obras() {
       origem: 'offline',
     }));
 
-    const sincronizadas: ObraListItem[] = onlineObras.map((obra) => ({
+    // Garantir que onlineObras é sempre um array
+    const obrasOnlineArray = Array.isArray(onlineObras) ? onlineObras : [];
+    const sincronizadas: ObraListItem[] = obrasOnlineArray.map((obra) => ({
       ...obra,
       origem: 'online',
     }));

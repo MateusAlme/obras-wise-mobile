@@ -1,7 +1,145 @@
 import jsPDF from 'jspdf'
-import type { Obra } from './supabase'
+import type { Obra, FotoInfo } from './supabase'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { latLongToUTM, formatUTM } from './geocoding'
+
+/**
+ * Renderiza uma foto com placa de informações usando Canvas
+ * Retorna a imagem como data URL para ser adicionada ao PDF
+ */
+async function renderPhotoWithPlaca(
+  photo: FotoInfo,
+  obra: Obra
+): Promise<string> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Buscar imagem
+      const response = await fetch(photo.url)
+      const blob = await response.blob()
+
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+
+      img.onload = () => {
+        // Criar canvas
+        const canvas = document.createElement('canvas')
+        canvas.width = img.width
+        canvas.height = img.height
+        const ctx = canvas.getContext('2d')!
+
+        // Desenhar imagem
+        ctx.drawImage(img, 0, 0)
+
+        // Preparar dados da placa
+        const obraNumero = photo.placaData?.obraNumero || obra.obra
+        const tipoServico = photo.placaData?.tipoServico || obra.tipo_servico
+        const equipe = photo.placaData?.equipe || obra.equipe
+        const dataHora = photo.placaData?.dataHora || format(new Date(obra.data), "dd/MM/yyyy HH:mm")
+
+        // Calcular UTM se tiver GPS
+        let utmDisplay = ''
+        if (photo.latitude && photo.longitude) {
+          const utm = latLongToUTM(photo.latitude, photo.longitude)
+          utmDisplay = formatUTM(utm)
+        }
+
+        // Configurar estilo da placa
+        const placaWidth = Math.min(canvas.width * 0.35, 300)
+        const placaPadding = 12
+        const lineHeight = 18
+        const fontSize = 13
+
+        // Calcular altura da placa baseado no conteúdo
+        let lines = 4 // Mínimo: Obra, Data, Serviço, Equipe
+        if (utmDisplay) lines++
+        const placaHeight = placaPadding * 2 + lines * lineHeight + 10
+
+        // Posição da placa (canto inferior esquerdo)
+        const placaX = 15
+        const placaY = canvas.height - placaHeight - 15
+
+        // Desenhar fundo da placa (preto semi-transparente)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.88)'
+        ctx.fillRect(placaX, placaY, placaWidth, placaHeight)
+
+        // Desenhar borda azul
+        ctx.strokeStyle = 'rgba(37, 99, 235, 0.7)'
+        ctx.lineWidth = 2
+        ctx.strokeRect(placaX, placaY, placaWidth, placaHeight)
+
+        // Desenhar textos
+        ctx.font = `bold ${fontSize}px Arial`
+        ctx.textAlign = 'left'
+
+        let textY = placaY + placaPadding + fontSize
+
+        // Linha 1: Obra
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = `${fontSize - 1}px Arial`
+        ctx.fillText('Obra:', placaX + placaPadding, textY)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `bold ${fontSize}px Arial`
+        ctx.fillText(obraNumero, placaX + placaPadding + 50, textY)
+        textY += lineHeight
+
+        // Linha 2: Data/Hora
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = `${fontSize - 1}px Arial`
+        ctx.fillText('Data/Hora:', placaX + placaPadding, textY)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `${fontSize - 1}px Arial`
+        ctx.fillText(dataHora, placaX + placaPadding + 75, textY)
+        textY += lineHeight
+
+        // Linha 3: Serviço (truncar se muito longo)
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = `${fontSize - 1}px Arial`
+        ctx.fillText('Serviço:', placaX + placaPadding, textY)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `${fontSize - 1}px Arial`
+        const servicoTruncado = tipoServico.length > 20 ? tipoServico.substring(0, 20) + '...' : tipoServico
+        ctx.fillText(servicoTruncado, placaX + placaPadding + 60, textY)
+        textY += lineHeight
+
+        // Linha 4: Equipe
+        ctx.fillStyle = '#9ca3af'
+        ctx.font = `${fontSize - 1}px Arial`
+        ctx.fillText('Equipe:', placaX + placaPadding, textY)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `bold ${fontSize}px Arial`
+        ctx.fillText(equipe, placaX + placaPadding + 60, textY)
+        textY += lineHeight
+
+        // Linha 5: UTM (se disponível)
+        if (utmDisplay) {
+          ctx.fillStyle = '#9ca3af'
+          ctx.font = `${fontSize - 2}px Arial`
+          ctx.fillText('UTM:', placaX + placaPadding, textY)
+          ctx.fillStyle = '#34d399'
+          ctx.font = `${fontSize - 2}px monospace`
+          ctx.fillText(utmDisplay, placaX + placaPadding + 40, textY)
+        }
+
+        // Converter canvas para data URL
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+
+      img.onerror = () => {
+        reject(new Error('Erro ao carregar imagem'))
+      }
+
+      // Criar URL da imagem a partir do blob
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        img.src = reader.result as string
+      }
+      reader.readAsDataURL(blob)
+    } catch (error) {
+      reject(error)
+    }
+  })
+}
 
 export async function generatePDF(obra: Obra) {
   const pdf = new jsPDF()
@@ -74,9 +212,9 @@ export async function generatePDF(obra: Obra) {
   pdf.text('Fotos da Obra', margin, yPos)
   yPos += 10
 
-  // Função para adicionar fotos
+  // Função para adicionar fotos com placa
   const addPhotosSection = async (
-    photos: Array<{ url: string }> | undefined,
+    photos: FotoInfo[] | undefined,
     title: string
   ) => {
     if (!photos || photos.length === 0) return
@@ -94,30 +232,20 @@ export async function generatePDF(obra: Obra) {
 
     for (const photo of photos) {
       try {
-        // Converter imagem para base64
-        const response = await fetch(photo.url)
-        const blob = await response.blob()
-        const reader = new FileReader()
+        // Renderizar foto com placa
+        const photoWithPlaca = await renderPhotoWithPlaca(photo, obra)
 
-        await new Promise((resolve) => {
-          reader.onloadend = () => {
-            const base64data = reader.result as string
+        // Verificar espaço na página
+        if (yPos > pageHeight - 70) {
+          pdf.addPage()
+          yPos = margin
+        }
 
-            // Verificar espaço na página
-            if (yPos > pageHeight - 70) {
-              pdf.addPage()
-              yPos = margin
-            }
-
-            // Adicionar imagem
-            const imgWidth = 80
-            const imgHeight = 60
-            pdf.addImage(base64data, 'JPEG', margin, yPos, imgWidth, imgHeight)
-            yPos += imgHeight + 5
-            resolve(null)
-          }
-          reader.readAsDataURL(blob)
-        })
+        // Adicionar imagem com placa
+        const imgWidth = 160
+        const imgHeight = 120
+        pdf.addImage(photoWithPlaca, 'JPEG', margin, yPos, imgWidth, imgHeight)
+        yPos += imgHeight + 5
       } catch (error) {
         console.error('Erro ao adicionar foto:', error)
         pdf.setFont('helvetica', 'normal')

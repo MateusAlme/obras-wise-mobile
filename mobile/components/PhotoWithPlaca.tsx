@@ -135,10 +135,10 @@ export function PhotoWithPlaca({
             )}
 
             {/* Divisor */}
-            {utmDisplay && <View style={styles.divider} />}
+            {!!utmDisplay && <View style={styles.divider} />}
 
             {/* UTM */}
-            {utmDisplay && (
+            {!!utmDisplay && (
               <View style={styles.infoRow}>
                 <Text style={styles.label}>UTM:</Text>
                 <Text style={styles.valueUtm}>{utmDisplay}</Text>
