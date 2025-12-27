@@ -460,7 +460,7 @@ export default function ObraDetailPage() {
 
 
           {/* Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
             <div className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
               <div className="text-sm text-gray-600 mb-1">Responsável</div>
               <div className="text-lg font-semibold text-gray-900">{obra.responsavel}</div>
@@ -470,31 +470,7 @@ export default function ObraDetailPage() {
               <div className="text-sm text-gray-600 mb-1">Tipo de Serviço</div>
               <div className="text-lg font-semibold text-gray-900">{obra.tipo_servico}</div>
             </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
-              <div className="text-sm text-gray-600 mb-1">Atipicidades</div>
-              <div className="text-lg font-semibold text-gray-900">
-                {obra.tem_atipicidade ? (
-                  <span className="text-orange-600">{obra.atipicidades.length} atipicidade(s)</span>
-                ) : (
-                  <span className="text-green-600">Nenhuma</span>
-                )}
-              </div>
-            </div>
           </div>
-
-          {/* Atipicidades */}
-          {obra.tem_atipicidade && obra.descricao_atipicidade && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-8">
-              <h3 className="text-lg font-semibold text-orange-800 mb-2 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                Descrição das Atipicidades
-              </h3>
-              <p className="text-gray-700 whitespace-pre-wrap">{obra.descricao_atipicidade}</p>
-            </div>
-          )}
 
           {/* Fotos */}
           <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6">
