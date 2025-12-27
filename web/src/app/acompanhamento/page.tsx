@@ -138,6 +138,54 @@ export default function AcompanhamentoPage() {
     return count
   }
 
+  // Mapeamento das atipicidades
+  const ATIPICIDADES: Record<number, { titulo: string; descricao: string }> = {
+    3: {
+      titulo: 'Obra em locais sem acesso que necessitam de transporte especial de equipamento (guindaste, trator, carroça) ou BANDOLAGEM',
+      descricao: 'Existem obras que precisam de um transporte especial como guindaste, trator ou até mesmo bandolagem (que significa deslocar postes e transformadores sem auxílio de guindauto), devido as características do terreno tornando-se necessário o transporte não usual dos equipamentos necessários para o atendimento.'
+    },
+    4: {
+      titulo: 'Obra em ilhas, terrenos alagados, arenosos, montanhosos, rochosos ou aquosos, com CONCRETAGEM da base do poste ou CAVA ESPECIAL',
+      descricao: 'A região apresenta terrenos rochosos, havendo a necessidade em algumas obras da equipe fazer uso de compressor para perfuração do solo, e posteriormente a concretagem do poste ou a utilização de manilha, visando manter as características construtivas da rede pelo máximo período de tempo.'
+    },
+    5: {
+      titulo: 'Obra com travessia de condutores sobre linhas energizadas',
+      descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha-viva para realizar a travessia dos condutores da rede de distribuição em relação a rede de transmissão de energia.'
+    },
+    6: {
+      titulo: 'Obra de expansão e construção de rede e linhas de distribuição com abertura de faixa de passagem',
+      descricao: 'Faz-se necessário em algumas obras, a supressão da vegetação com auxilio de ferramentas ou máquinas agrícolas.'
+    },
+    8: {
+      titulo: 'Obra com participação de linha viva',
+      descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha-viva em alguns casos visando a não interrupção do fornecimento de energia elétrica para não impactar no DEC e FEC da concessionária.'
+    },
+    9: {
+      titulo: 'Obra com utilização de linha viva somente na conexão',
+      descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha-viva apenas no poste da conexão, visando a não interrupção do fornecimento de energia elétrica para não impactar no DEC e FEC da concessionária.'
+    },
+    10: {
+      titulo: 'Obra com atendimento alternativo de cargas (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)',
+      descricao: 'Utilizamos em alguns casos os referidos equipamentos visando a não interrupção do fornecimento de energia para grandes clientes.'
+    },
+    11: {
+      titulo: 'Obra de conversão de Rede convencional para REDE COMPACTA',
+      descricao: 'A atipicidade ocorre pelo fato da substituição em campo de rede convencional de cabo CA4/CAA2 por cabo protegido de rede compacta em grandes proporções.'
+    },
+    12: {
+      titulo: 'Obra exclusiva de recondutoramento de redes/linhas',
+      descricao: 'Ocorre quando há substituição de estruturas de média tensão tipo T por estruturas compactas tipo CE, substituição da rede de MT aérea de cabo CAA4 AWG, CAA2 AWG, e CA 4 AWG por rede compacta com condutores de alumínio protegidos, instalação de chaves facas e fusíveis, instalação de espaçadores losangular nos vãos da rede compacta recém instalada.'
+    },
+    13: {
+      titulo: 'Obra MISTA com RECONDUTORAMENTO PARCIAL de redes / linhas',
+      descricao: 'São consideradas atípicas devido a necessidade do recondutoramento parcial da rede existente da distribuidora, seja em redes de baixa/média tensão substituindo a rede de MT aérea de cabo CAA4 AWG, CAA2 AWG, e CA 4 AWG por rede compacta com condutores de alumínio protegidos ou cabos multiplex.'
+    },
+    17: {
+      titulo: 'Outros (EMENDAS DE CONDUTOR PARTIDO, ESPAÇADOR, e outras não previstas nos itens de 1 a 16)',
+      descricao: 'São necessárias a realização de emendas sejam nos cabos de média tensão ou baixa tensão, instalação de espaçadores lonsagulares na rede space, entre outros, visando não impactar nos indicadores de DEC e FEC.'
+    }
+  }
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -560,6 +608,62 @@ export default function AcompanhamentoPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Card de Atipicidades */}
+                {selectedObraForBook.tem_atipicidade && selectedObraForBook.atipicidades && selectedObraForBook.atipicidades.length > 0 && (
+                  <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden mb-8">
+                    <div className="bg-gradient-to-r from-orange-50 to-orange-100 px-6 py-4 border-b border-orange-200">
+                      <h3 className="text-xl font-bold text-orange-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        Atipicidades da Obra
+                      </h3>
+                    </div>
+                    <div className="p-6">
+                      <div className="space-y-4">
+                        {selectedObraForBook.atipicidades.map((atipicidadeNum, idx) => {
+                          const atipicidade = ATIPICIDADES[atipicidadeNum]
+                          if (!atipicidade) return null
+
+                          return (
+                            <div key={idx} className="bg-gradient-to-br from-orange-50 to-white p-5 rounded-xl border-l-4 border-orange-500 shadow-sm hover:shadow-md transition-shadow">
+                              <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 mt-1">
+                                  <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                                    {atipicidadeNum}
+                                  </div>
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="font-bold text-orange-900 mb-2 text-base leading-tight">
+                                    {atipicidade.titulo}
+                                  </h4>
+                                  <p className="text-sm text-slate-700 leading-relaxed">
+                                    {atipicidade.descricao}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* Descrição adicional se houver */}
+                      {selectedObraForBook.descricao_atipicidade && (
+                        <div className="mt-6 pt-6 border-t border-orange-200">
+                          <h4 className="text-sm font-bold text-orange-900 uppercase tracking-wide mb-3">
+                            Observações Adicionais
+                          </h4>
+                          <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
+                              {selectedObraForBook.descricao_atipicidade}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Galerias de Fotos - Design Premium */}
                 <div className="space-y-8">
