@@ -18,10 +18,22 @@ export default function AcompanhamentoPage() {
   const [selectedPeriod, setSelectedPeriod] = useState('todos')
   const [searchObra, setSearchObra] = useState('')
   const [selectedTipoServico, setSelectedTipoServico] = useState('todos')
+  const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
 
   useEffect(() => {
     loadObras()
   }, [])
+
+  function handleOpenBook(obraId: string) {
+    const obra = obras.find(o => o.id === obraId)
+    if (obra) {
+      setSelectedObraForBook(obra)
+    }
+  }
+
+  function handleCloseBook() {
+    setSelectedObraForBook(null)
+  }
 
   async function loadObras() {
     try {
@@ -336,7 +348,7 @@ export default function AcompanhamentoPage() {
                   {filteredObras.map((obra) => (
                     <tr
                       key={obra.id}
-                      onDoubleClick={() => router.push(`/obra/${obra.id}`)}
+                      onDoubleClick={() => handleOpenBook(obra.id)}
                       className="hover:bg-slate-50 transition-colors cursor-pointer"
                       title="Clique duas vezes para visualizar detalhes"
                     >
@@ -451,6 +463,138 @@ export default function AcompanhamentoPage() {
             )}
           </div>
         </div>
+
+        {/* Modal/Drawer do Book */}
+        {selectedObraForBook && (
+          <div className="fixed inset-0 z-50 overflow-hidden animate-fadeIn">
+            {/* Overlay com blur */}
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-all duration-300"
+              onClick={handleCloseBook}
+            ></div>
+
+            {/* Drawer - Animação slide-in */}
+            <div className="absolute right-0 top-0 h-full w-full md:w-[85%] lg:w-[75%] bg-gradient-to-b from-slate-50 to-white shadow-2xl overflow-y-auto animate-slideInRight">
+              {/* Header Moderno */}
+              <div className="sticky top-0 z-10 bg-gradient-to-r from-red-500 via-red-600 to-red-700 text-white shadow-xl">
+                <div className="px-8 py-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="bg-white/20 backdrop-blur-sm rounded-lg px-3 py-1">
+                          <span className="text-xs font-semibold uppercase tracking-wider">BOOK DA OBRA</span>
+                        </div>
+                      </div>
+                      <h2 className="text-3xl font-bold tracking-tight mb-2">
+                        {selectedObraForBook.obra || 'Sem número'}
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                          </svg>
+                          {selectedObraForBook.equipe}
+                        </span>
+                        <span className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-3 py-1 rounded-full">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" />
+                          </svg>
+                          {selectedObraForBook.tipo_servico}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleCloseBook}
+                      className="p-3 hover:bg-white/20 rounded-xl transition-all duration-200 hover:rotate-90"
+                      title="Fechar"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conteúdo do Book */}
+              <div className="px-8 py-8">
+                {/* Card de Informações - Design Moderno */}
+                <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden mb-8">
+                  <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200">
+                    <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                      <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
+                        <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" />
+                      </svg>
+                      Informações da Obra
+                    </h3>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nº da Obra</p>
+                        <p className="text-2xl font-bold text-slate-900">{selectedObraForBook.obra || '-'}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Placa</p>
+                        <p className="text-lg font-semibold text-slate-700">{selectedObraForBook.placa || '-'}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Equipe</p>
+                        <p className="text-lg font-semibold text-slate-700">{selectedObraForBook.equipe}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo de Serviço</p>
+                        <p className="text-lg font-semibold text-red-600">{selectedObraForBook.tipo_servico}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</p>
+                        <p className="text-lg font-semibold text-slate-700">
+                          {format(new Date(selectedObraForBook.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Responsável</p>
+                        <p className="text-lg font-semibold text-slate-700">{selectedObraForBook.responsavel}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Galerias de Fotos - Design Premium */}
+                <div className="space-y-8">
+                  {selectedObraForBook.fotos_antes && selectedObraForBook.fotos_antes.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg shadow-md">
+                          <h4 className="font-bold text-sm uppercase tracking-wider">FOTOS ANTES</h4>
+                        </div>
+                        <div className="flex-1 h-px bg-gradient-to-r from-blue-300 to-transparent"></div>
+                        <span className="text-sm font-semibold text-slate-500">{selectedObraForBook.fotos_antes.length} foto(s)</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {selectedObraForBook.fotos_antes.map((foto, idx) => (
+                          <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                            <div className="aspect-square bg-slate-100">
+                              <img
+                                src={foto.url}
+                                alt={`Foto Antes ${idx + 1}`}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              />
+                            </div>
+                            <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
+                              #{idx + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </ProtectedRoute>
   )
