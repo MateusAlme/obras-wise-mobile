@@ -563,6 +563,7 @@ export default function AcompanhamentoPage() {
 
                 {/* Galerias de Fotos - Design Premium */}
                 <div className="space-y-8">
+                  {/* FOTOS ANTES */}
                   {selectedObraForBook.fotos_antes && selectedObraForBook.fotos_antes.length > 0 && (
                     <div>
                       <div className="flex items-center gap-3 mb-4">
@@ -583,6 +584,122 @@ export default function AcompanhamentoPage() {
                               />
                             </div>
                             <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
+                              #{idx + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FOTOS DURANTE */}
+                  {selectedObraForBook.fotos_durante && selectedObraForBook.fotos_durante.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white px-4 py-2 rounded-lg shadow-md">
+                          <h4 className="font-bold text-sm uppercase tracking-wider">FOTOS DURANTE</h4>
+                        </div>
+                        <div className="flex-1 h-px bg-gradient-to-r from-yellow-300 to-transparent"></div>
+                        <span className="text-sm font-semibold text-slate-500">{selectedObraForBook.fotos_durante.length} foto(s)</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {selectedObraForBook.fotos_durante.map((foto, idx) => (
+                          <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                            <div className="aspect-square bg-slate-100">
+                              <img
+                                src={foto.url}
+                                alt={`Foto Durante ${idx + 1}`}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              />
+                            </div>
+                            <div className="absolute top-2 left-2 bg-yellow-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
+                              #{idx + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FOTOS DEPOIS */}
+                  {selectedObraForBook.fotos_depois && selectedObraForBook.fotos_depois.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 rounded-lg shadow-md">
+                          <h4 className="font-bold text-sm uppercase tracking-wider">FOTOS DEPOIS</h4>
+                        </div>
+                        <div className="flex-1 h-px bg-gradient-to-r from-green-300 to-transparent"></div>
+                        <span className="text-sm font-semibold text-slate-500">{selectedObraForBook.fotos_depois.length} foto(s)</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {selectedObraForBook.fotos_depois.map((foto, idx) => (
+                          <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                            <div className="aspect-square bg-slate-100">
+                              <img
+                                src={foto.url}
+                                alt={`Foto Depois ${idx + 1}`}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              />
+                            </div>
+                            <div className="absolute top-2 left-2 bg-green-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
+                              #{idx + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FOTOS ABERTURA */}
+                  {selectedObraForBook.fotos_abertura && selectedObraForBook.fotos_abertura.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white px-4 py-2 rounded-lg shadow-md">
+                          <h4 className="font-bold text-sm uppercase tracking-wider">FOTOS ABERTURA</h4>
+                        </div>
+                        <div className="flex-1 h-px bg-gradient-to-r from-purple-300 to-transparent"></div>
+                        <span className="text-sm font-semibold text-slate-500">{selectedObraForBook.fotos_abertura.length} foto(s)</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {selectedObraForBook.fotos_abertura.map((foto, idx) => (
+                          <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                            <div className="aspect-square bg-slate-100">
+                              <img
+                                src={foto.url}
+                                alt={`Foto Abertura ${idx + 1}`}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              />
+                            </div>
+                            <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
+                              #{idx + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* FOTOS FECHAMENTO */}
+                  {selectedObraForBook.fotos_fechamento && selectedObraForBook.fotos_fechamento.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-lg shadow-md">
+                          <h4 className="font-bold text-sm uppercase tracking-wider">FOTOS FECHAMENTO</h4>
+                        </div>
+                        <div className="flex-1 h-px bg-gradient-to-r from-red-300 to-transparent"></div>
+                        <span className="text-sm font-semibold text-slate-500">{selectedObraForBook.fotos_fechamento.length} foto(s)</span>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {selectedObraForBook.fotos_fechamento.map((foto, idx) => (
+                          <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                            <div className="aspect-square bg-slate-100">
+                              <img
+                                src={foto.url}
+                                alt={`Foto Fechamento ${idx + 1}`}
+                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                              />
+                            </div>
+                            <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
                               #{idx + 1}
                             </div>
                           </div>
