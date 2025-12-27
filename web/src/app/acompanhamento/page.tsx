@@ -138,6 +138,29 @@ export default function AcompanhamentoPage() {
     return count
   }
 
+  // Mapeamento de tipos de serviço para galerias de fotos permitidas
+  const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
+    'Emenda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+    'Transformador': ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_abertura', 'fotos_fechamento'],
+    'DITAIS': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
+    'Aterramento': ['fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao'],
+    'Medidor': ['fotos_medidor_padrao', 'fotos_medidor_leitura', 'fotos_medidor_selo_born', 'fotos_medidor_selo_caixa', 'fotos_medidor_identificador_fase'],
+    'Altimetria': ['fotos_altimetria_lado_fonte', 'fotos_altimetria_medicao_fonte', 'fotos_altimetria_lado_carga', 'fotos_altimetria_medicao_carga'],
+    'Vazamento': ['fotos_vazamento_evidencia', 'fotos_vazamento_equipamentos_limpeza', 'fotos_vazamento_tombamento_retirado', 'fotos_vazamento_placa_retirado', 'fotos_vazamento_tombamento_instalado', 'fotos_vazamento_placa_instalado', 'fotos_vazamento_instalacao'],
+    'Checklist': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
+    'Documentação': ['doc_cadastro_medidor', 'doc_laudo_transformador', 'doc_laudo_regulador', 'doc_laudo_religador', 'doc_apr', 'doc_fvbt', 'doc_termo_desistencia_lpt']
+  }
+
+  // Função para verificar se uma galeria deve ser exibida
+  function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
+    const galeriasPermitidas = GALERIAS_POR_TIPO_SERVICO[tipoServico]
+    if (!galeriasPermitidas) {
+      // Se o tipo de serviço não está no mapeamento, mostra apenas as básicas
+      return ['fotos_antes', 'fotos_durante', 'fotos_depois'].includes(nomeGaleria)
+    }
+    return galeriasPermitidas.includes(nomeGaleria)
+  }
+
   // Mapeamento das atipicidades
   const ATIPICIDADES: Record<number, { titulo: string; descricao: string }> = {
     3: {
@@ -668,7 +691,7 @@ export default function AcompanhamentoPage() {
                 {/* Galerias de Fotos - Design Premium */}
                 <div className="space-y-8">
                   {/* FOTOS ANTES */}
-                  {selectedObraForBook.fotos_antes && selectedObraForBook.fotos_antes.length > 0 && (
+                  {selectedObraForBook.fotos_antes && selectedObraForBook.fotos_antes.length > 0 && deveExibirGaleria('fotos_antes', selectedObraForBook.tipo_servico) && (
                     <div>
                       <div className="flex items-center gap-3 mb-4">
                         <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg shadow-md">
@@ -697,7 +720,7 @@ export default function AcompanhamentoPage() {
                   )}
 
                   {/* FOTOS DURANTE */}
-                  {selectedObraForBook.fotos_durante && selectedObraForBook.fotos_durante.length > 0 && (
+                  {selectedObraForBook.fotos_durante && selectedObraForBook.fotos_durante.length > 0 && deveExibirGaleria('fotos_durante', selectedObraForBook.tipo_servico) && (
                     <div>
                       <div className="flex items-center gap-3 mb-4">
                         <div className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white px-4 py-2 rounded-lg shadow-md">
@@ -726,7 +749,7 @@ export default function AcompanhamentoPage() {
                   )}
 
                   {/* FOTOS DEPOIS */}
-                  {selectedObraForBook.fotos_depois && selectedObraForBook.fotos_depois.length > 0 && (
+                  {selectedObraForBook.fotos_depois && selectedObraForBook.fotos_depois.length > 0 && deveExibirGaleria('fotos_depois', selectedObraForBook.tipo_servico) && (
                     <div>
                       <div className="flex items-center gap-3 mb-4">
                         <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-2 rounded-lg shadow-md">
@@ -755,7 +778,7 @@ export default function AcompanhamentoPage() {
                   )}
 
                   {/* FOTOS ABERTURA */}
-                  {selectedObraForBook.fotos_abertura && selectedObraForBook.fotos_abertura.length > 0 && (
+                  {selectedObraForBook.fotos_abertura && selectedObraForBook.fotos_abertura.length > 0 && deveExibirGaleria('fotos_abertura', selectedObraForBook.tipo_servico) && (
                     <div>
                       <div className="flex items-center gap-3 mb-4">
                         <div className="bg-gradient-to-r from-purple-500 to-purple-600 text-white px-4 py-2 rounded-lg shadow-md">
@@ -784,7 +807,7 @@ export default function AcompanhamentoPage() {
                   )}
 
                   {/* FOTOS FECHAMENTO */}
-                  {selectedObraForBook.fotos_fechamento && selectedObraForBook.fotos_fechamento.length > 0 && (
+                  {selectedObraForBook.fotos_fechamento && selectedObraForBook.fotos_fechamento.length > 0 && deveExibirGaleria('fotos_fechamento', selectedObraForBook.tipo_servico) && (
                     <div>
                       <div className="flex items-center gap-3 mb-4">
                         <div className="bg-gradient-to-r from-red-500 to-red-600 text-white px-4 py-2 rounded-lg shadow-md">
