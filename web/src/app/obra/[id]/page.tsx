@@ -52,7 +52,6 @@ export default function ObraDetailPage() {
   const [loading, setLoading] = useState(true)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [exportingXlsx, setExportingXlsx] = useState(false)
-  const [showAtipicidadesModal, setShowAtipicidadesModal] = useState(false)
   const [selectedAtipicidades, setSelectedAtipicidades] = useState<number[]>([])
   const [descricaoAtipicidade, setDescricaoAtipicidade] = useState('')
 
@@ -98,64 +97,46 @@ export default function ObraDetailPage() {
   }
 
   // Handlers de atipicidades
-  function toggleAtipicidade(id: number) {
-    setSelectedAtipicidades(prev =>
-      prev.includes(id) ? prev.filter(atipId => atipId !== id) : [...prev, id]
-    )
+  async function toggleAtipicidade(id: number) {
+    if (!obra) return
+
+    const newSelected = selectedAtipicidades.includes(id)
+      ? selectedAtipicidades.filter(atipId => atipId !== id)
+      : [...selectedAtipicidades, id]
+
+    setSelectedAtipicidades(newSelected)
+    await saveAtipicidades(newSelected, descricaoAtipicidade)
   }
 
-  async function handleSaveAtipicidades(exportType: 'pdf' | 'xlsx') {
+  async function handleDescricaoChange(value: string) {
+    setDescricaoAtipicidade(value)
+    await saveAtipicidades(selectedAtipicidades, value)
+  }
+
+  async function saveAtipicidades(atipicidades: number[], descricao: string) {
     if (!obra) return
 
     try {
-      // Salvar atipicidades no banco
       const { error } = await supabase
         .from('obras')
         .update({
-          atipicidades: selectedAtipicidades,
-          descricao_atipicidade: descricaoAtipicidade,
-          tem_atipicidade: selectedAtipicidades.length > 0 || descricaoAtipicidade.trim() !== ''
+          atipicidades: atipicidades,
+          descricao_atipicidade: descricao,
+          tem_atipicidade: atipicidades.length > 0 || descricao.trim() !== ''
         })
         .eq('id', obra.id)
 
       if (error) throw error
 
-      // Atualizar estado local
       setObra({
         ...obra,
-        atipicidades: selectedAtipicidades,
-        descricao_atipicidade: descricaoAtipicidade,
-        tem_atipicidade: selectedAtipicidades.length > 0 || descricaoAtipicidade.trim() !== ''
+        atipicidades: atipicidades,
+        descricao_atipicidade: descricao,
+        tem_atipicidade: atipicidades.length > 0 || descricao.trim() !== ''
       })
-
-      // Fechar modal
-      setShowAtipicidadesModal(false)
-
-      // Executar exportação
-      if (exportType === 'pdf') {
-        await executeExportPdf()
-      } else {
-        await executeExportXlsx()
-      }
     } catch (error) {
       console.error('Erro ao salvar atipicidades:', error)
-      alert('Erro ao salvar atipicidades')
     }
-  }
-
-  function handleCancelAtipicidades() {
-    // Recarregar atipicidades originais da obra
-    if (obra?.atipicidades && obra.atipicidades.length > 0) {
-      setSelectedAtipicidades(obra.atipicidades)
-    } else {
-      setSelectedAtipicidades([])
-    }
-    if (obra?.descricao_atipicidade) {
-      setDescricaoAtipicidade(obra.descricao_atipicidade)
-    } else {
-      setDescricaoAtipicidade('')
-    }
-    setShowAtipicidadesModal(false)
   }
 
   async function uploadPhotoFile(file: File, sectionKey: string) {
@@ -254,8 +235,8 @@ export default function ObraDetailPage() {
     }
   }
 
-  // Funções de exportação (executam após salvar atipicidades)
-  async function executeExportPdf() {
+  // Funções de exportação
+  async function handleExportPdf() {
     if (!obra) return
     setExportingPdf(true)
     try {
@@ -268,7 +249,7 @@ export default function ObraDetailPage() {
     }
   }
 
-  async function executeExportXlsx() {
+  async function handleExportXlsx() {
     if (!obra) return
     setExportingXlsx(true)
     try {
@@ -356,15 +337,6 @@ export default function ObraDetailPage() {
     } finally {
       setExportingXlsx(false)
     }
-  }
-
-  // Handlers que abrem o modal antes de exportar
-  function handleExportPdf() {
-    setShowAtipicidadesModal(true)
-  }
-
-  function handleExportXlsx() {
-    setShowAtipicidadesModal(true)
   }
 
   if (loading) {
@@ -472,6 +444,60 @@ export default function ObraDetailPage() {
             </div>
           </div>
 
+          {/* Atipicidades */}
+          <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6 mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+              <svg className="w-7 h-7 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Atipicidades da Obra
+            </h2>
+
+            {/* Atipicidades Padrão Energisa */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Atipicidades Padrão Energisa</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {ATIPICIDADES_ENERGISA.map((atipicidade) => (
+                  <label
+                    key={atipicidade.id}
+                    className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                      selectedAtipicidades.includes(atipicidade.id)
+                        ? 'border-orange-500 bg-orange-50'
+                        : 'border-gray-200 hover:border-orange-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedAtipicidades.includes(atipicidade.id)}
+                      onChange={() => toggleAtipicidade(atipicidade.id)}
+                      className="w-5 h-5 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">
+                      {atipicidade.descricao}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Descrição Adicional */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-900 mb-2">
+                Descrição Adicional
+              </label>
+              <textarea
+                value={descricaoAtipicidade}
+                onChange={(e) => handleDescricaoChange(e.target.value)}
+                placeholder="Descreva outras atipicidades não listadas acima..."
+                rows={4}
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all resize-none text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Campo opcional para informações adicionais. As alterações são salvas automaticamente.
+              </p>
+            </div>
+          </div>
+
           {/* Fotos */}
           <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Registro Fotográfico</h2>
@@ -539,141 +565,6 @@ export default function ObraDetailPage() {
             {/* Outras seções podem ser adicionadas aqui */}
           </div>
         </div>
-
-        {/* Modal de Atipicidades */}
-        {showAtipicidadesModal && (
-          <div className="fixed inset-0 z-50 overflow-y-auto animate-fadeIn">
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
-              onClick={handleCancelAtipicidades}
-            ></div>
-
-            {/* Modal Content */}
-            <div className="flex min-h-full items-center justify-center p-4">
-              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl animate-slideInRight">
-                {/* Header */}
-                <div className="sticky top-0 z-10 bg-gradient-to-r from-orange-500 via-orange-600 to-orange-500 text-white px-6 py-4 rounded-t-xl">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <div>
-                        <h2 className="text-2xl font-bold">Atipicidades da Obra</h2>
-                        <p className="text-orange-100 text-sm">Selecione as atipicidades encontradas antes de exportar</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleCancelAtipicidades}
-                      className="text-white hover:bg-white/20 rounded-full p-2 transition-colors"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Body */}
-                <div className="p-6 max-h-[60vh] overflow-y-auto">
-                  {/* Atipicidades Padrão Energisa */}
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      Atipicidades Padrão Energisa
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {ATIPICIDADES_ENERGISA.map((atipicidade) => (
-                        <label
-                          key={atipicidade.id}
-                          className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                            selectedAtipicidades.includes(atipicidade.id)
-                              ? 'border-orange-500 bg-orange-50'
-                              : 'border-gray-200 hover:border-orange-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedAtipicidades.includes(atipicidade.id)}
-                            onChange={() => toggleAtipicidade(atipicidade.id)}
-                            className="w-5 h-5 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
-                          />
-                          <span className="text-sm font-medium text-gray-700">
-                            {atipicidade.descricao}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Descrição Adicional */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                      <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Descrição Adicional
-                    </label>
-                    <textarea
-                      value={descricaoAtipicidade}
-                      onChange={(e) => setDescricaoAtipicidade(e.target.value)}
-                      placeholder="Descreva outras atipicidades não listadas acima..."
-                      rows={4}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all resize-none text-sm"
-                    />
-                    <p className="mt-1 text-xs text-gray-500">
-                      Campo opcional para informações adicionais
-                    </p>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="sticky bottom-0 bg-gray-50 px-6 py-4 rounded-b-xl border-t border-gray-200">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="text-sm text-gray-600">
-                      {selectedAtipicidades.length > 0 && (
-                        <span className="font-semibold text-orange-600">
-                          {selectedAtipicidades.length} atipicidade(s) selecionada(s)
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={handleCancelAtipicidades}
-                        className="px-5 py-2.5 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        onClick={() => handleSaveAtipicidades('pdf')}
-                        disabled={exportingPdf}
-                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                        </svg>
-                        {exportingPdf ? "Gerando PDF..." : "Salvar e Exportar PDF"}
-                      </button>
-                      <button
-                        onClick={() => handleSaveAtipicidades('xlsx')}
-                        disabled={exportingXlsx}
-                        className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg shadow-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        {exportingXlsx ? "Gerando XLSX..." : "Salvar e Exportar XLSX"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </ProtectedRoute>
   )
