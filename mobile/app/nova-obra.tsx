@@ -1683,6 +1683,8 @@ export default function NovaObra() {
         tipo_servico: tipoServico,
         transformador_status: isServicoTransformador ? transformadorStatus : null,
         created_at: createdAt,
+        data_abertura: createdAt, // Data de início do serviço
+        data_fechamento: null, // NULL = Em aberto, será preenchido quando finalizar
       };
 
       // Adicionar campos created_by e creator_role apenas se as colunas existirem no banco

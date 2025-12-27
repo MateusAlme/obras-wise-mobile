@@ -581,11 +581,13 @@ export default function ObraDetalhe() {
           style: 'destructive',
           onPress: async () => {
             try {
+              const dataFechamento = new Date().toISOString();
               const { error } = await supabase
                 .from('obras')
                 .update({
                   status: 'finalizada',
-                  finalizada_em: new Date().toISOString(),
+                  finalizada_em: dataFechamento,
+                  data_fechamento: dataFechamento, // Para compatibilidade com sistema web
                 })
                 .eq('id', obra.id);
 
