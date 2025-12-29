@@ -110,17 +110,28 @@ export default function ObraDetailPage() {
     }
 
     const newSelected = [...selectedAtipicidades, selectedDropdownId]
+
+    // Buscar a descrição automática da atipicidade selecionada
+    const atipicidadeSelecionada = ATIPICIDADES.find(a => a.id === selectedDropdownId)
+    const novaDescricao = atipicidadeSelecionada ? atipicidadeSelecionada.descricao : descricaoAtipicidade
+
     setSelectedAtipicidades(newSelected)
+    setDescricaoAtipicidade(novaDescricao)
     setSelectedDropdownId(null) // Reset dropdown
-    await saveAtipicidades(newSelected, descricaoAtipicidade)
+    await saveAtipicidades(newSelected, novaDescricao)
   }
 
   async function handleRemoveAtipicidade(id: number) {
     if (!obra) return
 
     const newSelected = selectedAtipicidades.filter(atipId => atipId !== id)
+
+    // Se não há mais atipicidades selecionadas, limpar a descrição
+    const novaDescricao = newSelected.length === 0 ? '' : descricaoAtipicidade
+
     setSelectedAtipicidades(newSelected)
-    await saveAtipicidades(newSelected, descricaoAtipicidade)
+    setDescricaoAtipicidade(novaDescricao)
+    await saveAtipicidades(newSelected, novaDescricao)
   }
 
   async function handleDescricaoChange(value: string) {
@@ -539,20 +550,20 @@ export default function ObraDetailPage() {
               </div>
             )}
 
-            {/* Descrição Adicional */}
+            {/* Descrição/Justificativa */}
             <div>
               <label className="block text-sm font-semibold text-gray-900 mb-2">
-                Descrição Adicional
+                Descrição/Justificativa
               </label>
               <textarea
                 value={descricaoAtipicidade}
                 onChange={(e) => handleDescricaoChange(e.target.value)}
-                placeholder="Descreva outras atipicidades não listadas acima..."
-                rows={4}
+                placeholder="A descrição será preenchida automaticamente ao adicionar uma atipicidade. Você pode editar ou adicionar informações extras..."
+                rows={6}
                 className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all resize-none text-sm"
               />
               <p className="mt-1 text-xs text-gray-500">
-                Campo opcional para informações adicionais. As alterações são salvas automaticamente.
+                Este campo é preenchido automaticamente com a descrição da atipicidade selecionada. Você pode editar ou deixar vazio se não houver atipicidades.
               </p>
             </div>
           </div>
