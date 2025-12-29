@@ -31,18 +31,19 @@ function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
   return galeriasPermitidas.includes(nomeGaleria)
 }
 
-// Lista de atipicidades padrão Energisa
-const ATIPICIDADES_ENERGISA = [
-  { id: 1, descricao: 'Acesso difícil' },
-  { id: 2, descricao: 'Aterramento inadequado' },
-  { id: 3, descricao: 'Cabo com isolação danificada' },
-  { id: 4, descricao: 'Conexão com aquecimento' },
-  { id: 5, descricao: 'Estrutura danificada' },
-  { id: 6, descricao: 'Falta de sinalização' },
-  { id: 7, descricao: 'Medidor sem selo' },
-  { id: 8, descricao: 'Padrão fora de norma' },
-  { id: 9, descricao: 'Proteção inadequada' },
-  { id: 10, descricao: 'Transformador com vazamento' },
+// Lista de atipicidades reais
+const ATIPICIDADES = [
+  { id: 3, titulo: 'Obra em locais sem acesso que necessitam de transporte especial de equipamento (guindaste, trator, carroça) ou BANDOLAGEA', descricao: 'Existem obras que precisam de um transporte especial como guindaste, trator ou até mesmo bandolagem (que significa deslocar postes e transformadores sem auxílio de guindaste), devido às características do terreno tornando os necessário o transporte não usual dos equipamentos necessários para os atendimentos.' },
+  { id: 4, titulo: 'Obra em ilhas, terrenos alagados, arenosos, montanhosos, rochosos ou anexos , com CONCRETAGEM da base do poste ou obra essencial.', descricao: 'A região apresenta terrenos rochosos, havendo a necessidade de em alguns obras de requipe fazer uso de compressor para perfuração do solo, e, posteriormente a corretagem do poste ou a utilização de concreto na base dos postes.' },
+  { id: 5, titulo: 'Obra com travessia de condutores sobre linhas energizadas.', descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha-viva para realizar a travessia dos condutores da rede de distribuição em relação a rede de transmissão de energia.' },
+  { id: 6, titulo: 'Obra de expansão e construção de rede e linhas de distribuição com abertura de faixa de passagem.', descricao: 'Faz-se necessário em algumas obras, a supressão da vegetação com auxílio de ferramentas ou máquinas agrícolas.' },
+  { id: 8, titulo: 'Obra com participação de linha viva', descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha viva em alguns casos visando a não interrupção do fornecimento de energia elétrica para não impactar no DEC e FEC da concessionária.' },
+  { id: 9, titulo: 'Obra com participação de linha viva com atendimento alternativo de caraias (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)', descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha viva e atendimento alternativo de cargas em alguns casos visando a não interrupção do fornecimento de energia elétrica para não impactar no DEC e FEC da concessionária.' },
+  { id: 10, titulo: 'Obra com atendimento alternativo de caraias (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)', descricao: 'Utilizamos em alguns casos os referidos equipamentos visando a não interrupção do fornecimento de energia para grandes clientes.' },
+  { id: 11, titulo: 'Obra de conversão de Rede convencional para REDE COMPACTA.', descricao: 'A atipicidade ocorre pelo fato da substituição em campo de rede convencional de cabo CA4/CAA2 por cabo protegido de rede compacta em grandes proporções.' },
+  { id: 12, titulo: 'Obra exclusiva de recondutoramento de redes/linhas.', descricao: 'Ocorre quando há substituição de estruturas de média tensão tipo T por estruturas compactas tipo CE, substituição de rede de MT aérea de cabo CAA4 AWG, CAA2 AWG, e CA 4 AWG por rede compacta com cabo protegido multiplex.' },
+  { id: 13, titulo: 'Obra MISTA com RECONDUTORAMENTO PARCIAL de redes / linhas.', descricao: 'São consideradas atípicas devido a necessidade do recondutoramento parcial da rede existente da distribuidora, seja em redes de baixa/média tensão substituindo a rede de MT aérea de cabo CAA4 AWG, CAA2 AWG, e CA 4 AWG por rede compacta com condutores de alumínio protegidos ou cabos multiplex.' },
+  { id: 17, titulo: 'Outros (EMENDAS DE CONDUTOR PARTIDO, ESPAÇADOR, e outras não previstas nos itens de 1 a 16).', descricao: 'São necessárias a realização de emendas sejam nos cabos de média tensão ou baixa tensão, instalação de espaçadores longitudinares na rede épica, entre outros, visando não impactar nos indicadores de DEC e FEC.' },
 ]
 
 export default function ObraDetailPage() {
@@ -97,13 +98,27 @@ export default function ObraDetailPage() {
   }
 
   // Handlers de atipicidades
-  async function toggleAtipicidade(id: number) {
+  const [selectedDropdownId, setSelectedDropdownId] = useState<number | null>(null)
+
+  async function handleAddAtipicidade() {
+    if (!obra || !selectedDropdownId) return
+
+    // Não adicionar duplicadas
+    if (selectedAtipicidades.includes(selectedDropdownId)) {
+      alert('Esta atipicidade já foi adicionada')
+      return
+    }
+
+    const newSelected = [...selectedAtipicidades, selectedDropdownId]
+    setSelectedAtipicidades(newSelected)
+    setSelectedDropdownId(null) // Reset dropdown
+    await saveAtipicidades(newSelected, descricaoAtipicidade)
+  }
+
+  async function handleRemoveAtipicidade(id: number) {
     if (!obra) return
 
-    const newSelected = selectedAtipicidades.includes(id)
-      ? selectedAtipicidades.filter(atipId => atipId !== id)
-      : [...selectedAtipicidades, id]
-
+    const newSelected = selectedAtipicidades.filter(atipId => atipId !== id)
     setSelectedAtipicidades(newSelected)
     await saveAtipicidades(newSelected, descricaoAtipicidade)
   }
@@ -453,32 +468,76 @@ export default function ObraDetailPage() {
               Atipicidades da Obra
             </h2>
 
-            {/* Atipicidades Padrão Energisa */}
+            {/* Adicionar Atipicidade */}
             <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Atipicidades Padrão Energisa</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {ATIPICIDADES_ENERGISA.map((atipicidade) => (
-                  <label
-                    key={atipicidade.id}
-                    className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                      selectedAtipicidades.includes(atipicidade.id)
-                        ? 'border-orange-500 bg-orange-50'
-                        : 'border-gray-200 hover:border-orange-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedAtipicidades.includes(atipicidade.id)}
-                      onChange={() => toggleAtipicidade(atipicidade.id)}
-                      className="w-5 h-5 text-orange-600 rounded border-gray-300 focus:ring-orange-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                      {atipicidade.descricao}
-                    </span>
-                  </label>
-                ))}
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">Adicionar Atipicidade</h3>
+              <div className="flex gap-3">
+                <select
+                  value={selectedDropdownId || ''}
+                  onChange={(e) => setSelectedDropdownId(e.target.value ? Number(e.target.value) : null)}
+                  className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-sm"
+                >
+                  <option value="">Selecione uma atipicidade...</option>
+                  {ATIPICIDADES.map((atip) => (
+                    <option key={atip.id} value={atip.id}>
+                      {atip.id}. {atip.titulo}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleAddAtipicidade}
+                  disabled={!selectedDropdownId}
+                  className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Adicionar
+                </button>
               </div>
             </div>
+
+            {/* Lista de Atipicidades Selecionadas */}
+            {selectedAtipicidades.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Atipicidades Selecionadas ({selectedAtipicidades.length})
+                </h3>
+                <div className="space-y-3">
+                  {selectedAtipicidades.map((id) => {
+                    const atip = ATIPICIDADES.find(a => a.id === id)
+                    if (!atip) return null
+                    return (
+                      <div
+                        key={id}
+                        className="bg-orange-50 border-l-4 border-orange-500 p-4 rounded-lg"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                                {atip.id}
+                              </span>
+                              <h4 className="font-semibold text-gray-900 text-sm">{atip.titulo}</h4>
+                            </div>
+                            <p className="text-gray-700 text-sm leading-relaxed">{atip.descricao}</p>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveAtipicidade(id)}
+                            className="text-red-600 hover:text-red-800 hover:bg-red-100 p-2 rounded-lg transition-colors flex-shrink-0"
+                            title="Remover atipicidade"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Descrição Adicional */}
             <div>
