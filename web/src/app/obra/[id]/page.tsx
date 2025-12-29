@@ -499,6 +499,11 @@ export default function ObraDetailPage() {
                 <select
                   value={selectedDropdownId || ''}
                   onChange={(e) => setSelectedDropdownId(e.target.value ? Number(e.target.value) : null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && selectedDropdownId) {
+                      handleAddAtipicidade()
+                    }
+                  }}
                   className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-sm"
                 >
                   <option value="">Selecione uma atipicidade...</option>
@@ -563,22 +568,6 @@ export default function ObraDetailPage() {
               </div>
             )}
 
-            {/* Descrição/Justificativa */}
-            <div>
-              <label className="block text-sm font-semibold text-gray-900 mb-2">
-                Descrição/Justificativa
-              </label>
-              <textarea
-                value={descricaoAtipicidade}
-                onChange={(e) => handleDescricaoChange(e.target.value)}
-                placeholder="A descrição será preenchida automaticamente ao adicionar uma atipicidade. Você pode editar ou adicionar informações extras..."
-                rows={6}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all resize-none text-sm"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Este campo é preenchido automaticamente com a descrição da atipicidade selecionada. Você pode editar ou deixar vazio se não houver atipicidades.
-              </p>
-            </div>
           </div>
 
           {/* Fotos */}
