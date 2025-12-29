@@ -111,14 +111,19 @@ export default function ObraDetailPage() {
 
     const newSelected = [...selectedAtipicidades, selectedDropdownId]
 
-    // Buscar a descrição automática da atipicidade selecionada
-    const atipicidadeSelecionada = ATIPICIDADES.find(a => a.id === selectedDropdownId)
-    const novaDescricao = atipicidadeSelecionada ? atipicidadeSelecionada.descricao : descricaoAtipicidade
+    // Gerar descrição concatenando TODAS as atipicidades selecionadas
+    const descricoesAtipicidades = newSelected
+      .map(id => {
+        const atip = ATIPICIDADES.find(a => a.id === id)
+        return atip ? atip.descricao : null
+      })
+      .filter(Boolean)
+      .join('\n\n')
 
     setSelectedAtipicidades(newSelected)
-    setDescricaoAtipicidade(novaDescricao)
+    setDescricaoAtipicidade(descricoesAtipicidades)
     setSelectedDropdownId(null) // Reset dropdown
-    await saveAtipicidades(newSelected, novaDescricao)
+    await saveAtipicidades(newSelected, descricoesAtipicidades)
   }
 
   async function handleRemoveAtipicidade(id: number) {
@@ -126,12 +131,20 @@ export default function ObraDetailPage() {
 
     const newSelected = selectedAtipicidades.filter(atipId => atipId !== id)
 
-    // Se não há mais atipicidades selecionadas, limpar a descrição
-    const novaDescricao = newSelected.length === 0 ? '' : descricaoAtipicidade
+    // Recalcular descrição com as atipicidades restantes
+    const descricoesAtipicidades = newSelected.length === 0
+      ? ''
+      : newSelected
+          .map(atipId => {
+            const atip = ATIPICIDADES.find(a => a.id === atipId)
+            return atip ? atip.descricao : null
+          })
+          .filter(Boolean)
+          .join('\n\n')
 
     setSelectedAtipicidades(newSelected)
-    setDescricaoAtipicidade(novaDescricao)
-    await saveAtipicidades(newSelected, novaDescricao)
+    setDescricaoAtipicidade(descricoesAtipicidades)
+    await saveAtipicidades(newSelected, descricoesAtipicidades)
   }
 
   async function handleDescricaoChange(value: string) {
