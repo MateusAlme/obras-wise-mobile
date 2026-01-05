@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Sidebar from '@/components/Sidebar'
+import { useAuth } from '@/contexts/AuthContext'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -18,13 +19,12 @@ interface AdminUser {
 }
 
 export default function UsersPage() {
+  const { user } = useAuth()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
-  const [currentUserEmail, setCurrentUserEmail] = useState<string>('')
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false)
 
   const [formData, setFormData] = useState({
     email: '',
@@ -41,25 +41,13 @@ export default function UsersPage() {
   // Lista de super admins autorizados (apenas eles podem criar/editar/excluir usuários)
   const SUPER_ADMINS = ['mateusalmeidacz@gmail.com']
 
+  // Verificar se o usuário atual é super admin
+  const currentUserEmail = user?.email?.toLowerCase() || ''
+  const isSuperAdmin = SUPER_ADMINS.includes(currentUserEmail)
+
   useEffect(() => {
     loadUsers()
-    checkSuperAdmin()
   }, [])
-
-  async function checkSuperAdmin() {
-    try {
-      const response = await fetch('/api/auth/session')
-      const result = await response.json()
-
-      if (result.success && result.user) {
-        const email = result.user.email.toLowerCase()
-        setCurrentUserEmail(email)
-        setIsSuperAdmin(SUPER_ADMINS.includes(email))
-      }
-    } catch (error) {
-      console.error('Erro ao verificar super admin:', error)
-    }
-  }
 
   async function loadUsers() {
     try {
