@@ -121,53 +121,54 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 10,
     bottom: 10,
-    maxWidth: '85%',
-    backgroundColor: 'rgba(0, 0, 0, 0.45)', // Mais transparente para marca d'água
+    maxWidth: '90%', // Aumentado para mostrar tudo
+    backgroundColor: 'rgba(0, 0, 0, 0.65)', // Mais opaco para legibilidade
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)', // Borda sutil
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)', // Borda mais visível
     overflow: 'hidden',
   },
   placaHeader: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)', // Header mais discreto
-    paddingVertical: 4,
-    paddingHorizontal: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)', // Header mais visível
+    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
   placaHeaderText: {
-    color: 'rgba(255, 255, 255, 0.85)', // Texto mais suave
-    fontSize: 9,
-    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.95)', // Texto mais legível
+    fontSize: 10,
+    fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
   },
   placaContent: {
-    padding: 8,
+    padding: 10,
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 3,
+    marginBottom: 4,
   },
   label: {
-    fontSize: 9,
-    fontWeight: '500',
-    color: 'rgba(200, 200, 200, 0.85)', // Cinza claro suave
-    width: 65,
+    fontSize: 10,
+    fontWeight: '600',
+    color: 'rgba(220, 220, 220, 0.95)', // Cinza claro legível
+    width: 70,
   },
   value: {
-    fontSize: 9,
-    color: 'rgba(255, 255, 255, 0.95)', // Branco suave
+    fontSize: 10,
+    color: 'rgba(255, 255, 255, 1)', // Branco 100%
+    fontWeight: '600',
     flex: 1,
   },
   valueHighlight: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: 'rgba(96, 165, 250, 0.95)', // Azul suave
+    fontSize: 10,
+    fontWeight: '700',
+    color: 'rgba(96, 165, 250, 1)', // Azul 100%
     flex: 1,
   },
   valueUtm: {
-    fontSize: 8,
-    fontWeight: '600',
-    color: 'rgba(52, 211, 153, 0.9)', // Verde suave
+    fontSize: 9,
+    fontWeight: '700',
+    color: 'rgba(52, 211, 153, 1)', // Verde 100%
     flex: 1,
   },
   divider: {
