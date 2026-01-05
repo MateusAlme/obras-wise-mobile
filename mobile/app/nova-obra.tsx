@@ -4702,7 +4702,20 @@ export default function NovaObra() {
                           <View style={styles.photoGrid}>
                             {poste.posteInteiro.map((foto, fotoIndex) => (
                               <View key={fotoIndex} style={styles.photoCard}>
-                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                  <PhotoWithPlaca
+                                    uri={foto.uri}
+                                    obraNumero={obra}
+                                    tipoServico={tipoServico}
+                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    latitude={foto.latitude}
+                                    longitude={foto.longitude}
+                                    utmX={foto.utmX}
+                                    utmY={foto.utmY}
+                                    utmZone={foto.utmZone}
+                                    style={styles.photoThumbnail}
+                                  />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_inteiro', fotoIndex, posteIndex)}
@@ -4733,7 +4746,20 @@ export default function NovaObra() {
                           <View style={styles.photoGrid}>
                             {poste.engaste.map((foto, fotoIndex) => (
                               <View key={fotoIndex} style={styles.photoCard}>
-                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                  <PhotoWithPlaca
+                                    uri={foto.uri}
+                                    obraNumero={obra}
+                                    tipoServico={tipoServico}
+                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    latitude={foto.latitude}
+                                    longitude={foto.longitude}
+                                    utmX={foto.utmX}
+                                    utmY={foto.utmY}
+                                    utmZone={foto.utmZone}
+                                    style={styles.photoThumbnail}
+                                  />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_engaste', fotoIndex, posteIndex)}
@@ -4764,7 +4790,20 @@ export default function NovaObra() {
                           <View style={styles.photoGrid}>
                             {poste.conexao1.map((foto, fotoIndex) => (
                               <View key={fotoIndex} style={styles.photoCard}>
-                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                  <PhotoWithPlaca
+                                    uri={foto.uri}
+                                    obraNumero={obra}
+                                    tipoServico={tipoServico}
+                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    latitude={foto.latitude}
+                                    longitude={foto.longitude}
+                                    utmX={foto.utmX}
+                                    utmY={foto.utmY}
+                                    utmZone={foto.utmZone}
+                                    style={styles.photoThumbnail}
+                                  />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_conexao1', fotoIndex, posteIndex)}
@@ -4795,7 +4834,20 @@ export default function NovaObra() {
                           <View style={styles.photoGrid}>
                             {poste.conexao2.map((foto, fotoIndex) => (
                               <View key={fotoIndex} style={styles.photoCard}>
-                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                  <PhotoWithPlaca
+                                    uri={foto.uri}
+                                    obraNumero={obra}
+                                    tipoServico={tipoServico}
+                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    latitude={foto.latitude}
+                                    longitude={foto.longitude}
+                                    utmX={foto.utmX}
+                                    utmY={foto.utmY}
+                                    utmZone={foto.utmZone}
+                                    style={styles.photoThumbnail}
+                                  />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_conexao2', fotoIndex, posteIndex)}
@@ -4826,7 +4878,20 @@ export default function NovaObra() {
                           <View style={styles.photoGrid}>
                             {poste.maiorEsforco.map((foto, fotoIndex) => (
                               <View key={fotoIndex} style={styles.photoCard}>
-                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                  <PhotoWithPlaca
+                                    uri={foto.uri}
+                                    obraNumero={obra}
+                                    tipoServico={tipoServico}
+                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    latitude={foto.latitude}
+                                    longitude={foto.longitude}
+                                    utmX={foto.utmX}
+                                    utmY={foto.utmY}
+                                    utmZone={foto.utmZone}
+                                    style={styles.photoThumbnail}
+                                  />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_maior_esforco', fotoIndex, posteIndex)}
@@ -4857,7 +4922,20 @@ export default function NovaObra() {
                           <View style={styles.photoGrid}>
                             {poste.menorEsforco.map((foto, fotoIndex) => (
                               <View key={fotoIndex} style={styles.photoCard}>
-                                <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                  <PhotoWithPlaca
+                                    uri={foto.uri}
+                                    obraNumero={obra}
+                                    tipoServico={tipoServico}
+                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    latitude={foto.latitude}
+                                    longitude={foto.longitude}
+                                    utmX={foto.utmX}
+                                    utmY={foto.utmY}
+                                    utmZone={foto.utmZone}
+                                    style={styles.photoThumbnail}
+                                  />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   style={styles.photoRemoveButton}
                                   onPress={() => removePhoto('checklist_poste_menor_esforco', fotoIndex, posteIndex)}
@@ -4920,7 +4998,20 @@ export default function NovaObra() {
                         <View style={styles.photoGrid}>
                           {sec.map((foto, fotoIndex) => (
                             <View key={fotoIndex} style={styles.photoCard}>
-                              <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                              <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                <PhotoWithPlaca
+                                  uri={foto.uri}
+                                  obraNumero={obra}
+                                  tipoServico={tipoServico}
+                                  equipe={isCompUser ? equipeExecutora : equipe}
+                                  latitude={foto.latitude}
+                                  longitude={foto.longitude}
+                                  utmX={foto.utmX}
+                                  utmY={foto.utmY}
+                                  utmZone={foto.utmZone}
+                                  style={styles.photoThumbnail}
+                                />
+                              </TouchableOpacity>
                               <TouchableOpacity
                                 style={styles.photoRemoveButton}
                                 onPress={() => removePhoto('checklist_seccionamento', fotoIndex, undefined, secIndex)}
@@ -4982,7 +5073,20 @@ export default function NovaObra() {
                         <View style={styles.photoGrid}>
                           {aterrFotos.map((foto, fotoIndex) => (
                             <View key={fotoIndex} style={styles.photoCard}>
-                              <Image source={{ uri: foto.uri }} style={styles.photoThumbnail} />
+                              <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                <PhotoWithPlaca
+                                  uri={foto.uri}
+                                  obraNumero={obra}
+                                  tipoServico={tipoServico}
+                                  equipe={isCompUser ? equipeExecutora : equipe}
+                                  latitude={foto.latitude}
+                                  longitude={foto.longitude}
+                                  utmX={foto.utmX}
+                                  utmY={foto.utmY}
+                                  utmZone={foto.utmZone}
+                                  style={styles.photoThumbnail}
+                                />
+                              </TouchableOpacity>
                               <TouchableOpacity
                                 style={styles.photoRemoveButton}
                                 onPress={() => removePhoto('checklist_aterramento_cerca', fotoIndex, undefined, undefined, aterrIndex)}
