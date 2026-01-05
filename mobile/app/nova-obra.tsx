@@ -1436,12 +1436,12 @@ export default function NovaObra() {
       return;
     }
 
-    // Validar número da obra (8-10 dígitos numéricos)
+    // Validar número da obra (APENAS 8 ou 10 dígitos numéricos)
     const obraNumero = obra.trim();
-    if (!/^\d{8,10}$/.test(obraNumero)) {
+    if (!/^(\d{8}|\d{10})$/.test(obraNumero)) {
       Alert.alert(
         'Número da Obra Inválido',
-        'O número da obra deve conter entre 8 e 10 dígitos numéricos.\n\nExemplo: 0032401637'
+        'O número da obra deve conter EXATAMENTE 8 ou 10 dígitos numéricos.\n\nExemplos:\n• 8 dígitos: 12345678\n• 10 dígitos: 0032401637'
       );
       return;
     }
@@ -2512,12 +2512,20 @@ export default function NovaObra() {
             <TextInput
               style={[styles.input, isEditMode && styles.inputDisabled]}
               value={obra}
-              onChangeText={setObra}
+              onChangeText={(text) => {
+                // Remover caracteres não numéricos
+                const numericOnly = text.replace(/[^0-9]/g, '');
+                // Limitar a 10 dígitos
+                const limited = numericOnly.slice(0, 10);
+                setObra(limited);
+              }}
               placeholder="Ex: 0032401637"
               editable={!loading && !isEditMode}
+              keyboardType="numeric"
+              maxLength={10}
             />
             <Text style={styles.hint}>
-              Digite apenas números (8 a 10 dígitos)
+              Digite apenas números (8 ou 10 dígitos)
             </Text>
           </View>
 

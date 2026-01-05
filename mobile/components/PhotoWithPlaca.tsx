@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
 import { latLongToUTM, formatUTM } from '../lib/geocoding';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
 
 interface PhotoWithPlacaProps {
   uri: string;
@@ -119,68 +121,74 @@ const styles = StyleSheet.create({
   },
   placa: {
     position: 'absolute',
-    left: 15,
-    bottom: 15,
-    width: '92%', // Largura fixa grande
-    backgroundColor: 'rgba(0, 0, 0, 0.80)', // Muito opaco
-    borderRadius: 10,
-    borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.5)', // Borda muito visível
+    left: SCREEN_WIDTH * 0.025, // 2.5% da largura
+    bottom: SCREEN_WIDTH * 0.025,
+    width: SCREEN_WIDTH * 0.60, // 60% da largura da tela (responsivo)
+    maxWidth: 450, // Limite máximo
+    minWidth: 250, // Limite mínimo
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
+    elevation: 8,
   },
   placaHeader: {
-    backgroundColor: 'rgba(0, 0, 0, 0.6)', // Header bem escuro
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: SCREEN_WIDTH * 0.015,
+    paddingHorizontal: SCREEN_WIDTH * 0.03,
   },
   placaHeaderText: {
-    color: 'rgba(255, 255, 255, 1)', // Branco total
-    fontSize: 13,
-    fontWeight: '900',
+    color: 'rgba(255, 255, 255, 1)',
+    fontSize: Math.max(10, SCREEN_WIDTH * 0.030), // Responsivo, mínimo 10px
+    fontWeight: '800',
     textAlign: 'center',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   placaContent: {
-    padding: 16,
+    padding: SCREEN_WIDTH * 0.03,
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: SCREEN_WIDTH * 0.015,
     alignItems: 'center',
   },
   label: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: 'rgba(240, 240, 240, 1)', // Quase branco
-    width: 85,
+    fontSize: Math.max(11, SCREEN_WIDTH * 0.032), // Responsivo, mínimo 11px
+    fontWeight: '700',
+    color: 'rgba(230, 230, 230, 1)',
+    width: SCREEN_WIDTH * 0.18,
+    marginRight: 8,
   },
   value: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 1)', // Branco total
-    fontWeight: '800',
+    fontSize: Math.max(11, SCREEN_WIDTH * 0.032),
+    color: 'rgba(255, 255, 255, 1)',
+    fontWeight: '700',
     flex: 1,
+    flexWrap: 'wrap',
   },
   valueHighlight: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: 'rgba(100, 170, 255, 1)', // Azul bem claro
+    fontSize: Math.max(11, SCREEN_WIDTH * 0.032),
+    fontWeight: '800',
+    color: 'rgba(100, 170, 255, 1)',
     flex: 1,
+    flexWrap: 'wrap',
   },
   valueUtm: {
-    fontSize: 13,
-    fontWeight: '900',
-    color: 'rgba(60, 220, 160, 1)', // Verde bem claro
+    fontSize: Math.max(10, SCREEN_WIDTH * 0.028),
+    fontWeight: '800',
+    color: 'rgba(60, 220, 160, 1)',
     flex: 1,
+    flexWrap: 'wrap',
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)', // Divisor mais visível
-    marginVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    marginVertical: SCREEN_WIDTH * 0.012,
   },
 });

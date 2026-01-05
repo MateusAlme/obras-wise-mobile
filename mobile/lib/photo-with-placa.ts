@@ -131,47 +131,51 @@ async function renderPhotoWithPlacaWeb(
           // 5. Desenhar imagem original
           ctx.drawImage(img, 0, 0)
 
-          // 6. Configurar dimensões da MARCA D'ÁGUA (GRANDE E LEGÍVEL)
-          const watermarkPadding = 24
-          const lineHeight = 38
-          const fontSize = 22
-          const fontSizeSmall = 18
+          // 6. Configurar dimensões da MARCA D'ÁGUA (RESPONSIVO)
+          // Calcular tamanhos baseados na largura da imagem
+          const scaleFactor = Math.min(img.width / 1000, 1.5) // Fator de escala baseado na imagem
+          const watermarkPadding = Math.max(16, img.width * 0.015)
+          const lineHeight = Math.max(28, img.width * 0.025)
+          const fontSize = Math.max(16, img.width * 0.018)
+          const fontSizeSmall = Math.max(13, img.width * 0.014)
 
           // Calcular número de linhas
           let numLines = 4 // Obra, Data, Serviço, Equipe
           if (utmDisplay) numLines++
 
-          const watermarkWidth = Math.min(img.width * 0.6, 700) // 60% da largura
-          const watermarkHeight = watermarkPadding * 2 + numLines * lineHeight + 30
+          // Largura responsiva: 55% da imagem, com limites
+          const watermarkWidth = Math.min(Math.max(img.width * 0.55, 400), 800)
+          const watermarkHeight = watermarkPadding * 2 + numLines * lineHeight + 20
 
-          const watermarkX = 25
-          const watermarkY = img.height - watermarkHeight - 25
+          const watermarkX = Math.max(15, img.width * 0.015)
+          const watermarkY = img.height - watermarkHeight - Math.max(15, img.height * 0.015)
 
           console.log('[PLACA WEB] Desenhando marca d\'água...', { watermarkWidth, watermarkHeight, watermarkX, watermarkY })
 
-          // 7. Desenhar fundo da marca d'água (bem opaco)
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.75)'
+          // 7. Desenhar fundo da marca d'água (opaco)
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.70)'
           ctx.fillRect(watermarkX, watermarkY, watermarkWidth, watermarkHeight)
 
           // 8. Desenhar borda destacada
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)'
-          ctx.lineWidth = 3
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)'
+          ctx.lineWidth = 2
           ctx.strokeRect(watermarkX, watermarkY, watermarkWidth, watermarkHeight)
 
-          // 9. Desenhar textos da marca d'água (mais suave)
+          // 9. Desenhar textos da marca d'água
           let textY = watermarkY + watermarkPadding + fontSize
 
-          // Função auxiliar para desenhar linha de texto (bem legível)
+          // Função auxiliar para desenhar linha de texto
+          const labelOffset = Math.max(70, img.width * 0.08) // Offset responsivo
           const drawTextLine = (label: string, value: string, isBold = false, isGreen = false) => {
-            // Label (cinza claro - bem visível)
+            // Label (cinza claro)
             ctx.font = `700 ${fontSizeSmall}px Arial, sans-serif`
             ctx.fillStyle = 'rgba(230, 230, 230, 1)'
             ctx.fillText(label, watermarkX + watermarkPadding, textY)
 
-            // Value (branco ou verde - destaque total)
+            // Value (branco ou verde)
             ctx.font = `${isBold ? '800' : '700'} ${fontSize}px Arial, sans-serif`
             ctx.fillStyle = isGreen ? 'rgba(52, 211, 153, 1)' : 'rgba(255, 255, 255, 1)'
-            ctx.fillText(value, watermarkX + watermarkPadding + 100, textY)
+            ctx.fillText(value, watermarkX + watermarkPadding + labelOffset, textY)
 
             textY += lineHeight
           }
