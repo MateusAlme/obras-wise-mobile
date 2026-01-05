@@ -56,11 +56,11 @@ export default function Navbar() {
           <div className="flex items-center">
             <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-90 transition-opacity group">
               <Image
-                src="/logo_teccel.png"
+                src="/t_logo.png"
                 alt="Teccel Engenharia"
-                width={160}
+                width={40}
                 height={40}
-                className="h-7 w-auto sm:h-8"
+                className="h-8 w-auto sm:h-10"
                 priority
               />
             </Link>

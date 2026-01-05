@@ -10,10 +10,10 @@ export default function Sidebar() {
   const { profile, signOut, isAdmin } = useAuth()
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
-  const logoSrc = collapsed ? '/logo-teccel.png' : '/logo_teccel.png'
-  const logoWidth = collapsed ? 54 : 160
-  const logoHeight = collapsed ? 125 : 40
-  const logoClassName = collapsed ? 'h-9 w-auto' : 'h-7 w-auto'
+  const logoSrc = '/t_logo.png'
+  const logoWidth = 40
+  const logoHeight = 40
+  const logoClassName = collapsed ? 'h-8 w-auto' : 'h-10 w-auto'
 
   const navItems = [
     {

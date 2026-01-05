@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FF0000"
     },
     "ios": {
       "supportsTablet": true,
@@ -18,13 +18,14 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Este app precisa acessar a câmera para tirar fotos das obras.",
         "NSPhotoLibraryUsageDescription": "Este app precisa acessar suas fotos para selecionar imagens.",
+        "NSPhotoLibraryAddUsageDescription": "Este app precisa salvar fotos das obras na sua galeria.",
         "NSLocationWhenInUseUsageDescription": "Este app precisa acessar sua localização para registrar o local das fotos."
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#FF0000"
       },
       "package": "com.obraswise.mobile",
       "versionCode": 2,
@@ -34,7 +35,9 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.ACCESS_MEDIA_LOCATION"
       ],
       "config": {
         "googleMaps": {
@@ -59,6 +62,14 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Este app precisa acessar sua localização para registrar o local das fotos."
         }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Este app precisa salvar fotos das obras na sua galeria.",
+          "savePhotosPermission": "Este app precisa salvar fotos das obras na sua galeria.",
+          "isAccessMediaLocationEnabled": true
+        }
       ]
     ],
     "extra": {
@@ -67,6 +78,9 @@
         "projectId": "79f84c84-1500-4d0b-9c3a-dd7678bcc002"
       }
     },
-    "owner": "mateus.ai"
+    "owner": "mateus.ai",
+    "assetBundlePatterns": [
+      "**/*"
+    ]
   }
 }

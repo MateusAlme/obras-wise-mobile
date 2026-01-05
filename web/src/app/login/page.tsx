@@ -62,12 +62,12 @@ export default function LoginPage() {
             <div className="flex justify-center">
               <div className="px-8 py-6">
                 <Image
-                  src="/logo_teccel_2.png"
+                  src="/t_logo.png"
                   alt="Teccel Engenharia"
                   width={260}
-                  height={63}
+                  height={260}
                   priority
-                  className="h-auto w-56 xl:w-64"
+                  className="h-auto w-40 xl:w-48"
                 />
               </div>
             </div>
@@ -115,12 +115,12 @@ export default function LoginPage() {
           <div className="flex flex-col items-center gap-5 mb-10 lg:hidden">
             <div className="px-6 py-4">
               <Image
-                src="/logo_teccel_2.png"
+                src="/t_logo.png"
                 alt="Teccel Engenharia"
-                width={220}
-                height={53}
+                width={160}
+                height={160}
                 priority
-                className="h-auto w-44 sm:w-52"
+                className="h-auto w-32 sm:w-40"
               />
             </div>
           </div>

@@ -35,6 +35,7 @@ import { PlacaScanner } from '../components/PlacaScanner';
 import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
 import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
+import { savePhotoToGallery } from '../lib/save-to-gallery';
 // Import dinâmico (lazy) para evitar erro no web
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
@@ -615,6 +616,19 @@ export default function NovaObra() {
         console.error('❌ ERRO ao gravar placa:', error);
         console.warn('⚠️ Erro ao gravar placa, usando foto original:', error);
         // Continua com foto original
+      }
+
+      // Salvar foto na galeria do dispositivo (em background, não bloqueia)
+      try {
+        const saved = await savePhotoToGallery(photoUri, 'Obras Teccel');
+        if (saved) {
+          console.log('✅ Foto salva na galeria com sucesso');
+        } else {
+          console.warn('⚠️ Não foi possível salvar foto na galeria (permissão negada ou erro)');
+        }
+      } catch (galleryError) {
+        // Não bloquear a operação se falhar ao salvar na galeria
+        console.warn('⚠️ Erro ao salvar foto na galeria:', galleryError);
       }
 
       // Obter índice da próxima foto

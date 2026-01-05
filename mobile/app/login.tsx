@@ -195,7 +195,7 @@ export default function Login() {
           {/* Header */}
           <View style={styles.header}>
             <Image
-              source={require('../assets/images/logo_teccel.png')}
+              source={require('../assets/images/t_logo.png')}
               style={styles.logo}
               resizeMode="contain"
             />

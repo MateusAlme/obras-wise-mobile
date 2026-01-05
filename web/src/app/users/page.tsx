@@ -53,6 +53,13 @@ export default function UsersPage() {
     try {
       setLoading(true)
       const response = await fetch('/api/admin/users')
+
+      // Verificar se a resposta é JSON
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Servidor retornou resposta inválida. Verifique se o servidor está rodando.')
+      }
+
       const result = await response.json()
 
       if (!result.success) {

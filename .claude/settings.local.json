@@ -80,7 +80,13 @@
       "Bash(cmd.exe /c \"if exist web\\.next\\dev\\lock del web\\.next\\dev\\lock\")",
       "Bash(cmd.exe /c \"cd web && if exist .next rmdir /s /q .next && npm run dev\")",
       "Bash(git restore:*)",
-      "Bash(cmd.exe /c scriptsdatabaseaplicar-usuarios-admin.bat)"
+      "Bash(cmd.exe /c scriptsdatabaseaplicar-usuarios-admin.bat)",
+      "Bash(cmd.exe /c \"cd mobile && if exist .expo rmdir /s /q .expo && if exist node_modules\\\\.cache rmdir /s /q node_modules\\\\.cache\")",
+      "Bash(if exist .next rmdir /s /q .next)",
+      "Bash(cmd.exe /c \"cd web && if exist .next rmdir /s /q .next\")",
+      "Bash(if exist .expo rmdir /s /q .expo)",
+      "Bash(if exist node_modules.cache rmdir /s /q node_modules.cache)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

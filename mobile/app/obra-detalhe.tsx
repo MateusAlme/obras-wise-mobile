@@ -51,9 +51,13 @@ type OnlineObra = {
   fotos_transformador_tape?: FotoInfo[];
   fotos_transformador_placa_instalado?: FotoInfo[];
   fotos_transformador_instalado?: FotoInfo[];
+  fotos_transformador_conexoes_primarias_instalado?: FotoInfo[];
+  fotos_transformador_conexoes_secundarias_instalado?: FotoInfo[];
   fotos_transformador_antes_retirar?: FotoInfo[];
   fotos_transformador_tombamento_retirado?: FotoInfo[];
   fotos_transformador_placa_retirado?: FotoInfo[];
+  fotos_transformador_conexoes_primarias_retirado?: FotoInfo[];
+  fotos_transformador_conexoes_secundarias_retirado?: FotoInfo[];
   // MEDIDOR - 5 fotos
   fotos_medidor_padrao?: FotoInfo[];
   fotos_medidor_leitura?: FotoInfo[];
@@ -416,9 +420,13 @@ export default function ObraDetalhe() {
       'fotos_transformador_tape': 'transformador_tape',
       'fotos_transformador_placa_instalado': 'transformador_placa_instalado',
       'fotos_transformador_instalado': 'transformador_instalado',
+      'fotos_transformador_conexoes_primarias_instalado': 'transformador_conexoes_primarias_instalado',
+      'fotos_transformador_conexoes_secundarias_instalado': 'transformador_conexoes_secundarias_instalado',
       'fotos_transformador_antes_retirar': 'transformador_antes_retirar',
       'fotos_transformador_tombamento_retirado': 'transformador_tombamento_retirado',
       'fotos_transformador_placa_retirado': 'transformador_placa_retirado',
+      'fotos_transformador_conexoes_primarias_retirado': 'transformador_conexoes_primarias_retirado',
+      'fotos_transformador_conexoes_secundarias_retirado': 'transformador_conexoes_secundarias_retirado',
       'fotos_medidor_padrao': 'medidor_padrao',
       'fotos_medidor_leitura': 'medidor_leitura',
       'fotos_medidor_selo_born': 'medidor_selo_born',
@@ -513,10 +521,28 @@ export default function ObraDetalhe() {
             if (!getPhotosForSection('fotos_transformador_tape').length) faltantes.push('Tape');
             if (!getPhotosForSection('fotos_transformador_placa_instalado').length) faltantes.push('Placa (Instalado)');
             if (!getPhotosForSection('fotos_transformador_instalado').length) faltantes.push('Transformador Instalado');
+            // Validar Conexões (2 fotos obrigatórias cada)
+            const conexoesPrimariasInstalado = getPhotosForSection('fotos_transformador_conexoes_primarias_instalado');
+            const conexoesSecundariasInstalado = getPhotosForSection('fotos_transformador_conexoes_secundarias_instalado');
+            if (conexoesPrimariasInstalado.length < 2) {
+              faltantes.push(`Conexões Primárias (Instalado) - ${2 - conexoesPrimariasInstalado.length} foto(s)`);
+            }
+            if (conexoesSecundariasInstalado.length < 2) {
+              faltantes.push(`Conexões Secundárias (Instalado) - ${2 - conexoesSecundariasInstalado.length} foto(s)`);
+            }
           } else if (obra.transformador_status === 'Retirado') {
             if (!getPhotosForSection('fotos_transformador_antes_retirar').length) faltantes.push('Antes de Retirar');
             if (!getPhotosForSection('fotos_transformador_tombamento_retirado').length) faltantes.push('Tombamento (Retirado)');
             if (!getPhotosForSection('fotos_transformador_placa_retirado').length) faltantes.push('Placa (Retirado)');
+            // Validar Conexões (2 fotos obrigatórias cada)
+            const conexoesPrimariasRetirado = getPhotosForSection('fotos_transformador_conexoes_primarias_retirado');
+            const conexoesSecundariasRetirado = getPhotosForSection('fotos_transformador_conexoes_secundarias_retirado');
+            if (conexoesPrimariasRetirado.length < 2) {
+              faltantes.push(`Conexões Primárias (Retirado) - ${2 - conexoesPrimariasRetirado.length} foto(s)`);
+            }
+            if (conexoesSecundariasRetirado.length < 2) {
+              faltantes.push(`Conexões Secundárias (Retirado) - ${2 - conexoesSecundariasRetirado.length} foto(s)`);
+            }
           }
           // Laudo é opcional
           break;
