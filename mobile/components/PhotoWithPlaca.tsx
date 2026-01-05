@@ -119,61 +119,68 @@ const styles = StyleSheet.create({
   },
   placa: {
     position: 'absolute',
-    left: 12,
-    bottom: 12,
-    maxWidth: '95%', // Quase toda largura
-    backgroundColor: 'rgba(0, 0, 0, 0.75)', // Bem opaco
-    borderRadius: 8,
+    left: 15,
+    bottom: 15,
+    width: '92%', // Largura fixa grande
+    backgroundColor: 'rgba(0, 0, 0, 0.80)', // Muito opaco
+    borderRadius: 10,
     borderWidth: 3,
-    borderColor: 'rgba(255, 255, 255, 0.4)', // Borda bem visível
+    borderColor: 'rgba(255, 255, 255, 0.5)', // Borda muito visível
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 10,
   },
   placaHeader: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Header destacado
-    paddingVertical: 6,
-    paddingHorizontal: 14,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)', // Header bem escuro
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   placaHeaderText: {
     color: 'rgba(255, 255, 255, 1)', // Branco total
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
     textAlign: 'center',
-    letterSpacing: 0.8,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   placaContent: {
-    padding: 12,
+    padding: 16,
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 5,
+    marginBottom: 8,
+    alignItems: 'center',
   },
   label: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: 'rgba(230, 230, 230, 1)', // Cinza bem claro
-    width: 75,
+    fontSize: 14,
+    fontWeight: '800',
+    color: 'rgba(240, 240, 240, 1)', // Quase branco
+    width: 85,
   },
   value: {
-    fontSize: 11,
+    fontSize: 14,
     color: 'rgba(255, 255, 255, 1)', // Branco total
-    fontWeight: '700',
+    fontWeight: '800',
     flex: 1,
   },
   valueHighlight: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: 'rgba(96, 165, 250, 1)', // Azul total
+    fontSize: 14,
+    fontWeight: '900',
+    color: 'rgba(100, 170, 255, 1)', // Azul bem claro
     flex: 1,
   },
   valueUtm: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: 'rgba(52, 211, 153, 1)', // Verde total
+    fontSize: 13,
+    fontWeight: '900',
+    color: 'rgba(60, 220, 160, 1)', // Verde bem claro
     flex: 1,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)', // Divisor mais sutil
-    marginVertical: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)', // Divisor mais visível
+    marginVertical: 6,
   },
 });
