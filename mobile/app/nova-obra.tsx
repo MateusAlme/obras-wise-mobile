@@ -27,6 +27,7 @@ import {
   syncAllPendingObras,
   getPendingObras,
   startAutoSync,
+  updateObraOffline,
 } from '../lib/offline-sync';
 import type { PendingObra } from '../lib/offline-sync';
 import { backupPhoto } from '../lib/photo-backup';
@@ -2308,7 +2309,22 @@ export default function NovaObra() {
       let error;
 
       if (isEditMode && obraId) {
-        // MODO DE EDIÇÃO: Mesclar novas fotos com as existentes
+        // MODO DE EDIÇÃO: Se offline, salvar alterações localmente
+        if (!isConnected) {
+          // MODO OFFLINE: Salvar edições localmente com a função updateObraOffline
+          await updateObraOffline(obraId, obraData, photoIds);
+          await loadPendingObras();
+          
+          Alert.alert(
+            '📱 Alterações Salvas Offline',
+            'Obra atualizada localmente.\n\nSerá sincronizada quando houver internet',
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          setLoading(false);
+          return;
+        }
+
+        // MODO ONLINE: Mesclar novas fotos com as existentes
         // Primeiro buscar a obra atual para pegar fotos existentes
         const { data: obraAtual, error: fetchError } = await supabase
           .from('obras')

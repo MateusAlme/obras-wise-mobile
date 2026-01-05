@@ -40,6 +40,10 @@ export interface PendingObra {
   fotos_transformador_antes_retirar: string[];
   fotos_transformador_tombamento_retirado: string[];
   fotos_transformador_placa_retirado: string[];
+  fotos_transformador_conexoes_primarias_instalado: string[];
+  fotos_transformador_conexoes_secundarias_instalado: string[];
+  fotos_transformador_conexoes_primarias_retirado: string[];
+  fotos_transformador_conexoes_secundarias_retirado: string[];
   fotos_medidor_padrao: string[];
   fotos_medidor_leitura: string[];
   fotos_medidor_selo_born: string[];
@@ -81,6 +85,9 @@ export interface PendingObra {
   sync_status: 'pending' | 'syncing' | 'failed';
   error_message?: string;
   photos_uploaded: boolean; // Nova flag
+  isEdited?: boolean; // Flag para indicar se é uma edição
+  originalId?: string; // ID original da obra no servidor (se for edição)
+  last_modified?: string; // Timestamp da última modificação
 }
 
 export interface SyncStatus {
@@ -110,9 +117,13 @@ type PhotoGroupIds = {
   transformador_tape: string[];
   transformador_placa_instalado: string[];
   transformador_instalado: string[];
+  transformador_conexoes_primarias_instalado: string[];
+  transformador_conexoes_secundarias_instalado: string[];
   transformador_antes_retirar: string[];
   transformador_tombamento_retirado: string[];
   transformador_placa_retirado: string[];
+  transformador_conexoes_primarias_retirado: string[];
+  transformador_conexoes_secundarias_retirado: string[];
   medidor_padrao: string[];
   medidor_leitura: string[];
   medidor_selo_born: string[];
@@ -259,9 +270,13 @@ export const saveObraOffline = async (
       fotos_transformador_tape: photoIds.transformador_tape ?? [],
       fotos_transformador_placa_instalado: photoIds.transformador_placa_instalado ?? [],
       fotos_transformador_instalado: photoIds.transformador_instalado ?? [],
+      fotos_transformador_conexoes_primarias_instalado: photoIds.transformador_conexoes_primarias_instalado ?? [],
+      fotos_transformador_conexoes_secundarias_instalado: photoIds.transformador_conexoes_secundarias_instalado ?? [],
       fotos_transformador_antes_retirar: photoIds.transformador_antes_retirar ?? [],
       fotos_transformador_tombamento_retirado: photoIds.transformador_tombamento_retirado ?? [],
       fotos_transformador_placa_retirado: photoIds.transformador_placa_retirado ?? [],
+      fotos_transformador_conexoes_primarias_retirado: photoIds.transformador_conexoes_primarias_retirado ?? [],
+      fotos_transformador_conexoes_secundarias_retirado: photoIds.transformador_conexoes_secundarias_retirado ?? [],
       fotos_medidor_padrao: photoIds.medidor_padrao ?? [],
       fotos_medidor_leitura: photoIds.medidor_leitura ?? [],
       fotos_medidor_selo_born: photoIds.medidor_selo_born ?? [],
@@ -310,6 +325,184 @@ export const saveObraOffline = async (
     return newObra.id;
   } catch (error) {
     console.error('Erro ao salvar obra offline:', error);
+    throw error;
+  }
+};
+
+/**
+ * Atualiza uma obra offline existente
+ * Usado quando o usuário edita uma obra em modo offline
+ */
+export const updateObraOffline = async (
+  obraId: string,
+  updatedData: Partial<PendingObra>,
+  updatedPhotoIds: Partial<PhotoGroupIds>
+): Promise<void> => {
+  try {
+    console.log('📝 Atualizando obra offline:', obraId);
+
+    // Buscar obras pendentes
+    const pendingObras = await getPendingObras();
+    const obraIndex = pendingObras.findIndex(o => o.id === obraId);
+
+    if (obraIndex === -1) {
+      // Obra não está na lista de pendentes
+      // Criar uma nova entrada de obra editada offline
+      const editedObra: PendingObra = {
+        ...updatedData,
+        id: obraId,
+        isEdited: true,
+        originalId: obraId,
+        last_modified: new Date().toISOString(),
+        sync_status: 'pending',
+        photos_uploaded: false,
+        // Mesclar IDs de fotos
+        fotos_antes: updatedPhotoIds.antes ?? [],
+        fotos_durante: updatedPhotoIds.durante ?? [],
+        fotos_depois: updatedPhotoIds.depois ?? [],
+        fotos_abertura: updatedPhotoIds.abertura ?? [],
+        fotos_fechamento: updatedPhotoIds.fechamento ?? [],
+        fotos_ditais_abertura: updatedPhotoIds.ditais_abertura ?? [],
+        fotos_ditais_impedir: updatedPhotoIds.ditais_impedir ?? [],
+        fotos_ditais_testar: updatedPhotoIds.ditais_testar ?? [],
+        fotos_ditais_aterrar: updatedPhotoIds.ditais_aterrar ?? [],
+        fotos_ditais_sinalizar: updatedPhotoIds.ditais_sinalizar ?? [],
+        fotos_aterramento_vala_aberta: updatedPhotoIds.aterramento_vala_aberta ?? [],
+        fotos_aterramento_hastes: updatedPhotoIds.aterramento_hastes ?? [],
+        fotos_aterramento_vala_fechada: updatedPhotoIds.aterramento_vala_fechada ?? [],
+        fotos_aterramento_medicao: updatedPhotoIds.aterramento_medicao ?? [],
+        fotos_transformador_laudo: updatedPhotoIds.transformador_laudo ?? [],
+        fotos_transformador_componente_instalado: updatedPhotoIds.transformador_componente_instalado ?? [],
+        fotos_transformador_tombamento_instalado: updatedPhotoIds.transformador_tombamento_instalado ?? [],
+        fotos_transformador_tape: updatedPhotoIds.transformador_tape ?? [],
+        fotos_transformador_placa_instalado: updatedPhotoIds.transformador_placa_instalado ?? [],
+        fotos_transformador_instalado: updatedPhotoIds.transformador_instalado ?? [],
+        fotos_transformador_conexoes_primarias_instalado: updatedPhotoIds.transformador_conexoes_primarias_instalado ?? [],
+        fotos_transformador_conexoes_secundarias_instalado: updatedPhotoIds.transformador_conexoes_secundarias_instalado ?? [],
+        fotos_transformador_antes_retirar: updatedPhotoIds.transformador_antes_retirar ?? [],
+        fotos_transformador_tombamento_retirado: updatedPhotoIds.transformador_tombamento_retirado ?? [],
+        fotos_transformador_placa_retirado: updatedPhotoIds.transformador_placa_retirado ?? [],
+        fotos_transformador_conexoes_primarias_retirado: updatedPhotoIds.transformador_conexoes_primarias_retirado ?? [],
+        fotos_transformador_conexoes_secundarias_retirado: updatedPhotoIds.transformador_conexoes_secundarias_retirado ?? [],
+        fotos_medidor_padrao: updatedPhotoIds.medidor_padrao ?? [],
+        fotos_medidor_leitura: updatedPhotoIds.medidor_leitura ?? [],
+        fotos_medidor_selo_born: updatedPhotoIds.medidor_selo_born ?? [],
+        fotos_medidor_selo_caixa: updatedPhotoIds.medidor_selo_caixa ?? [],
+        fotos_medidor_identificador_fase: updatedPhotoIds.medidor_identificador_fase ?? [],
+        fotos_checklist_croqui: updatedPhotoIds.checklist_croqui ?? [],
+        fotos_checklist_panoramica_inicial: updatedPhotoIds.checklist_panoramica_inicial ?? [],
+        fotos_checklist_chede: updatedPhotoIds.checklist_chede ?? [],
+        fotos_checklist_aterramento_cerca: updatedPhotoIds.checklist_aterramento_cerca ?? [],
+        fotos_checklist_padrao_geral: updatedPhotoIds.checklist_padrao_geral ?? [],
+        fotos_checklist_padrao_interno: updatedPhotoIds.checklist_padrao_interno ?? [],
+        fotos_checklist_panoramica_final: updatedPhotoIds.checklist_panoramica_final ?? [],
+        fotos_checklist_postes: updatedPhotoIds.checklist_postes ?? [],
+        fotos_checklist_seccionamentos: updatedPhotoIds.checklist_seccionamentos ?? [],
+        doc_cadastro_medidor: updatedPhotoIds.doc_cadastro_medidor ?? [],
+        doc_laudo_transformador: updatedPhotoIds.doc_laudo_transformador ?? [],
+        doc_laudo_regulador: updatedPhotoIds.doc_laudo_regulador ?? [],
+        doc_laudo_religador: updatedPhotoIds.doc_laudo_religador ?? [],
+        doc_apr: updatedPhotoIds.doc_apr ?? [],
+        doc_fvbt: updatedPhotoIds.doc_fvbt ?? [],
+        doc_termo_desistencia_lpt: updatedPhotoIds.doc_termo_desistencia_lpt ?? [],
+        doc_autorizacao_passagem: updatedPhotoIds.doc_autorizacao_passagem ?? [],
+        fotos_altimetria_lado_fonte: updatedPhotoIds.altimetria_lado_fonte ?? [],
+        fotos_altimetria_medicao_fonte: updatedPhotoIds.altimetria_medicao_fonte ?? [],
+        fotos_altimetria_lado_carga: updatedPhotoIds.altimetria_lado_carga ?? [],
+        fotos_altimetria_medicao_carga: updatedPhotoIds.altimetria_medicao_carga ?? [],
+        fotos_vazamento_evidencia: updatedPhotoIds.vazamento_evidencia ?? [],
+        fotos_vazamento_equipamentos_limpeza: updatedPhotoIds.vazamento_equipamentos_limpeza ?? [],
+        fotos_vazamento_tombamento_retirado: updatedPhotoIds.vazamento_tombamento_retirado ?? [],
+        fotos_vazamento_placa_retirado: updatedPhotoIds.vazamento_placa_retirado ?? [],
+        fotos_vazamento_tombamento_instalado: updatedPhotoIds.vazamento_tombamento_instalado ?? [],
+        fotos_vazamento_placa_instalado: updatedPhotoIds.vazamento_placa_instalado ?? [],
+        fotos_vazamento_instalacao: updatedPhotoIds.vazamento_instalacao ?? [],
+      } as PendingObra;
+
+      pendingObras.push(editedObra);
+      await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(pendingObras));
+      console.log('✅ Obra editada adicionada à fila offline:', obraId);
+      return;
+    }
+
+    // Obra já está na lista de pendentes - atualizar
+    const existingObra = pendingObras[obraIndex];
+
+    // Mesclar dados atualizados
+    const updatedObra: PendingObra = {
+      ...existingObra,
+      ...updatedData,
+      isEdited: true,
+      last_modified: new Date().toISOString(),
+      sync_status: 'pending',
+      // Mesclar IDs de fotos (adicionar novos aos existentes)
+      fotos_antes: [...(existingObra.fotos_antes ?? []), ...(updatedPhotoIds.antes ?? [])],
+      fotos_durante: [...(existingObra.fotos_durante ?? []), ...(updatedPhotoIds.durante ?? [])],
+      fotos_depois: [...(existingObra.fotos_depois ?? []), ...(updatedPhotoIds.depois ?? [])],
+      fotos_abertura: [...(existingObra.fotos_abertura ?? []), ...(updatedPhotoIds.abertura ?? [])],
+      fotos_fechamento: [...(existingObra.fotos_fechamento ?? []), ...(updatedPhotoIds.fechamento ?? [])],
+      fotos_ditais_abertura: [...(existingObra.fotos_ditais_abertura ?? []), ...(updatedPhotoIds.ditais_abertura ?? [])],
+      fotos_ditais_impedir: [...(existingObra.fotos_ditais_impedir ?? []), ...(updatedPhotoIds.ditais_impedir ?? [])],
+      fotos_ditais_testar: [...(existingObra.fotos_ditais_testar ?? []), ...(updatedPhotoIds.ditais_testar ?? [])],
+      fotos_ditais_aterrar: [...(existingObra.fotos_ditais_aterrar ?? []), ...(updatedPhotoIds.ditais_aterrar ?? [])],
+      fotos_ditais_sinalizar: [...(existingObra.fotos_ditais_sinalizar ?? []), ...(updatedPhotoIds.ditais_sinalizar ?? [])],
+      fotos_aterramento_vala_aberta: [...(existingObra.fotos_aterramento_vala_aberta ?? []), ...(updatedPhotoIds.aterramento_vala_aberta ?? [])],
+      fotos_aterramento_hastes: [...(existingObra.fotos_aterramento_hastes ?? []), ...(updatedPhotoIds.aterramento_hastes ?? [])],
+      fotos_aterramento_vala_fechada: [...(existingObra.fotos_aterramento_vala_fechada ?? []), ...(updatedPhotoIds.aterramento_vala_fechada ?? [])],
+      fotos_aterramento_medicao: [...(existingObra.fotos_aterramento_medicao ?? []), ...(updatedPhotoIds.aterramento_medicao ?? [])],
+      fotos_transformador_laudo: [...(existingObra.fotos_transformador_laudo ?? []), ...(updatedPhotoIds.transformador_laudo ?? [])],
+      fotos_transformador_componente_instalado: [...(existingObra.fotos_transformador_componente_instalado ?? []), ...(updatedPhotoIds.transformador_componente_instalado ?? [])],
+      fotos_transformador_tombamento_instalado: [...(existingObra.fotos_transformador_tombamento_instalado ?? []), ...(updatedPhotoIds.transformador_tombamento_instalado ?? [])],
+      fotos_transformador_tape: [...(existingObra.fotos_transformador_tape ?? []), ...(updatedPhotoIds.transformador_tape ?? [])],
+      fotos_transformador_placa_instalado: [...(existingObra.fotos_transformador_placa_instalado ?? []), ...(updatedPhotoIds.transformador_placa_instalado ?? [])],
+      fotos_transformador_instalado: [...(existingObra.fotos_transformador_instalado ?? []), ...(updatedPhotoIds.transformador_instalado ?? [])],
+      fotos_transformador_conexoes_primarias_instalado: [...(existingObra.fotos_transformador_conexoes_primarias_instalado ?? []), ...(updatedPhotoIds.transformador_conexoes_primarias_instalado ?? [])],
+      fotos_transformador_conexoes_secundarias_instalado: [...(existingObra.fotos_transformador_conexoes_secundarias_instalado ?? []), ...(updatedPhotoIds.transformador_conexoes_secundarias_instalado ?? [])],
+      fotos_transformador_antes_retirar: [...(existingObra.fotos_transformador_antes_retirar ?? []), ...(updatedPhotoIds.transformador_antes_retirar ?? [])],
+      fotos_transformador_tombamento_retirado: [...(existingObra.fotos_transformador_tombamento_retirado ?? []), ...(updatedPhotoIds.transformador_tombamento_retirado ?? [])],
+      fotos_transformador_placa_retirado: [...(existingObra.fotos_transformador_placa_retirado ?? []), ...(updatedPhotoIds.transformador_placa_retirado ?? [])],
+      fotos_transformador_conexoes_primarias_retirado: [...(existingObra.fotos_transformador_conexoes_primarias_retirado ?? []), ...(updatedPhotoIds.transformador_conexoes_primarias_retirado ?? [])],
+      fotos_transformador_conexoes_secundarias_retirado: [...(existingObra.fotos_transformador_conexoes_secundarias_retirado ?? []), ...(updatedPhotoIds.transformador_conexoes_secundarias_retirado ?? [])],
+      fotos_medidor_padrao: [...(existingObra.fotos_medidor_padrao ?? []), ...(updatedPhotoIds.medidor_padrao ?? [])],
+      fotos_medidor_leitura: [...(existingObra.fotos_medidor_leitura ?? []), ...(updatedPhotoIds.medidor_leitura ?? [])],
+      fotos_medidor_selo_born: [...(existingObra.fotos_medidor_selo_born ?? []), ...(updatedPhotoIds.medidor_selo_born ?? [])],
+      fotos_medidor_selo_caixa: [...(existingObra.fotos_medidor_selo_caixa ?? []), ...(updatedPhotoIds.medidor_selo_caixa ?? [])],
+      fotos_medidor_identificador_fase: [...(existingObra.fotos_medidor_identificador_fase ?? []), ...(updatedPhotoIds.medidor_identificador_fase ?? [])],
+      fotos_checklist_croqui: [...(existingObra.fotos_checklist_croqui ?? []), ...(updatedPhotoIds.checklist_croqui ?? [])],
+      fotos_checklist_panoramica_inicial: [...(existingObra.fotos_checklist_panoramica_inicial ?? []), ...(updatedPhotoIds.checklist_panoramica_inicial ?? [])],
+      fotos_checklist_chede: [...(existingObra.fotos_checklist_chede ?? []), ...(updatedPhotoIds.checklist_chede ?? [])],
+      fotos_checklist_aterramento_cerca: [...(existingObra.fotos_checklist_aterramento_cerca ?? []), ...(updatedPhotoIds.checklist_aterramento_cerca ?? [])],
+      fotos_checklist_padrao_geral: [...(existingObra.fotos_checklist_padrao_geral ?? []), ...(updatedPhotoIds.checklist_padrao_geral ?? [])],
+      fotos_checklist_padrao_interno: [...(existingObra.fotos_checklist_padrao_interno ?? []), ...(updatedPhotoIds.checklist_padrao_interno ?? [])],
+      fotos_checklist_panoramica_final: [...(existingObra.fotos_checklist_panoramica_final ?? []), ...(updatedPhotoIds.checklist_panoramica_final ?? [])],
+      fotos_checklist_postes: [...(existingObra.fotos_checklist_postes ?? []), ...(updatedPhotoIds.checklist_postes ?? [])],
+      fotos_checklist_seccionamentos: [...(existingObra.fotos_checklist_seccionamentos ?? []), ...(updatedPhotoIds.checklist_seccionamentos ?? [])],
+      doc_cadastro_medidor: [...(existingObra.doc_cadastro_medidor ?? []), ...(updatedPhotoIds.doc_cadastro_medidor ?? [])],
+      doc_laudo_transformador: [...(existingObra.doc_laudo_transformador ?? []), ...(updatedPhotoIds.doc_laudo_transformador ?? [])],
+      doc_laudo_regulador: [...(existingObra.doc_laudo_regulador ?? []), ...(updatedPhotoIds.doc_laudo_regulador ?? [])],
+      doc_laudo_religador: [...(existingObra.doc_laudo_religador ?? []), ...(updatedPhotoIds.doc_laudo_religador ?? [])],
+      doc_apr: [...(existingObra.doc_apr ?? []), ...(updatedPhotoIds.doc_apr ?? [])],
+      doc_fvbt: [...(existingObra.doc_fvbt ?? []), ...(updatedPhotoIds.doc_fvbt ?? [])],
+      doc_termo_desistencia_lpt: [...(existingObra.doc_termo_desistencia_lpt ?? []), ...(updatedPhotoIds.doc_termo_desistencia_lpt ?? [])],
+      doc_autorizacao_passagem: [...(existingObra.doc_autorizacao_passagem ?? []), ...(updatedPhotoIds.doc_autorizacao_passagem ?? [])],
+      fotos_altimetria_lado_fonte: [...(existingObra.fotos_altimetria_lado_fonte ?? []), ...(updatedPhotoIds.altimetria_lado_fonte ?? [])],
+      fotos_altimetria_medicao_fonte: [...(existingObra.fotos_altimetria_medicao_fonte ?? []), ...(updatedPhotoIds.altimetria_medicao_fonte ?? [])],
+      fotos_altimetria_lado_carga: [...(existingObra.fotos_altimetria_lado_carga ?? []), ...(updatedPhotoIds.altimetria_lado_carga ?? [])],
+      fotos_altimetria_medicao_carga: [...(existingObra.fotos_altimetria_medicao_carga ?? []), ...(updatedPhotoIds.altimetria_medicao_carga ?? [])],
+      fotos_vazamento_evidencia: [...(existingObra.fotos_vazamento_evidencia ?? []), ...(updatedPhotoIds.vazamento_evidencia ?? [])],
+      fotos_vazamento_equipamentos_limpeza: [...(existingObra.fotos_vazamento_equipamentos_limpeza ?? []), ...(updatedPhotoIds.vazamento_equipamentos_limpeza ?? [])],
+      fotos_vazamento_tombamento_retirado: [...(existingObra.fotos_vazamento_tombamento_retirado ?? []), ...(updatedPhotoIds.vazamento_tombamento_retirado ?? [])],
+      fotos_vazamento_placa_retirado: [...(existingObra.fotos_vazamento_placa_retirado ?? []), ...(updatedPhotoIds.vazamento_placa_retirado ?? [])],
+      fotos_vazamento_tombamento_instalado: [...(existingObra.fotos_vazamento_tombamento_instalado ?? []), ...(updatedPhotoIds.vazamento_tombamento_instalado ?? [])],
+      fotos_vazamento_placa_instalado: [...(existingObra.fotos_vazamento_placa_instalado ?? []), ...(updatedPhotoIds.vazamento_placa_instalado ?? [])],
+      fotos_vazamento_instalacao: [...(existingObra.fotos_vazamento_instalacao ?? []), ...(updatedPhotoIds.vazamento_instalacao ?? [])],
+    };
+
+    pendingObras[obraIndex] = updatedObra;
+    await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(pendingObras));
+    console.log('✅ Obra offline atualizada:', obraId);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar obra offline:', error);
     throw error;
   }
 };
