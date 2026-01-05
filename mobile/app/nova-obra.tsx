@@ -147,9 +147,10 @@ export default function NovaObra() {
   const [fotosChecklistPadraoInterno, setFotosChecklistPadraoInterno] = useState<FotoData[]>([]);
   const [fotosChecklistPanoramicaFinal, setFotosChecklistPanoramicaFinal] = useState<FotoData[]>([]);
 
-  // Estados dinâmicos para Postes (cada poste tem 4 fotos)
+  // Estados dinâmicos para Postes (cada poste tem status e fotos)
   const [numPostes, setNumPostes] = useState(1);
   const [fotosPostes, setFotosPostes] = useState<Array<{
+    status: 'instalado' | 'retirado' | ''; // Status do poste
     posteInteiro: FotoData[];
     engaste: FotoData[];
     conexao1: FotoData[];
@@ -157,6 +158,7 @@ export default function NovaObra() {
     maiorEsforco: FotoData[];
     menorEsforco: FotoData[];
   }>>([{
+    status: '', // Sem status inicial
     posteInteiro: [],
     engaste: [],
     conexao1: [],
@@ -1534,6 +1536,62 @@ export default function NovaObra() {
           ]
         );
         return;
+      }
+    }
+
+    // CHECKLIST DE FISCALIZAÇÃO - Validação de status e fotos dos postes
+    if (isServicoChecklist) {
+      // Validar cada poste
+      for (let i = 0; i < fotosPostes.length; i++) {
+        const poste = fotosPostes[i];
+
+        // Verificar se status foi selecionado
+        if (!poste.status) {
+          Alert.alert(
+            'Status Obrigatório',
+            `Selecione o status (Instalado ou Retirado) para o Poste ${i + 1}`
+          );
+          return;
+        }
+
+        // Se RETIRADO: mínimo 2 fotos de Poste Inteiro
+        if (poste.status === 'retirado') {
+          if (poste.posteInteiro.length < 2) {
+            Alert.alert(
+              'Fotos Obrigatórias',
+              `Poste ${i + 1} (Retirado): Adicione pelo menos 2 fotos do Poste Inteiro.\n\nAtual: ${poste.posteInteiro.length}/2`
+            );
+            return;
+          }
+        }
+
+        // Se INSTALADO: todas as fotos obrigatórias
+        if (poste.status === 'instalado') {
+          if (poste.posteInteiro.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione foto do Poste Inteiro`);
+            return;
+          }
+          if (poste.engaste.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione foto do Engaste`);
+            return;
+          }
+          if (poste.conexao1.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione foto da Conexão 1`);
+            return;
+          }
+          if (poste.conexao2.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione foto da Conexão 2`);
+            return;
+          }
+          if (poste.maiorEsforco.length < 2) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione 2 fotos do Maior Esforço (${poste.maiorEsforco.length}/2)`);
+            return;
+          }
+          if (poste.menorEsforco.length < 2) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione 2 fotos do Menor Esforço (${poste.menorEsforco.length}/2)`);
+            return;
+          }
+        }
       }
     }
 
@@ -4662,6 +4720,7 @@ export default function NovaObra() {
                       onPress={() => {
                         setNumPostes(numPostes + 1);
                         setFotosPostes([...fotosPostes, {
+                          status: '', // Novo poste sem status
                           posteInteiro: [],
                           engaste: [],
                           conexao1: [],
@@ -4679,25 +4738,80 @@ export default function NovaObra() {
                     <View key={posteIndex} style={styles.posteCard}>
                       <Text style={styles.posteTitle}>
                         Poste {posteIndex + 1}
-                        {poste.posteInteiro.length > 0 && poste.engaste.length > 0 &&
+                        {poste.status === 'instalado' && poste.posteInteiro.length > 0 && poste.engaste.length > 0 &&
                          poste.conexao1.length > 0 && poste.conexao2.length > 0 &&
                          poste.maiorEsforco.length >= 2 && poste.menorEsforco.length >= 2 && ' ✓'}
+                        {poste.status === 'retirado' && poste.posteInteiro.length >= 2 && ' ✓'}
                       </Text>
 
+                      {/* Seleção de Status: Instalado ou Retirado */}
+                      <View style={styles.posteStatusSection}>
+                        <Text style={styles.posteStatusLabel}>Status do Poste *</Text>
+                        <View style={styles.posteStatusButtons}>
+                          <TouchableOpacity
+                            style={[
+                              styles.posteStatusButton,
+                              poste.status === 'instalado' && styles.posteStatusButtonActive
+                            ]}
+                            onPress={() => {
+                              const newPostes = [...fotosPostes];
+                              newPostes[posteIndex].status = 'instalado';
+                              setFotosPostes(newPostes);
+                            }}
+                          >
+                            <Text style={[
+                              styles.posteStatusButtonText,
+                              poste.status === 'instalado' && styles.posteStatusButtonTextActive
+                            ]}>
+                              🔧 Instalado
+                            </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.posteStatusButton,
+                              poste.status === 'retirado' && styles.posteStatusButtonActive
+                            ]}
+                            onPress={() => {
+                              const newPostes = [...fotosPostes];
+                              newPostes[posteIndex].status = 'retirado';
+                              setFotosPostes(newPostes);
+                            }}
+                          >
+                            <Text style={[
+                              styles.posteStatusButtonText,
+                              poste.status === 'retirado' && styles.posteStatusButtonTextActive
+                            ]}>
+                              🔨 Retirado
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                        {!poste.status && (
+                          <Text style={styles.hint}>Selecione o status antes de adicionar fotos</Text>
+                        )}
+                      </View>
+
                       {/* Poste Inteiro */}
-                      <View style={styles.postePhotoSection}>
-                        <Text style={styles.postePhotoLabel}>
-                          📸 Poste Inteiro {poste.posteInteiro.length > 0 && '✓'}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.photoButtonSmall}
-                          onPress={() => takePicture('checklist_poste_inteiro', posteIndex)}
-                          disabled={loading || uploadingPhoto || poste.posteInteiro.length >= 1}
-                        >
-                          <Text style={styles.photoButtonTextSmall}>
-                            {poste.posteInteiro.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                      {poste.status && (
+                        <View style={styles.postePhotoSection}>
+                          <Text style={styles.postePhotoLabel}>
+                            📸 Poste Inteiro ({poste.posteInteiro.length}/{poste.status === 'retirado' ? '2' : '1'})
+                            {poste.status === 'retirado' && poste.posteInteiro.length >= 2 && ' ✓'}
+                            {poste.status === 'instalado' && poste.posteInteiro.length >= 1 && ' ✓'}
                           </Text>
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.photoButtonSmall}
+                            onPress={() => takePicture('checklist_poste_inteiro', posteIndex)}
+                            disabled={loading || uploadingPhoto ||
+                              (poste.status === 'retirado' ? poste.posteInteiro.length >= 2 : poste.posteInteiro.length >= 1)}
+                          >
+                            <Text style={styles.photoButtonTextSmall}>
+                              {poste.status === 'retirado'
+                                ? (poste.posteInteiro.length >= 2 ? '✓ Completo (2/2)' : `+ Adicionar (${poste.posteInteiro.length}/2)`)
+                                : (poste.posteInteiro.length >= 1 ? '✓ Adicionada' : '+ Adicionar')
+                              }
+                            </Text>
+                          </TouchableOpacity>
                         {poste.posteInteiro.length > 0 && (
                           <View style={styles.photoGrid}>
                             {poste.posteInteiro.map((foto, fotoIndex) => (
@@ -4726,8 +4840,12 @@ export default function NovaObra() {
                             ))}
                           </View>
                         )}
-                      </View>
+                        </View>
+                      )}
 
+                      {/* Seções exclusivas para INSTALADO */}
+                      {poste.status === 'instalado' && (
+                        <>
                       {/* Engaste */}
                       <View style={styles.postePhotoSection}>
                         <Text style={styles.postePhotoLabel}>
@@ -4947,6 +5065,8 @@ export default function NovaObra() {
                           </View>
                         )}
                       </View>
+                        </>
+                      )}
 
                       {/* Botão Remover Poste */}
                       <TouchableOpacity
@@ -6686,6 +6806,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#78350f',
     marginBottom: 14,
+  },
+  posteStatusSection: {
+    marginBottom: 16,
+  },
+  posteStatusLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#92400e',
+    marginBottom: 10,
+  },
+  posteStatusButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  posteStatusButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+  },
+  posteStatusButtonActive: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+    borderWidth: 3,
+  },
+  posteStatusButtonText: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  posteStatusButtonTextActive: {
+    color: '#78350f',
+    fontWeight: '800',
   },
   posteCardTitle: {
     fontSize: 17,
