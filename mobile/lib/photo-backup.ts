@@ -15,13 +15,17 @@ export interface PhotoMetadata {
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
     'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
+    'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' | 'checklist_aterramento_cerca' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' |
     'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
-    'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' |
+    'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem' |
+    'doc_materiais_previsto' | 'doc_materiais_realizado' |
     'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' |
     'vazamento_placa_retirado' | 'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' |
