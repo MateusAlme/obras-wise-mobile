@@ -2,6 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 
@@ -9,6 +10,10 @@ export default function Sidebar() {
   const { profile, signOut, isAdmin } = useAuth()
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
+  const logoSrc = collapsed ? '/logo-teccel.png' : '/logo_teccel.png'
+  const logoWidth = collapsed ? 54 : 160
+  const logoHeight = collapsed ? 125 : 40
+  const logoClassName = collapsed ? 'h-9 w-auto' : 'h-7 w-auto'
 
   const navItems = [
     {
@@ -20,6 +25,27 @@ export default function Sidebar() {
         </svg>
       ),
       description: 'Visão geral'
+    },
+    {
+      name: 'Acompanhamento',
+      path: '/acompanhamento',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+      ),
+      description: 'Status e cobrança'
+    },
+    {
+      name: 'Equipes',
+      path: '/teams',
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      ),
+      description: 'Gerenciar equipes',
+      adminOnly: true
     },
     {
       name: 'Relatórios',
@@ -55,28 +81,20 @@ export default function Sidebar() {
         }`}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
-          {!collapsed && (
-            <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
-              <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center shadow-md">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Obras Teccel</h1>
-                <p className="text-xs text-gray-500 -mt-0.5">Gestão de Obras</p>
-              </div>
-            </Link>
-          )}
-
-          {collapsed && (
-            <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center shadow-md mx-auto">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-              </svg>
-            </div>
-          )}
+        <div className="h-16 flex items-center justify-center px-4 border-b border-gray-200">
+          <Link
+            href="/dashboard"
+            className="flex w-full items-center justify-center py-1 transition-opacity hover:opacity-90"
+          >
+            <Image
+              src={logoSrc}
+              alt="Teccel Engenharia"
+              width={logoWidth}
+              height={logoHeight}
+              className={`${logoClassName} transition-all duration-300`}
+              priority
+            />
+          </Link>
         </div>
 
         {/* Navigation */}

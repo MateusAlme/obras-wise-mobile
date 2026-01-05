@@ -19,6 +19,7 @@ export default function AcompanhamentoPage() {
   const [searchObra, setSearchObra] = useState('')
   const [selectedTipoServico, setSelectedTipoServico] = useState('todos')
   const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; title: string } | null>(null)
 
   useEffect(() => {
     loadObras()
@@ -713,6 +714,17 @@ export default function AcompanhamentoPage() {
                             <div className="absolute top-2 left-2 bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
                               #{idx + 1}
                             </div>
+                            {/* Botão Visualizar */}
+                            <button
+                              onClick={() => setSelectedPhoto({ url: foto.url, title: `Foto Antes #${idx + 1}` })}
+                              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white text-slate-800 px-3 py-1.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 flex items-center gap-1.5 text-sm font-semibold hover:bg-blue-50"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              Visualizar
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -742,6 +754,17 @@ export default function AcompanhamentoPage() {
                             <div className="absolute top-2 left-2 bg-yellow-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
                               #{idx + 1}
                             </div>
+                            {/* Botão Visualizar */}
+                            <button
+                              onClick={() => setSelectedPhoto({ url: foto.url, title: `Foto Durante #${idx + 1}` })}
+                              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white text-slate-800 px-3 py-1.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 flex items-center gap-1.5 text-sm font-semibold hover:bg-blue-50"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              Visualizar
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -771,6 +794,17 @@ export default function AcompanhamentoPage() {
                             <div className="absolute top-2 left-2 bg-green-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
                               #{idx + 1}
                             </div>
+                            {/* Botão Visualizar */}
+                            <button
+                              onClick={() => setSelectedPhoto({ url: foto.url, title: `Foto Depois #${idx + 1}` })}
+                              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white text-slate-800 px-3 py-1.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 flex items-center gap-1.5 text-sm font-semibold hover:bg-blue-50"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              Visualizar
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -800,6 +834,17 @@ export default function AcompanhamentoPage() {
                             <div className="absolute top-2 left-2 bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
                               #{idx + 1}
                             </div>
+                            {/* Botão Visualizar */}
+                            <button
+                              onClick={() => setSelectedPhoto({ url: foto.url, title: `Foto Abertura #${idx + 1}` })}
+                              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white text-slate-800 px-3 py-1.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 flex items-center gap-1.5 text-sm font-semibold hover:bg-blue-50"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              Visualizar
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -829,12 +874,70 @@ export default function AcompanhamentoPage() {
                             <div className="absolute top-2 left-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg">
                               #{idx + 1}
                             </div>
+                            {/* Botão Visualizar */}
+                            <button
+                              onClick={() => setSelectedPhoto({ url: foto.url, title: `Foto Fechamento #${idx + 1}` })}
+                              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white text-slate-800 px-3 py-1.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-2 group-hover:translate-y-0 flex items-center gap-1.5 text-sm font-semibold hover:bg-blue-50"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                              Visualizar
+                            </button>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Visualização de Foto */}
+        {selectedPhoto && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/90" onClick={() => setSelectedPhoto(null)}>
+            <div className="relative max-w-6xl w-full max-h-[90vh] bg-white rounded-2xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              {/* Header */}
+              <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white px-6 py-4 flex items-center justify-between">
+                <h3 className="text-xl font-bold">{selectedPhoto.title}</h3>
+                <div className="flex items-center gap-2">
+                  {/* Botão Baixar */}
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a')
+                      link.href = selectedPhoto.url
+                      link.download = `${selectedPhoto.title.replace(/\s+/g, '_')}.jpg`
+                      link.click()
+                    }}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center gap-2 transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Baixar
+                  </button>
+                  {/* Botão Fechar */}
+                  <button
+                    onClick={() => setSelectedPhoto(null)}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Imagem */}
+              <div className="p-6 bg-slate-100 flex items-center justify-center" style={{ maxHeight: 'calc(90vh - 80px)' }}>
+                <img
+                  src={selectedPhoto.url}
+                  alt={selectedPhoto.title}
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                />
               </div>
             </div>
           </div>

@@ -1796,13 +1796,8 @@ export default function NovaObra() {
         ...photoIds.doc_autorizacao_passagem
       ];
 
-      // Adicionar à fila
-      for (const photoId of allPhotoIds) {
-        await addToUploadQueue(photoId, tempObraId);
-      }
-
-      // Processar uploads
-      const uploadResult = await processObraPhotos(tempObraId);
+      // Processar uploads (a função já adiciona à fila internamente)
+      const uploadResult = await processObraPhotos(tempObraId, undefined, allPhotoIds);
 
       if (uploadResult.failed > 0) {
         const totalPhotos = uploadResult.success + uploadResult.failed;

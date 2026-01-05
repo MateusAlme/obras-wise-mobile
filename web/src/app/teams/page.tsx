@@ -5,27 +5,32 @@ import { supabase } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import Sidebar from '@/components/Sidebar'
 
-interface Team {
+interface TeamCredential {
   id: string
-  nome: string
+  equipe_codigo: string
+  ativo: boolean
   created_at: string
+  updated_at: string
 }
 
 interface TeamStats {
-  nome: string
+  equipe_codigo: string
   total_obras: number
-  obras_com_atipicidade: number
-  total_fotos: number
 }
 
 export default function TeamsPage() {
-  const [teams, setTeams] = useState<Team[]>([])
+  const [teams, setTeams] = useState<TeamCredential[]>([])
   const [teamStats, setTeamStats] = useState<TeamStats[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [editingTeam, setEditingTeam] = useState<Team | null>(null)
-  const [teamName, setTeamName] = useState('')
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<TeamCredential | null>(null)
+  const [teamCode, setTeamCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     loadTeamsAndStats()
@@ -33,11 +38,11 @@ export default function TeamsPage() {
 
   async function loadTeamsAndStats() {
     try {
-      // Carregar equipes
+      // Carregar credenciais de equipes
       const { data: teamsData, error: teamsError } = await supabase
-        .from('equipes')
+        .from('equipe_credenciais')
         .select('*')
-        .order('nome')
+        .order('equipe_codigo')
 
       if (teamsError) throw teamsError
       setTeams(teamsData || [])
@@ -45,34 +50,25 @@ export default function TeamsPage() {
       // Carregar estatísticas de obras por equipe
       const { data: obrasData, error: obrasError } = await supabase
         .from('obras')
-        .select('equipe, tem_atipicidade, fotos_antes, fotos_durante, fotos_depois')
+        .select('equipe')
 
       if (obrasError) throw obrasError
 
       // Calcular estatísticas
-      const stats: { [key: string]: TeamStats } = {}
-
+      const stats: { [key: string]: number } = {}
       obrasData?.forEach((obra) => {
         if (!stats[obra.equipe]) {
-          stats[obra.equipe] = {
-            nome: obra.equipe,
-            total_obras: 0,
-            obras_com_atipicidade: 0,
-            total_fotos: 0,
-          }
+          stats[obra.equipe] = 0
         }
-
-        stats[obra.equipe].total_obras++
-        if (obra.tem_atipicidade) stats[obra.equipe].obras_com_atipicidade++
-
-        const fotosCount =
-          (obra.fotos_antes?.length || 0) +
-          (obra.fotos_durante?.length || 0) +
-          (obra.fotos_depois?.length || 0)
-        stats[obra.equipe].total_fotos += fotosCount
+        stats[obra.equipe]++
       })
 
-      setTeamStats(Object.values(stats).sort((a, b) => b.total_obras - a.total_obras))
+      const statsArray = Object.entries(stats).map(([equipe_codigo, total_obras]) => ({
+        equipe_codigo,
+        total_obras,
+      }))
+
+      setTeamStats(statsArray)
     } catch (error) {
       console.error('Erro ao carregar equipes:', error)
     } finally {
@@ -80,37 +76,86 @@ export default function TeamsPage() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleCreateTeam(e: React.FormEvent) {
     e.preventDefault()
     setError('')
 
-    if (!teamName.trim()) {
-      setError('Digite o nome da equipe')
+    if (!teamCode.trim()) {
+      setError('Digite o código da equipe')
+      return
+    }
+
+    if (!password.trim() || password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres')
+      return
+    }
+
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem')
       return
     }
 
     try {
-      if (editingTeam) {
-        // Atualizar equipe
-        const { error } = await supabase
-          .from('equipes')
-          .update({ nome: teamName.trim() })
-          .eq('id', editingTeam.id)
+      // Criar equipe usando a função do banco
+      const { data, error } = await supabase.rpc('criar_equipe_com_senha', {
+        p_equipe_codigo: teamCode.trim().toUpperCase(),
+        p_senha: password,
+      })
 
-        if (error) throw error
-      } else {
-        // Criar nova equipe
-        const { error } = await supabase
-          .from('equipes')
-          .insert([{ nome: teamName.trim() }])
-
-        if (error) throw error
-      }
+      if (error) throw error
 
       await loadTeamsAndStats()
       closeModal()
     } catch (error: any) {
-      setError(error.message || 'Erro ao salvar equipe')
+      console.error('Erro ao criar equipe:', error)
+      setError(error.message || 'Erro ao criar equipe')
+    }
+  }
+
+  async function handleChangePassword(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+
+    if (!newPassword.trim() || newPassword.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setError('As senhas não coincidem')
+      return
+    }
+
+    if (!editingTeam) return
+
+    try {
+      // Resetar senha usando função admin
+      const { data, error } = await supabase.rpc('admin_resetar_senha_equipe', {
+        p_equipe_codigo: editingTeam.equipe_codigo,
+        p_senha_nova: newPassword,
+      })
+
+      if (error) throw error
+
+      await loadTeamsAndStats()
+      closePasswordModal()
+    } catch (error: any) {
+      console.error('Erro ao alterar senha:', error)
+      setError(error.message || 'Erro ao alterar senha')
+    }
+  }
+
+  async function handleToggleStatus(team: TeamCredential) {
+    try {
+      const { error } = await supabase
+        .from('equipe_credenciais')
+        .update({ ativo: !team.ativo })
+        .eq('id', team.id)
+
+      if (error) throw error
+      await loadTeamsAndStats()
+    } catch (error: any) {
+      alert('Erro ao alterar status: ' + error.message)
     }
   }
 
@@ -119,7 +164,7 @@ export default function TeamsPage() {
 
     try {
       const { error } = await supabase
-        .from('equipes')
+        .from('equipe_credenciais')
         .delete()
         .eq('id', teamId)
 
@@ -130,30 +175,53 @@ export default function TeamsPage() {
     }
   }
 
-  function openModal(team?: Team) {
-    if (team) {
-      setEditingTeam(team)
-      setTeamName(team.nome)
-    } else {
-      setEditingTeam(null)
-      setTeamName('')
-    }
+  function openModal() {
+    setTeamCode('')
+    setPassword('')
+    setConfirmPassword('')
     setError('')
     setShowModal(true)
   }
 
   function closeModal() {
     setShowModal(false)
-    setEditingTeam(null)
-    setTeamName('')
+    setTeamCode('')
+    setPassword('')
+    setConfirmPassword('')
     setError('')
   }
+
+  function openPasswordModal(team: TeamCredential) {
+    setEditingTeam(team)
+    setNewPassword('')
+    setConfirmPassword('')
+    setError('')
+    setShowPasswordModal(true)
+  }
+
+  function closePasswordModal() {
+    setShowPasswordModal(false)
+    setEditingTeam(null)
+    setNewPassword('')
+    setConfirmPassword('')
+    setError('')
+  }
+
+  const filteredTeams = teams.filter((team) =>
+    team.equipe_codigo.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const activeTeams = teams.filter((t) => t.ativo).length
+  const inactiveTeams = teams.filter((t) => !t.ativo).length
 
   if (loading) {
     return (
       <ProtectedRoute requireAdmin>
         <div className="min-h-screen flex items-center justify-center">
-          <p className="text-xl text-gray-600">Carregando equipes...</p>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="text-xl text-gray-600 mt-4">Carregando equipes...</p>
+          </div>
         </div>
       </ProtectedRoute>
     )
@@ -161,26 +229,23 @@ export default function TeamsPage() {
 
   return (
     <ProtectedRoute requireAdmin>
-      <div className="min-h-screen bg-gray-50 flex">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
         <Sidebar />
 
-        <div className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex-1 px-6 lg:px-10 py-8">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Gerenciamento de Equipes</h1>
-              <p className="text-gray-600 mt-1 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                Criar e gerenciar equipes de trabalho
+              <h1 className="text-4xl font-bold text-slate-900 mb-2">Gerenciar Equipes</h1>
+              <p className="text-lg text-slate-600">
+                Criar, editar e gerenciar equipes do sistema
               </p>
             </div>
             <button
-              onClick={() => openModal()}
-              className="px-5 py-2.5 bg-primary text-white rounded-xl hover:bg-primary-dark transition-all shadow-lg hover:shadow-xl flex items-center gap-2 font-semibold"
+              onClick={openModal}
+              className="px-6 py-3.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl hover:shadow-xl hover:scale-105 transition-all flex items-center gap-3 font-bold text-lg shadow-lg shadow-primary/30"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               Nova Equipe
@@ -189,198 +254,381 @@ export default function TeamsPage() {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-xl shadow-lg text-white">
-              <h3 className="text-blue-100 text-sm font-medium">Total de Equipes</h3>
-              <p className="text-4xl font-bold mt-2">{teams.length}</p>
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 hover:shadow-xl transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-slate-600 text-sm font-semibold uppercase tracking-wide mb-1">
+                Total de Equipes
+              </h3>
+              <p className="text-4xl font-bold text-slate-900">{teams.length}</p>
             </div>
-            <div className="bg-gradient-to-br from-green-500 to-green-600 p-6 rounded-xl shadow-lg text-white">
-              <h3 className="text-green-100 text-sm font-medium">Equipes Ativas</h3>
-              <p className="text-4xl font-bold mt-2">{teamStats.filter(t => t.total_obras > 0).length}</p>
-              <p className="text-green-100 text-xs mt-1">com obras registradas</p>
+
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 hover:shadow-xl transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-slate-600 text-sm font-semibold uppercase tracking-wide mb-1">
+                Equipes Ativas
+              </h3>
+              <p className="text-4xl font-bold text-green-600">{activeTeams}</p>
             </div>
-            <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-6 rounded-xl shadow-lg text-white">
-              <h3 className="text-purple-100 text-sm font-medium">Total de Obras</h3>
-              <p className="text-4xl font-bold mt-2">{teamStats.reduce((acc, t) => acc + t.total_obras, 0)}</p>
+
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 hover:shadow-xl transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-slate-600 text-sm font-semibold uppercase tracking-wide mb-1">
+                Equipes Inativas
+              </h3>
+              <p className="text-4xl font-bold text-slate-600">{inactiveTeams}</p>
             </div>
           </div>
 
-          {/* Teams Performance Table */}
-          <div className="bg-white rounded-xl shadow-md border border-gray-100 mb-8 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-900">Desempenho por Equipe</h2>
+          {/* Search Bar */}
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 mb-6">
+            <div className="relative">
+              <svg
+                className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
+              </svg>
+              <input
+                type="text"
+                placeholder="Buscar equipe..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-14 pr-4 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              />
             </div>
+          </div>
+
+          {/* Teams Table */}
+          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+              <table className="min-w-full">
+                <thead className="bg-slate-50 border-b-2 border-slate-200">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">
                       Equipe
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">
                       Total de Obras
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Com Atipicidades
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">
+                      Criado em
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total de Fotos
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Média de Fotos
+                    <th className="px-6 py-4 text-center text-sm font-bold text-slate-700 uppercase tracking-wider">
+                      Ações
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {teamStats.map((team) => (
-                    <tr key={team.nome} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0 h-10 w-10 bg-primary text-white rounded-full flex items-center justify-center font-semibold">
-                            {team.nome[0].toUpperCase()}
+                <tbody className="divide-y divide-slate-200">
+                  {filteredTeams.map((team) => {
+                    const stats = teamStats.find((s) => s.equipe_codigo === team.equipe_codigo)
+                    const totalObras = stats?.total_obras || 0
+
+                    return (
+                      <tr key={team.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md">
+                              {team.equipe_codigo.substring(0, 2)}
+                            </div>
+                            <div>
+                              <div className="text-base font-bold text-slate-900">{team.equipe_codigo}</div>
+                            </div>
                           </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">{team.nome}</div>
+                        </td>
+                        <td className="px-6 py-5">
+                          {team.ativo ? (
+                            <span className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-semibold">
+                              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                              Ativo
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-full text-sm font-semibold">
+                              <span className="w-2 h-2 bg-slate-400 rounded-full"></span>
+                              Inativo
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-base font-bold text-slate-900">{totalObras}</span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <span className="text-sm text-slate-600">
+                            {new Date(team.created_at).toLocaleDateString('pt-BR')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => openPasswordModal(team)}
+                              className="p-2.5 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                              title="Alterar Senha"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleToggleStatus(team)}
+                              className={`p-2.5 rounded-xl transition-colors ${
+                                team.ativo
+                                  ? 'text-orange-600 hover:bg-orange-50'
+                                  : 'text-green-600 hover:bg-green-50'
+                              }`}
+                              title={team.ativo ? 'Desativar' : 'Ativar'}
+                            >
+                              {team.ativo ? (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                                  />
+                                </svg>
+                              ) : (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                  />
+                                </svg>
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(team.id)}
+                              className="p-2.5 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                              title="Excluir"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                            </button>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm font-semibold text-gray-900">{team.total_obras}</span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-900">{team.obras_com_atipicidade}</span>
-                        <span className="text-xs text-gray-500 ml-1">
-                          ({team.total_obras > 0 ? Math.round((team.obras_com_atipicidade / team.total_obras) * 100) : 0}%)
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {team.total_fotos}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {team.total_obras > 0 ? Math.round(team.total_fotos / team.total_obras) : 0}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {teamStats.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-gray-500">Nenhuma equipe com obras registradas</p>
+            {filteredTeams.length === 0 && (
+              <div className="text-center py-16">
+                <svg
+                  className="w-20 h-20 text-slate-300 mx-auto mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                  />
+                </svg>
+                <p className="text-xl text-slate-500 font-medium">Nenhuma equipe encontrada</p>
               </div>
             )}
           </div>
-
-          {/* Teams List */}
-          <div className="bg-white rounded-xl shadow-md border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-900">Todas as Equipes</h2>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {teams.map((team) => (
-                  <div
-                    key={team.id}
-                    className="p-4 border border-gray-200 rounded-lg hover:border-primary hover:shadow-md transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary-dark rounded-full flex items-center justify-center text-white font-semibold">
-                          {team.nome[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{team.nome}</h3>
-                          <p className="text-xs text-gray-500">
-                            {teamStats.find(s => s.nome === team.nome)?.total_obras || 0} obras
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openModal(team)}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Editar"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(team.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Excluir"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {teams.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">Nenhuma equipe cadastrada</p>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
 
-        {/* Modal */}
+        {/* Modal - Nova Equipe */}
         {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl max-w-md w-full p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {editingTeam ? 'Editar Equipe' : 'Nova Equipe'}
-                </h2>
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-slate-900">Nova Equipe</h2>
                 <button
                   onClick={closeModal}
-                  className="text-gray-500 hover:text-gray-700"
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleCreateTeam} className="space-y-6">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Nome da Equipe
+                  <label className="block text-base font-bold text-slate-900 mb-3">
+                    Código da Equipe
                   </label>
                   <input
                     type="text"
                     required
-                    value={teamName}
-                    onChange={(e) => setTeamName(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent"
-                    placeholder="Ex: Equipe A"
+                    value={teamCode}
+                    onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Ex: CNT 01"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck="false"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-3">Senha</label>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-3">
+                    Confirmar Senha
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Digite a senha novamente"
                   />
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                    <p className="text-sm text-red-800">{error}</p>
+                  <div className="p-4 bg-red-50 border-2 border-red-200 rounded-2xl">
+                    <p className="text-base text-red-800 font-medium">{error}</p>
                   </div>
                 )}
 
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-4 pt-4">
                   <button
                     type="button"
                     onClick={closeModal}
-                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+                    className="flex-1 px-6 py-4 border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 transition-colors font-bold text-lg"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary-dark transition-colors"
+                    className="flex-1 px-6 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl hover:shadow-xl transition-all font-bold text-lg"
                   >
-                    {editingTeam ? 'Salvar' : 'Criar'}
+                    Criar Equipe
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal - Alterar Senha */}
+        {showPasswordModal && editingTeam && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
+            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold text-slate-900">Alterar Senha</h2>
+                <button
+                  onClick={closePasswordModal}
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="mb-6 p-4 bg-slate-50 rounded-2xl">
+                <p className="text-base text-slate-600">
+                  Equipe: <span className="font-bold text-slate-900">{editingTeam.equipe_codigo}</span>
+                </p>
+              </div>
+
+              <form onSubmit={handleChangePassword} className="space-y-6">
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-3">
+                    Nova Senha
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-base font-bold text-slate-900 mb-3">
+                    Confirmar Nova Senha
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    placeholder="Digite a senha novamente"
+                  />
+                </div>
+
+                {error && (
+                  <div className="p-4 bg-red-50 border-2 border-red-200 rounded-2xl">
+                    <p className="text-base text-red-800 font-medium">{error}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-4 pt-4">
+                  <button
+                    type="button"
+                    onClick={closePasswordModal}
+                    className="flex-1 px-6 py-4 border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 transition-colors font-bold text-lg"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:shadow-xl transition-all font-bold text-lg"
+                  >
+                    Alterar Senha
                   </button>
                 </div>
               </form>

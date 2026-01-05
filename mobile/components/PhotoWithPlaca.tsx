@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { getAddressFromCoords, latLongToUTM, formatUTM } from '../lib/geocoding';
+import { latLongToUTM, formatUTM } from '../lib/geocoding';
 
 interface PhotoWithPlacaProps {
   uri: string;
@@ -29,45 +29,6 @@ export function PhotoWithPlaca({
   dateTime,
   style,
 }: PhotoWithPlacaProps) {
-  const [address, setAddress] = useState<string>('');
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    console.log(`[PhotoWithPlaca useEffect] Coordenadas recebidas: lat=${latitude}, lon=${longitude}`);
-    loadAddress();
-  }, [latitude, longitude]);
-
-  async function loadAddress() {
-    if (latitude && longitude) {
-      try {
-        console.log(`[PhotoWithPlaca] Buscando endereço para: ${latitude}, ${longitude}`);
-
-        const addr = await Promise.race([
-          getAddressFromCoords(latitude, longitude),
-          new Promise<null>((resolve) => setTimeout(() => {
-            console.log('[PhotoWithPlaca] Timeout de geocodificação (5s)');
-            resolve(null);
-          }, 5000)) // Aumentado para 5 segundos
-        ]);
-
-        if (addr && addr.formattedAddress && addr.formattedAddress !== 'Endereço não disponível' && addr.formattedAddress !== 'Erro ao obter endereço') {
-          console.log(`[PhotoWithPlaca] ✅ Endereço encontrado: ${addr.formattedAddress}`);
-          console.log(`[PhotoWithPlaca] Chamando setAddress com: "${addr.formattedAddress}"`);
-          setAddress(addr.formattedAddress);
-          console.log(`[PhotoWithPlaca] Estado address atualizado`);
-        } else {
-          console.log('[PhotoWithPlaca] ❌ Nenhum endereço válido retornado');
-          setAddress('');
-        }
-      } catch (error) {
-        console.error('[PhotoWithPlaca] Erro ao buscar endereço:', error);
-        setAddress('');
-      }
-    } else {
-      console.log('[PhotoWithPlaca] Sem coordenadas GPS');
-    }
-    setLoading(false);
-  }
 
   // Formatar data/hora atual se não fornecida
   const displayDateTime = dateTime || new Date().toLocaleString('pt-BR', {
@@ -86,9 +47,6 @@ export function PhotoWithPlaca({
     const utm = latLongToUTM(latitude, longitude);
     utmDisplay = formatUTM(utm);
   }
-
-  // Debug: Log do estado no render
-  console.log(`[PhotoWithPlaca RENDER] address="${address}", loading=${loading}`);
 
   return (
     <View style={[styles.container, style]}>
@@ -134,22 +92,15 @@ export function PhotoWithPlaca({
               </View>
             )}
 
-            {/* Divisor */}
-            {!!utmDisplay && <View style={styles.divider} />}
-
             {/* UTM */}
             {!!utmDisplay && (
-              <View style={styles.infoRow}>
-                <Text style={styles.label}>UTM:</Text>
-                <Text style={styles.valueUtm}>{utmDisplay}</Text>
-              </View>
-            )}
-
-            {/* Endereço - SEMPRE mostra */}
-            {(latitude && longitude) && (
-              <Text style={styles.address}>
-                {loading ? 'Carregando endereço...' : (address || 'Endereço não disponível')}
-              </Text>
+              <>
+                <View style={styles.divider} />
+                <View style={styles.infoRow}>
+                  <Text style={styles.label}>UTM:</Text>
+                  <Text style={styles.valueUtm}>{utmDisplay}</Text>
+                </View>
+              </>
             )}
           </View>
         </View>
@@ -223,12 +174,5 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     marginVertical: 6,
-  },
-  address: {
-    fontSize: 10,
-    color: '#fff',
-    marginTop: 6,
-    lineHeight: 14,
-    fontWeight: '500',
   },
 });

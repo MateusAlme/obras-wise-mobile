@@ -336,25 +336,124 @@ export default function ObraDetailPage() {
         })
       })
 
-      const resumo = [
-        {
-          'N Obra': obra.obra || '-',
-          'Placa': obra.placa || '-',
-          'Equipe': obra.equipe || '-',
-          'Tipo de Servico': obra.tipo_servico || '-',
-          'Responsavel': obra.responsavel || '-',
-          'Data': format(new Date(obra.data), 'dd/MM/yyyy', { locale: ptBR }),
-          'Total de Fotos': totalPhotos,
-          'Endereco': obra.endereco || '-',
-          'UTM Norte': obra.utm_norte || '-',
-          'UTM Leste': obra.utm_leste || '-',
-          'Observacoes': obra.observacoes || '-',
-        },
+      // ========== CRIAR ABA DE RELATÓRIO DE ATIPICIDADE ==========
+      const workbook = XLSX.utils.book_new()
+
+      // Criar array de dados ao invés de células manuais
+      const worksheetData: any[][] = []
+
+      // Linha 1: Cabeçalho (será mesclado depois)
+      worksheetData.push(['LOGO TECCEL', '', '', 'RELATÓRIO DE ATIPICIDADE', '', '', '', 'energisa', '', ''])
+
+      // Linha 2: Vazia (separador)
+      worksheetData.push(['', '', '', '', '', '', '', '', '', ''])
+
+      // Linha 3: DATA e OBRA
+      worksheetData.push([
+        `DATA: ${format(new Date(obra.data), 'dd/MM/yyyy')}`,
+        '', '', '',
+        `OBRA: ${obra.obra || '-'}`,
+        '', '', '', '', ''
+      ])
+
+      // Linha 4: Vazia (separador)
+      worksheetData.push(['', '', '', '', '', '', '', '', '', ''])
+
+      // Linha 5: Header DESCRIÇÃO DA ATIPICIDADE
+      worksheetData.push(['DESCRIÇÃO DA ATIPICIDADE', '', '', '', '', '', '', '', '', ''])
+
+      // Linha 6: Vazia (separador)
+      worksheetData.push(['', '', '', '', '', '', '', '', '', ''])
+
+      // Linha 7: Headers das 3 colunas de atipicidades
+      worksheetData.push(['Nº', 'Atipicidade', 'Descrição', 'Nº', 'Atipicidade', 'Descrição', 'Nº', 'Atipicidade', 'Descrição', ''])
+
+      // Obter atipicidades selecionadas com detalhes
+      const atipicidadesDetalhadas = (obra.atipicidades || [])
+        .map(id => ATIPICIDADES.find(a => a.id === id))
+        .filter(Boolean) as typeof ATIPICIDADES
+
+      // Dividir em 3 colunas
+      const porColuna = Math.ceil(atipicidadesDetalhadas.length / 3)
+      const maxLinhas = Math.max(porColuna, 3) // Mínimo 3 linhas
+
+      // Adicionar linhas de atipicidades (3 colunas)
+      for (let i = 0; i < maxLinhas; i++) {
+        const row: any[] = []
+
+        // Coluna 1
+        const atip1 = atipicidadesDetalhadas[i]
+        if (atip1) {
+          row.push(atip1.id, atip1.titulo, atip1.descricao)
+        } else {
+          row.push('', '', '')
+        }
+
+        // Coluna 2
+        const atip2 = atipicidadesDetalhadas[i + porColuna]
+        if (atip2) {
+          row.push(atip2.id, atip2.titulo, atip2.descricao)
+        } else {
+          row.push('', '', '')
+        }
+
+        // Coluna 3
+        const atip3 = atipicidadesDetalhadas[i + porColuna * 2]
+        if (atip3) {
+          row.push(atip3.id, atip3.titulo, atip3.descricao)
+        } else {
+          row.push('', '', '')
+        }
+
+        row.push('') // Coluna extra
+        worksheetData.push(row)
+      }
+
+      // Criar worksheet a partir dos dados
+      const ws = XLSX.utils.aoa_to_sheet(worksheetData)
+
+      // Configurar mesclagens de células
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, // LOGO TECCEL
+        { s: { r: 0, c: 3 }, e: { r: 0, c: 6 } }, // RELATÓRIO DE ATIPICIDADE
+        { s: { r: 0, c: 7 }, e: { r: 0, c: 9 } }, // energisa
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } }, // DATA
+        { s: { r: 2, c: 4 }, e: { r: 2, c: 9 } }, // OBRA
+        { s: { r: 4, c: 0 }, e: { r: 4, c: 9 } }, // DESCRIÇÃO DA ATIPICIDADE
       ]
 
-      const workbook = XLSX.utils.book_new()
-      const resumoSheet = XLSX.utils.json_to_sheet(resumo)
-      XLSX.utils.book_append_sheet(workbook, resumoSheet, 'Resumo')
+      // Configurar larguras das colunas
+      ws['!cols'] = [
+        { wch: 4 },  // Nº (col 1)
+        { wch: 35 }, // Atipicidade (col 1)
+        { wch: 45 }, // Descrição (col 1)
+        { wch: 4 },  // Nº (col 2)
+        { wch: 35 }, // Atipicidade (col 2)
+        { wch: 45 }, // Descrição (col 2)
+        { wch: 4 },  // Nº (col 3)
+        { wch: 35 }, // Atipicidade (col 3)
+        { wch: 45 }, // Descrição (col 3)
+        { wch: 2 },  // Extra
+      ]
+
+      // Configurar alturas das linhas
+      const rowHeights: any[] = []
+      rowHeights[0] = { hpx: 40 }  // Cabeçalho
+      rowHeights[2] = { hpx: 25 }  // DATA/OBRA
+      rowHeights[4] = { hpx: 30 }  // DESCRIÇÃO header
+      rowHeights[6] = { hpx: 25 }  // Headers colunas
+
+      // Atipicidades - altura dinâmica
+      for (let i = 7; i < worksheetData.length; i++) {
+        rowHeights[i] = { hpx: 60 }
+      }
+
+      ws['!rows'] = rowHeights
+
+      // Adicionar worksheet ao workbook
+      XLSX.utils.book_append_sheet(workbook, ws, 'Relatório Atipicidade')
+
+      // ========== ABA DE FOTOS ==========
       if (photoRows.length) {
         const fotosSheet = XLSX.utils.json_to_sheet(photoRows)
         XLSX.utils.book_append_sheet(workbook, fotosSheet, 'Fotos')

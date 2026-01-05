@@ -9,13 +9,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 export interface Obra {
   id: string
   data: string
-  obra: string
+  obra: string  // Número da obra (8-10 dígitos)
+  placa?: string | null
   responsavel: string
   equipe: string
   tipo_servico: string
+  data_abertura?: string | null  // Data/hora de início da obra
+  data_fechamento?: string | null  // Data/hora de conclusão (NULL = parcial)
   tem_atipicidade: boolean
   atipicidades: number[]
   descricao_atipicidade?: string | null
+  endereco?: string | null
+  utm_norte?: string | null
+  utm_leste?: string | null
+  observacoes?: string | null
   fotos_antes?: FotoInfo[]
   fotos_durante?: FotoInfo[]
   fotos_depois?: FotoInfo[]
@@ -110,4 +117,9 @@ export interface UsuarioApp {
   equipe_id?: string | null
   equipe?: Equipe | null
   created_at: string
+}
+
+// Helper para determinar status da obra
+export function getObraStatus(obra: Obra): 'concluida' | 'parcial' {
+  return obra.data_fechamento ? 'concluida' : 'parcial'
 }

@@ -8,10 +8,16 @@ import Image from 'next/image'
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const { signIn, user } = useAuth()
   const router = useRouter()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (user) {
@@ -35,117 +41,116 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary-dark to-red-900 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-0 w-full h-full">
-            <div className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"></div>
-            <div className="absolute bottom-20 right-20 w-96 h-96 bg-white rounded-full blur-3xl"></div>
+    <div className="min-h-screen w-full overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-2 min-h-screen w-full">
+        {/* Left Panel - Hero (Desktop Only) */}
+        <div className="hidden lg:flex flex-col items-center justify-center px-12 xl:px-16 2xl:px-20 py-20 bg-gradient-to-br from-primary via-primary-dark to-red-900 text-white relative overflow-hidden min-h-screen">
+          {/* Decorative background pattern */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-0 left-0 w-full h-full" style={{
+              backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,
+              backgroundSize: '40px 40px'
+            }} />
+          </div>
+
+          {/* Decorative blobs */}
+          <div className="absolute -top-20 -left-20 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
+          <div className="absolute -bottom-20 -right-20 h-96 w-96 rounded-full bg-white/5 blur-3xl" />
+
+          <div className="relative z-10 w-full max-w-[36rem] mx-auto space-y-12">
+            {/* Logo - Centralizado no topo */}
+            <div className="flex justify-center">
+              <div className="px-8 py-6">
+                <Image
+                  src="/logo_teccel_2.png"
+                  alt="Teccel Engenharia"
+                  width={260}
+                  height={63}
+                  priority
+                  className="h-auto w-56 xl:w-64"
+                />
+              </div>
+            </div>
+
+            {/* Badge */}
+            <div className="flex justify-center">
+              <div className="inline-block bg-white/20 backdrop-blur-md px-5 py-2.5 rounded-full border border-white/30">
+                <p className="text-sm font-bold tracking-[0.25em] uppercase">Gestão de Obras</p>
+              </div>
+            </div>
+
+            {/* Heading */}
+            <div className="text-center space-y-6">
+              <h1 className="text-5xl xl:text-6xl font-bold tracking-tight leading-tight">
+                Bem-vindo de volta!
+              </h1>
+              <p className="text-lg xl:text-xl text-white/95 leading-relaxed text-balance px-4">
+                Acesse o sistema para acompanhar obras, gerenciar equipes e registrar evidências com precisão.
+              </p>
+            </div>
+
+            {/* Features */}
+            <div className="grid gap-4 pt-6">
+              {[
+                { icon: '📊', title: 'Dashboard completo', desc: 'Visão geral de todas as obras em andamento' },
+                { icon: '📸', title: 'Registro de evidências', desc: 'Documentação fotográfica com geolocalização' },
+                { icon: '👥', title: 'Gestão de equipes', desc: 'Controle total de usuários e permissões' },
+              ].map((feature, idx) => (
+                <div key={idx} className="flex items-start gap-4 bg-white/10 backdrop-blur-sm rounded-2xl p-5 border border-white/20 hover:bg-white/15 transition-all duration-300">
+                  <div className="text-3xl">{feature.icon}</div>
+                  <div>
+                    <h3 className="font-bold text-base mb-1">{feature.title}</h3>
+                    <p className="text-sm text-white/75 leading-relaxed">{feature.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col justify-center px-16 text-white">
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-16 h-16 bg-white rounded-xl flex items-center justify-center">
-                <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-4xl font-bold">Obras Teccel</h1>
-              </div>
-            </div>
-            <h2 className="text-3xl font-semibold mb-4">
-              Gestão Inteligente de Obras
-            </h2>
-            <p className="text-lg text-red-100 leading-relaxed">
-              Sistema completo para gerenciamento de obras, equipes e documentação fotográfica.
-              Controle total com tecnologia de ponta.
-            </p>
-          </div>
-
-          <div className="space-y-4 mt-12">
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Múltiplos Serviços</h3>
-                <p className="text-red-100">Suporte para diversos tipos de obras e serviços</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Documentação Completa</h3>
-                <p className="text-red-100">Registro fotográfico com geolocalização</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg">Relatórios Profissionais</h3>
-                <p className="text-red-100">Geração automática de PDFs detalhados</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Side - Login Form */}
-      <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full">
+        {/* Right Panel - Form */}
+        <div className="flex items-start lg:items-center justify-center px-6 sm:px-10 lg:px-12 xl:px-16 py-12 sm:py-14 lg:py-20 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+        <div className={`w-full max-w-lg bg-white rounded-3xl shadow-2xl p-8 sm:p-10 lg:p-12 transition-all duration-700 ${mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
           {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <div className="inline-flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
-              <h1 className="text-2xl font-bold text-gray-900">Obras Teccel</h1>
+          <div className="flex flex-col items-center gap-5 mb-10 lg:hidden">
+            <div className="px-6 py-4">
+              <Image
+                src="/logo_teccel_2.png"
+                alt="Teccel Engenharia"
+                width={220}
+                height={53}
+                priority
+                className="h-auto w-44 sm:w-52"
+              />
             </div>
-            <p className="text-gray-600">Sistema de Gestão de Obras</p>
           </div>
 
           {/* Login Card */}
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Bem-vindo</h2>
-              <p className="text-gray-600">Entre com suas credenciais para acessar o sistema</p>
+          <div className="space-y-10">
+            <div>
+              <h2 className="text-4xl sm:text-5xl font-bold tracking-tight text-slate-900 mb-3">
+                Entrar
+              </h2>
+              <p className="text-base sm:text-lg text-slate-600 text-balance">Use suas credenciais para acessar o sistema</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-7">
               {/* Email */}
               <div>
-                <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
+                <label htmlFor="email" className="block text-base font-semibold text-slate-900 mb-2.5">
                   Email
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                    </svg>
-                  </div>
+                <div className="relative flex items-center gap-4 rounded-2xl border-2 border-slate-200 bg-slate-50 px-5 py-4 focus-within:border-primary focus-within:bg-white transition-all duration-300 hover:border-slate-300">
+                  <svg className="h-6 w-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+                  </svg>
                   <input
                     id="email"
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900"
+                    className="w-full bg-transparent outline-none text-slate-900 text-base sm:text-lg placeholder:text-slate-400"
                     placeholder="seu@email.com"
                     disabled={loading}
                   />
@@ -154,35 +159,50 @@ export default function LoginPage() {
 
               {/* Password */}
               <div>
-                <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
+                <label htmlFor="password" className="block text-base font-semibold text-slate-900 mb-2.5">
                   Senha
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                  </div>
+                <div className="relative flex items-center gap-4 rounded-2xl border-2 border-slate-200 bg-slate-50 px-5 py-4 focus-within:border-primary focus-within:bg-white transition-all duration-300 hover:border-slate-300">
+                  <svg className="h-6 w-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
                   <input
                     id="password"
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900"
+                    className="w-full bg-transparent outline-none text-slate-900 text-base sm:text-lg placeholder:text-slate-400"
                     placeholder="••••••••"
                     disabled={loading}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-1"
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  >
+                    {showPassword ? (
+                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    ) : (
+                      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </div>
 
               {/* Error Message */}
               {error && (
-                <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-200 rounded-xl">
-                  <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="flex items-center gap-3 rounded-2xl border-2 border-red-200 bg-red-50 px-5 py-4">
+                  <svg className="h-6 w-6 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  <p className="text-sm text-red-800">{error}</p>
+                  <p className="text-base font-medium text-red-800">{error}</p>
                 </div>
               )}
 
@@ -190,34 +210,45 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 px-4 bg-primary hover:bg-primary-dark text-white font-semibold rounded-xl transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-lg"
+                className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary-dark py-4 text-white text-base sm:text-lg font-bold shadow-xl shadow-primary/30 hover:shadow-2xl hover:scale-[1.02] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-300 active:scale-[0.98]"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Entrando...
-                  </span>
-                ) : (
-                  'Entrar no Sistema'
-                )}
+                <span className="relative flex items-center justify-center gap-3">
+                  {loading ? (
+                    <>
+                      <svg className="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Entrando...
+                    </>
+                  ) : (
+                    <>
+                      Entrar
+                      <svg className="h-6 w-6 group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </>
+                  )}
+                </span>
               </button>
             </form>
 
             {/* Footer */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <p className="text-sm text-gray-600 text-center">
-                Precisa de acesso? Entre em contato com o administrador do sistema.
+            <div className="mt-8 pt-6 border-t border-slate-200">
+              <p className="text-base text-slate-600 text-center leading-relaxed">
+                Precisa de acesso?{' '}
+                <span className="font-bold text-primary cursor-pointer hover:text-primary-dark transition-colors">Entre em contato com o administrador</span>
               </p>
             </div>
           </div>
 
           {/* Version */}
-          <div className="text-center mt-6">
-            <p className="text-xs text-gray-500">Obras Teccel v1.0.0 • © 2025 Teccel</p>
+          <div className="text-center mt-8">
+            <p className="text-sm text-slate-500">
+              © 2025 <span className="font-semibold">Teccel Engenharia</span>
+            </p>
           </div>
+        </div>
         </div>
       </div>
     </div>

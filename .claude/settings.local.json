@@ -75,7 +75,12 @@
       "Bash(cmd.exe /c \"if exist photo-with-placa-web.ts del photo-with-placa-web.ts\")",
       "Bash(if exist \"node_modules\\.cache\" rmdir /s /q \"node_modules\\.cache\")",
       "Bash(ipconfig:*)",
-      "Bash(if not exist \"photo-server\" mkdir \"photo-server\")"
+      "Bash(if not exist \"photo-server\" mkdir \"photo-server\")",
+      "Bash(npm run build:*)",
+      "Bash(cmd.exe /c \"if exist web\\.next\\dev\\lock del web\\.next\\dev\\lock\")",
+      "Bash(cmd.exe /c \"cd web && if exist .next rmdir /s /q .next && npm run dev\")",
+      "Bash(git restore:*)",
+      "Bash(cmd.exe /c scriptsdatabaseaplicar-usuarios-admin.bat)"
     ],
     "deny": [],
     "ask": []

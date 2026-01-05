@@ -339,6 +339,7 @@ export const processUploadQueue = async (
 
 /**
  * Processa apenas fotos de uma obra específica
+ * OTIMIZADO: Upload paralelo de até 3 fotos simultaneamente
  */
 export const processObraPhotos = async (
   obraId: string,
@@ -356,33 +357,55 @@ export const processObraPhotos = async (
       return { success: 0, failed: 0, results: [] };
     }
 
+    console.log(`[processObraPhotos] Iniciando upload paralelo de ${obraPhotos.length} foto(s)`);
+
+    // Adicionar todas à fila primeiro
+    for (const photo of obraPhotos) {
+      await addToUploadQueue(photo.id, photo.obraId);
+    }
+
     const results: UploadResult[] = [];
     let successCount = 0;
     let failedCount = 0;
+    let completedCount = 0;
 
-    for (let i = 0; i < obraPhotos.length; i++) {
-      const photo = obraPhotos[i];
+    // Upload paralelo: processar em lotes de 3 fotos simultaneamente
+    const BATCH_SIZE = 3;
+    for (let i = 0; i < obraPhotos.length; i += BATCH_SIZE) {
+      const batch = obraPhotos.slice(i, i + BATCH_SIZE);
 
-      if (onProgress) {
-        onProgress({
-          total: obraPhotos.length,
-          completed: i,
-          failed: failedCount,
-          pending: obraPhotos.length - i,
-          currentPhotoId: photo.id
-        });
-      }
+      console.log(`[processObraPhotos] Processando lote ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(obraPhotos.length/BATCH_SIZE)} (${batch.length} fotos)`);
 
-      await addToUploadQueue(photo.id, photo.obraId);
-      const result = await uploadPhotoWithRetry(photo, onProgress);
-      results.push(result);
+      // Upload paralelo do lote
+      const batchResults = await Promise.all(
+        batch.map(photo => uploadPhotoWithRetry(photo, onProgress))
+      );
 
-      if (result.success) {
-        successCount++;
-      } else {
-        failedCount++;
+      // Processar resultados do lote
+      for (const result of batchResults) {
+        results.push(result);
+        completedCount++;
+
+        if (result.success) {
+          successCount++;
+        } else {
+          failedCount++;
+        }
+
+        // Notificar progresso
+        if (onProgress) {
+          onProgress({
+            total: obraPhotos.length,
+            completed: completedCount,
+            failed: failedCount,
+            pending: obraPhotos.length - completedCount,
+            currentPhotoId: result.photoId
+          });
+        }
       }
     }
+
+    console.log(`[processObraPhotos] ✅ Concluído: ${successCount} sucesso, ${failedCount} falhas`);
 
     return { success: successCount, failed: failedCount, results };
 
