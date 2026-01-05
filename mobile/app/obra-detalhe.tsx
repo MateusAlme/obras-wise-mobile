@@ -444,6 +444,8 @@ export default function ObraDetalhe() {
         'checklist_poste_engaste',
         'checklist_poste_conexao1',
         'checklist_poste_conexao2',
+        'checklist_poste_maior_esforco',
+        'checklist_poste_menor_esforco',
       ],
       'fotos_checklist_seccionamentos': 'checklist_seccionamento',
       'fotos_altimetria_lado_fonte': 'altimetria_lado_fonte',
@@ -465,6 +467,8 @@ export default function ObraDetalhe() {
       'doc_fvbt': 'doc_fvbt',
       'doc_termo_desistencia_lpt': 'doc_termo_desistencia_lpt',
       'doc_autorizacao_passagem': 'doc_autorizacao_passagem',
+      'doc_materiais_previsto': 'doc_materiais_previsto',
+      'doc_materiais_realizado': 'doc_materiais_realizado',
     };
 
     const photoType = typeMap[sectionKey];
