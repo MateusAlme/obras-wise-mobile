@@ -209,6 +209,9 @@ export default function NovaObra() {
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
   const [syncingPending, setSyncingPending] = useState(false);
 
+  // Quando em modo de edição, usar o obraId real para salvar fotos corretamente
+  const backupObraId = isEditMode && obraId ? obraId : tempObraId;
+
   const renderUtmBadge = (foto: FotoData) => {
     if (!foto.utmX || !foto.utmY) return null;
     return (
@@ -697,7 +700,7 @@ export default function NovaObra() {
       // FAZER BACKUP PERMANENTE DA FOTO (já com placa gravada)
       const photoMetadata = await backupPhoto(
         photoUri,
-        tempObraId,
+        backupObraId,
         tipo,
         index,
         location.latitude,
@@ -1153,7 +1156,7 @@ export default function NovaObra() {
       };
 
       // Adicionar à fila de upload vinculando à obra temporária
-      await addToUploadQueue(docMetadata.id, tempObraId);
+      await addToUploadQueue(docMetadata.id, backupObraId);
 
       // Atualizar estado
       if (tipo === 'doc_cadastro_medidor') {
@@ -1768,7 +1771,7 @@ export default function NovaObra() {
 
       if (!isConnected) {
         // MODO OFFLINE: Salvar obra com IDs das fotos
-        await saveObraOffline(obraData, photoIds, tempObraId);
+        await saveObraOffline(obraData, photoIds, backupObraId);
         await loadPendingObras();
 
         const totalFotos = photoIds.antes.length + photoIds.durante.length + photoIds.depois.length +
@@ -1870,7 +1873,7 @@ export default function NovaObra() {
       ];
 
       // Processar uploads (a função já adiciona à fila internamente)
-      const uploadResult = await processObraPhotos(tempObraId, undefined, allPhotoIds);
+      const uploadResult = await processObraPhotos(backupObraId, undefined, allPhotoIds);
 
       if (uploadResult.failed > 0) {
         const totalPhotos = uploadResult.success + uploadResult.failed;
@@ -1889,7 +1892,7 @@ export default function NovaObra() {
             {
               text: 'Salvar Offline',
               onPress: async () => {
-                await saveObraOffline(obraData, photoIds, tempObraId);
+                await saveObraOffline(obraData, photoIds, backupObraId);
                 await loadPendingObras();
                 const tipoArquivoMsg = isServicoDocumentacao ? 'Documentos' : 'Fotos';
                 Alert.alert(
