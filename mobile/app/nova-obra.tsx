@@ -34,6 +34,7 @@ import { processObraPhotos, addToUploadQueue } from '../lib/photo-queue';
 import { PlacaScanner } from '../components/PlacaScanner';
 import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
+import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 // Import dinâmico (lazy) para evitar erro no web
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
@@ -603,14 +604,13 @@ export default function NovaObra() {
       console.log('📸 URI ORIGINAL:', photoUri);
 
       try {
-        // Import dinâmico do módulo de placa (funciona em web e mobile)
-        const { renderPhotoWithPlacaBurnedIn } = await import('../lib/photo-with-placa');
+        // Renderizar foto com placa gravada (usando import estático)
         const photoWithPlaca = await renderPhotoWithPlacaBurnedIn(photoUri, placaData);
         photoUri = photoWithPlaca;
         console.log('✅ Placa gravada na foto');
         console.log('📸 URI COM PLACA:', photoUri);
       } catch (error) {
-        console.error('❌ ERRO CRÍTICO ao gravar placa:', error);
+        console.error('❌ ERRO ao gravar placa:', error);
         console.warn('⚠️ Erro ao gravar placa, usando foto original:', error);
         // Continua com foto original
       }
