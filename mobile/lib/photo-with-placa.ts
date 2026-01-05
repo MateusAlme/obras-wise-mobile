@@ -6,7 +6,7 @@
  */
 
 import { Platform } from 'react-native'
-import { latLongToUTM, formatUTM, getAddressFromCoords } from './geocoding'
+import { latLongToUTM, formatUTM } from './geocoding'
 import React from 'react'
 
 export interface PlacaData {
@@ -61,20 +61,8 @@ async function renderPhotoWithPlacaMobile(
       console.log('📱 [PLACA MOBILE] UTM calculado:', utmDisplay)
     }
 
-    let endereco = ''
-    if (placaData.latitude && placaData.longitude) {
-      try {
-        const addr = await Promise.race([
-          getAddressFromCoords(placaData.latitude, placaData.longitude),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-        ])
-        if (addr && addr.formattedAddress && addr.formattedAddress !== 'Endereço não disponível') {
-          endereco = addr.formattedAddress
-        }
-      } catch (error) {
-        console.log('📱 [PLACA MOBILE] Erro ao buscar endereço:', error)
-      }
-    }
+    // REMOVIDO: Busca de endereço (causava erro offline)
+    // Agora mostra apenas: UTM, Data/Hora, Equipe, Obra, Serviço
 
     // 2. Usar renderização em Canvas
     // IMPORTANTE: No build nativo, podemos usar APIs mais avançadas
@@ -115,21 +103,8 @@ async function renderPhotoWithPlacaWeb(
         console.log('[PLACA WEB] UTM calculado:', utmDisplay)
       }
 
-      // 2. Buscar endereço (com timeout de 3s)
-      let endereco = ''
-      if (placaData.latitude && placaData.longitude) {
-        try {
-          const addr = await Promise.race([
-            getAddressFromCoords(placaData.latitude, placaData.longitude),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-          ])
-          if (addr && addr.formattedAddress && addr.formattedAddress !== 'Endereço não disponível') {
-            endereco = addr.formattedAddress
-          }
-        } catch (error) {
-          console.log('[PLACA WEB] Erro ao buscar endereço:', error)
-        }
-      }
+      // REMOVIDO: Busca de endereço (causava erro offline)
+      // Agora mostra apenas: UTM, Data/Hora, Equipe, Obra, Serviço
 
       // 3. Carregar imagem
       console.log('[PLACA WEB] Carregando imagem...', imageUri)
@@ -165,7 +140,6 @@ async function renderPhotoWithPlacaWeb(
           // Calcular número de linhas
           let numLines = 4 // Obra, Data, Serviço, Equipe
           if (utmDisplay) numLines++
-          if (endereco) numLines++
 
           const placaWidth = Math.min(img.width * 0.4, 480)
           const placaHeight = placaPadding * 2 + numLines * lineHeight + 20
@@ -215,11 +189,6 @@ async function renderPhotoWithPlacaWeb(
 
           if (utmDisplay) {
             drawTextLine('UTM:', utmDisplay, false, true)
-          }
-
-          if (endereco) {
-            const enderecoTrunc = endereco.length > 30 ? endereco.substring(0, 30) + '...' : endereco
-            drawTextLine('Local:', enderecoTrunc)
           }
 
           // 10. Converter canvas para blob e criar URL
