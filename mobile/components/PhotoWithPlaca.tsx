@@ -121,58 +121,58 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 10,
     bottom: 10,
-    maxWidth: '90%',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'rgba(37, 99, 235, 0.8)',
+    maxWidth: '85%',
+    backgroundColor: 'rgba(0, 0, 0, 0.45)', // Mais transparente para marca d'água
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)', // Borda sutil
     overflow: 'hidden',
   },
   placaHeader: {
-    backgroundColor: 'rgba(37, 99, 235, 0.95)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)', // Header mais discreto
+    paddingVertical: 4,
+    paddingHorizontal: 10,
   },
   placaHeaderText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: 'bold',
+    color: 'rgba(255, 255, 255, 0.85)', // Texto mais suave
+    fontSize: 9,
+    fontWeight: '600',
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   placaContent: {
-    padding: 10,
+    padding: 8,
   },
   infoRow: {
     flexDirection: 'row',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   label: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#9ca3af',
-    width: 70,
+    fontSize: 9,
+    fontWeight: '500',
+    color: 'rgba(200, 200, 200, 0.85)', // Cinza claro suave
+    width: 65,
   },
   value: {
-    fontSize: 10,
-    color: '#fff',
+    fontSize: 9,
+    color: 'rgba(255, 255, 255, 0.95)', // Branco suave
     flex: 1,
   },
   valueHighlight: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#60a5fa',
+    fontSize: 9,
+    fontWeight: '600',
+    color: 'rgba(96, 165, 250, 0.95)', // Azul suave
     flex: 1,
   },
   valueUtm: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#34d399',
+    fontSize: 8,
+    fontWeight: '600',
+    color: 'rgba(52, 211, 153, 0.9)', // Verde suave
     flex: 1,
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    marginVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)', // Divisor mais sutil
+    marginVertical: 4,
   },
 });
