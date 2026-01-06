@@ -756,13 +756,30 @@ export default function ObraDetalhe() {
 
               // ✅ CRÍTICO: Atualizar AsyncStorage local com novo status
               console.log('✅ Obra finalizada no Supabase, atualizando AsyncStorage...');
-              const { updateObraOffline } = await import('../lib/offline-sync');
-              await updateObraOffline(obra.id, {
-                status: 'finalizada',
-                finalizada_em: dataFechamento,
-                data_fechamento: dataFechamento,
-              });
-              console.log('✅ AsyncStorage atualizado com status finalizada');
+              try {
+                const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+                const LOCAL_OBRAS_KEY = '@obras-wise:obras';
+
+                const obrasJson = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
+                if (obrasJson) {
+                  const obras = JSON.parse(obrasJson);
+                  const obraIndex = obras.findIndex((o: any) => o.id === obra.id);
+
+                  if (obraIndex !== -1) {
+                    obras[obraIndex] = {
+                      ...obras[obraIndex],
+                      status: 'finalizada',
+                      finalizada_em: dataFechamento,
+                      data_fechamento: dataFechamento,
+                    };
+                    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obras));
+                    console.log('✅ AsyncStorage atualizado com status finalizada');
+                  }
+                }
+              } catch (storageError) {
+                console.error('⚠️ Erro ao atualizar AsyncStorage:', storageError);
+                // Não bloquear o fluxo se falhar atualização local
+              }
 
               Alert.alert('Sucesso', 'Obra finalizada com sucesso!', [
                 { text: 'OK', onPress: () => router.back() }
