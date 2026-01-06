@@ -11,12 +11,13 @@ import type { LocalObra } from './offline-sync';
 const LOCAL_OBRAS_KEY = '@obras-wise:obras';
 
 /**
- * Corrige obra comparando com dados do Supabase
+ * Corrige obra comparando com dados do Supabase E remove duplicatas
  */
 export const fixObraOrigemStatus = async (): Promise<{
   total: number;
   corrigidas: number;
   erros: number;
+  duplicatasRemovidas: number;
 }> => {
   try {
     console.log('🔧 Iniciando correção de obras...');
@@ -25,26 +26,65 @@ export const fixObraOrigemStatus = async (): Promise<{
     const localObrasStr = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
     if (!localObrasStr) {
       console.log('⚠️ Nenhuma obra local encontrada');
-      return { total: 0, corrigidas: 0, erros: 0 };
+      return { total: 0, corrigidas: 0, erros: 0, duplicatasRemovidas: 0 };
     }
 
     const localObras: LocalObra[] = JSON.parse(localObrasStr);
-    console.log(`📊 Total de obras locais: ${localObras.length}`);
+    console.log(`📊 Total de obras locais (antes): ${localObras.length}`);
 
+    // 2. PRIMEIRO: Remover duplicatas (manter apenas a mais recente de cada número)
+    console.log('\n🧹 PASSO 1: Removendo duplicatas...');
+    const obrasPorNumero = new Map<string, LocalObra[]>();
+
+    // Agrupar obras por número
+    for (const obra of localObras) {
+      const numero = obra.obra;
+      if (!obrasPorNumero.has(numero)) {
+        obrasPorNumero.set(numero, []);
+      }
+      obrasPorNumero.get(numero)!.push(obra);
+    }
+
+    // Para cada grupo, manter apenas a mais recente
+    const obrasUnicas: LocalObra[] = [];
+    let duplicatasRemovidas = 0;
+
+    for (const [numero, obras] of obrasPorNumero.entries()) {
+      if (obras.length > 1) {
+        console.log(`  🔍 Obra ${numero}: ${obras.length} cópias encontradas`);
+
+        // Ordenar por data de modificação (mais recente primeiro)
+        const ordenadas = obras.sort((a, b) => {
+          const dateA = new Date(a.last_modified || a.created_at || a.data || 0).getTime();
+          const dateB = new Date(b.last_modified || b.created_at || b.data || 0).getTime();
+          return dateB - dateA;
+        });
+
+        // Manter apenas a primeira (mais recente)
+        obrasUnicas.push(ordenadas[0]);
+        duplicatasRemovidas += obras.length - 1;
+        console.log(`    ✅ Mantendo versão de ${ordenadas[0].created_at || ordenadas[0].data}`);
+        console.log(`    ❌ Removendo ${obras.length - 1} duplicata(s)`);
+      } else {
+        // Não é duplicata
+        obrasUnicas.push(obras[0]);
+      }
+    }
+
+    console.log(`\n📊 Duplicatas removidas: ${duplicatasRemovidas}`);
+    console.log(`📊 Obras únicas restantes: ${obrasUnicas.length}`);
+
+    // 3. SEGUNDO: Corrigir status das obras únicas
+    console.log('\n🔧 PASSO 2: Corrigindo status das obras...');
     let corrigidas = 0;
     let erros = 0;
 
-    // 2. Para cada obra, verificar se precisa correção
-    for (let i = 0; i < localObras.length; i++) {
-      const obra = localObras[i];
-      console.log(`\n🔍 Verificando obra ${i + 1}/${localObras.length}: ${obra.obra}`);
+    for (let i = 0; i < obrasUnicas.length; i++) {
+      const obra = obrasUnicas[i];
+      console.log(`\n🔍 Verificando obra ${i + 1}/${obrasUnicas.length}: ${obra.obra}`);
 
       try {
-        // Pular se origem já está definida corretamente E status existe
-        if (obra.origem && obra.status) {
-          console.log(`  ✅ Obra ${obra.obra} já está OK (origem: ${obra.origem}, status: ${obra.status})`);
-          continue;
-        }
+        // Sempre buscar no Supabase para garantir status correto
 
         // Buscar obra no Supabase pelo número
         console.log(`  🔍 Buscando obra ${obra.obra} no Supabase...`);
@@ -159,20 +199,23 @@ export const fixObraOrigemStatus = async (): Promise<{
       }
     }
 
-    // 3. Salvar todas as obras corrigidas
-    if (corrigidas > 0) {
-      await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-      console.log(`\n💾 ${corrigidas} obra(s) corrigida(s) e salvas no AsyncStorage`);
-    } else {
-      console.log(`\n✅ Nenhuma obra precisou de correção`);
-    }
+    // 4. Salvar obras únicas e corrigidas
+    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasUnicas));
+    console.log(`\n💾 Obras salvas no AsyncStorage`);
 
-    console.log('\n📊 Resumo:');
-    console.log(`  - Total: ${localObras.length}`);
-    console.log(`  - Corrigidas: ${corrigidas}`);
+    console.log('\n📊 RESUMO FINAL:');
+    console.log(`  - Total inicial: ${localObras.length}`);
+    console.log(`  - Duplicatas removidas: ${duplicatasRemovidas}`);
+    console.log(`  - Obras únicas: ${obrasUnicas.length}`);
+    console.log(`  - Status corrigidos: ${corrigidas}`);
     console.log(`  - Erros: ${erros}`);
 
-    return { total: localObras.length, corrigidas, erros };
+    return {
+      total: localObras.length,
+      corrigidas,
+      erros,
+      duplicatasRemovidas
+    };
 
   } catch (error) {
     console.error('❌ Erro fatal ao corrigir obras:', error);

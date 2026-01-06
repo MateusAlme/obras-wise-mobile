@@ -376,8 +376,8 @@ export default function Obras() {
   const handleCorrigirObras = async () => {
     try {
       Alert.alert(
-        '🔧 Corrigir Status das Obras',
-        'Deseja corrigir automaticamente o status e origem das obras?\n\nIsto irá buscar os dados corretos do Supabase e atualizar o app.',
+        '🔧 Corrigir e Limpar Obras',
+        'Deseja corrigir automaticamente o status das obras?\n\n✅ Remove duplicatas\n✅ Atualiza status do Supabase\n✅ Corrige origem das obras',
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -392,7 +392,7 @@ export default function Obras() {
 
                 Alert.alert(
                   '✅ Correção Concluída',
-                  `Total de obras: ${resultado.total}\nCorrigidas: ${resultado.corrigidas}\nErros: ${resultado.erros}`
+                  `Obras antes: ${resultado.total}\nDuplicatas removidas: ${resultado.duplicatasRemovidas}\nObras únicas: ${resultado.total - resultado.duplicatasRemovidas}\nStatus corrigidos: ${resultado.corrigidas}\nErros: ${resultado.erros}`
                 );
               } catch (error) {
                 console.error('❌ Erro ao corrigir obras:', error);
