@@ -758,7 +758,7 @@ export default function ObraDetalhe() {
               console.log('✅ Obra finalizada no Supabase, atualizando AsyncStorage...');
               try {
                 const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-                const LOCAL_OBRAS_KEY = '@obras-wise:obras';
+                const LOCAL_OBRAS_KEY = '@obras_local';
 
                 const obrasJson = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
                 if (obrasJson) {

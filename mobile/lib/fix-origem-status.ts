@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import type { LocalObra } from './offline-sync';
 
-const LOCAL_OBRAS_KEY = '@obras-wise:obras';
+const LOCAL_OBRAS_KEY = '@obras_local';
 
 /**
  * Corrige obra comparando com dados do Supabase E remove duplicatas
