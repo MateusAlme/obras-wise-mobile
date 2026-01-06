@@ -74,10 +74,12 @@ export const fixObraOrigemStatus = async (): Promise<{
     console.log(`\n📊 Duplicatas removidas: ${duplicatasRemovidas}`);
     console.log(`📊 Obras únicas restantes: ${obrasUnicas.length}`);
 
-    // 3. SEGUNDO: Corrigir status das obras únicas
-    console.log('\n🔧 PASSO 2: Corrigindo status das obras...');
+    // 3. SEGUNDO: Corrigir status das obras únicas E remover obras deletadas
+    console.log('\n🔧 PASSO 2: Corrigindo status e removendo obras deletadas...');
     let corrigidas = 0;
     let erros = 0;
+    let removidas = 0;
+    const obrasFinais: LocalObra[] = [];
 
     for (let i = 0; i < obrasUnicas.length; i++) {
       const obra = obrasUnicas[i];
@@ -85,8 +87,6 @@ export const fixObraOrigemStatus = async (): Promise<{
 
       try {
         // Sempre buscar no Supabase para garantir status correto
-
-        // Buscar obra no Supabase pelo número
         console.log(`  🔍 Buscando obra ${obra.obra} no Supabase...`);
 
         let supabaseObra = null;
@@ -118,15 +118,14 @@ export const fixObraOrigemStatus = async (): Promise<{
             supabaseObra = data;
             console.log(`  ✅ Encontrada por número: ${obra.obra}`);
           } else {
-            console.log(`  ⚠️ Obra ${obra.obra} não encontrada no Supabase - será marcada como offline`);
+            console.log(`  ⚠️ Obra ${obra.obra} não encontrada no Supabase`);
           }
         }
 
-        // Aplicar correções
-        let modificada = false;
-
+        // Aplicar correções OU remover se não existe mais
         if (supabaseObra) {
-          // Obra existe no Supabase - marcar como online e atualizar campos
+          // Obra existe no Supabase - corrigir e manter
+          let modificada = false;
           console.log(`  📝 Corrigindo obra ${obra.obra}:`);
 
           if (!obra.origem || obra.origem !== 'online') {
@@ -169,44 +168,52 @@ export const fixObraOrigemStatus = async (): Promise<{
             modificada = true;
           }
 
-        } else {
-          // Obra NÃO existe no Supabase - marcar como offline
-          console.log(`  📝 Obra ${obra.obra} não está no Supabase:`);
+          if (modificada) {
+            corrigidas++;
+            console.log(`  ✅ Obra ${obra.obra} corrigida!`);
+          } else {
+            console.log(`  ℹ️ Obra ${obra.obra} não precisou de correção`);
+          }
 
-          if (!obra.origem) {
+          // Adicionar à lista final
+          obrasFinais.push(obra);
+
+        } else {
+          // Obra NÃO existe no Supabase
+          // Se tiver synced=true, foi deletada do servidor - REMOVER
+          if (obra.synced === true || obra.origem === 'online') {
+            console.log(`  🗑️ REMOVENDO: Obra ${obra.obra} foi deletada do Supabase`);
+            console.log(`    - ID: ${obra.id}`);
+            console.log(`    - Synced: ${obra.synced}`);
+            console.log(`    - Origem: ${obra.origem}`);
+            removidas++;
+            // NÃO adicionar à lista final (será removida)
+          } else {
+            // Obra offline que nunca foi sincronizada - manter
+            console.log(`  📝 Mantendo obra offline: ${obra.obra}`);
             obra.origem = 'offline';
-            console.log(`    - origem: undefined → 'offline'`);
-            modificada = true;
+            obra.status = obra.status || 'em_aberto';
+            obrasFinais.push(obra);
           }
-
-          if (!obra.status) {
-            obra.status = 'em_aberto';
-            console.log(`    - status: undefined → 'em_aberto'`);
-            modificada = true;
-          }
-        }
-
-        if (modificada) {
-          corrigidas++;
-          console.log(`  ✅ Obra ${obra.obra} corrigida!`);
-        } else {
-          console.log(`  ℹ️ Obra ${obra.obra} não precisou de correção`);
         }
 
       } catch (error) {
         console.error(`  ❌ Erro ao corrigir obra ${obra.obra}:`, error);
         erros++;
+        // Mesmo com erro, manter a obra (segurança)
+        obrasFinais.push(obra);
       }
     }
 
-    // 4. Salvar obras únicas e corrigidas
-    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasUnicas));
+    // 4. Salvar obras finais (únicas, corrigidas, sem deletadas)
+    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasFinais));
     console.log(`\n💾 Obras salvas no AsyncStorage`);
 
     console.log('\n📊 RESUMO FINAL:');
     console.log(`  - Total inicial: ${localObras.length}`);
     console.log(`  - Duplicatas removidas: ${duplicatasRemovidas}`);
-    console.log(`  - Obras únicas: ${obrasUnicas.length}`);
+    console.log(`  - Obras deletadas removidas: ${removidas}`);
+    console.log(`  - Obras mantidas: ${obrasFinais.length}`);
     console.log(`  - Status corrigidos: ${corrigidas}`);
     console.log(`  - Erros: ${erros}`);
 
@@ -214,7 +221,7 @@ export const fixObraOrigemStatus = async (): Promise<{
       total: localObras.length,
       corrigidas,
       erros,
-      duplicatasRemovidas
+      duplicatasRemovidas: duplicatasRemovidas + removidas // Total de obras removidas
     };
 
   } catch (error) {
