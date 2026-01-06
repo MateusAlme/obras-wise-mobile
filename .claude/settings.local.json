@@ -86,7 +86,8 @@
       "Bash(cmd.exe /c \"cd web && if exist .next rmdir /s /q .next\")",
       "Bash(if exist .expo rmdir /s /q .expo)",
       "Bash(if exist node_modules.cache rmdir /s /q node_modules.cache)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

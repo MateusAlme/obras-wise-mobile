@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, RefreshControl, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, RefreshControl, Modal, Dimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
-import type { PendingObra } from '../lib/offline-sync';
-import { getPhotosByObra, type PhotoMetadata } from '../lib/photo-backup';
+import NetInfo from '@react-native-community/netinfo';
+import type { PendingObra, LocalObra } from '../lib/offline-sync';
+import { getLocalObraById, restoreObraPhotos, forceUpdateObraFromSupabase, syncObra, checkInternetConnection } from '../lib/offline-sync';
+import { getPhotosByObra, getPhotoMetadatasByIds, type PhotoMetadata } from '../lib/photo-backup';
 import { supabase } from '../lib/supabase';
 
 type FotoInfo = {
@@ -272,7 +274,30 @@ export default function ObraDetalhe() {
   const [selectedPhotoSection, setSelectedPhotoSection] = useState<string | null>(null);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [isFinalizando, setIsFinalizando] = useState(false);
   const insets = useSafeAreaInsets();
+
+  // Monitor internet connection
+  useEffect(() => {
+    let isMounted = true;
+
+    checkInternetConnection().then(online => {
+      if (isMounted) {
+        setIsOnline(online);
+      }
+    });
+
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const online = state.isConnected === true && state.isInternetReachable === true;
+      setIsOnline(online);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!data) return;
@@ -288,14 +313,50 @@ export default function ObraDetalhe() {
     }, [data, obra?.id])
   );
 
-  const loadObraData = () => {
+  const loadObraData = async () => {
     if (!data) return;
     try {
       const parsed = JSON.parse(decodeURIComponent(data));
+
+      // OFFLINE-FIRST: Sempre buscar do AsyncStorage primeiro
+      if (parsed.id) {
+        const localObra = await getLocalObraById(parsed.id);
+
+        if (localObra) {
+          // Obra encontrada no AsyncStorage (fonte primária)
+          console.log('📱 Carregando obra do AsyncStorage:', parsed.id);
+
+          // ✅ AUTO-CORREÇÃO: Se campos críticos estão faltando, buscar do Supabase
+          const precisaCorrecao = !localObra.origem || !localObra.status;
+
+          if (precisaCorrecao && localObra.synced) {
+            console.log('⚠️ Obra sincronizada mas campos faltando - buscando do Supabase...');
+            const corrigida = await forceUpdateObraFromSupabase(parsed.id);
+
+            if (corrigida) {
+              console.log('✅ Obra corrigida automaticamente');
+              // Recarregar obra atualizada
+              const obraAtualizada = await getLocalObraById(parsed.id);
+              if (obraAtualizada) {
+                setObra({ ...obraAtualizada, origem: obraAtualizada.origem || 'offline' });
+                loadLocalPhotos(parsed.id);
+                return;
+              }
+            }
+          }
+
+          // ✅ CORREÇÃO: Preservar origem do AsyncStorage (pode ser 'online' ou 'offline')
+          setObra({ ...localObra, origem: localObra.origem || 'offline' });
+          loadLocalPhotos(parsed.id);
+          return;
+        }
+      }
+
+      // Fallback: Se não encontrou no AsyncStorage, usa dados passados
+      console.log('⚠️ Obra não encontrada no AsyncStorage, usando dados passados');
       setObra(parsed);
 
-      // Carregar fotos locais APENAS para obras offline
-      // Obras sincronizadas já têm as URLs no banco
+      // Carregar fotos locais se for offline
       if (parsed.id && parsed.origem === 'offline') {
         loadLocalPhotos(parsed.id);
       }
@@ -306,23 +367,54 @@ export default function ObraDetalhe() {
   };
 
   const refreshObraData = async () => {
-    if (!obra?.id || obra.origem === 'offline') return;
+    if (!obra?.id) return;
 
     try {
       setRefreshing(true);
 
-      // Buscar dados atualizados do banco
-      const { data: updatedObra, error } = await supabase
-        .from('obras')
-        .select('*')
-        .eq('id', obra.id)
-        .single();
+      // OFFLINE-FIRST: Sempre buscar do AsyncStorage primeiro
+      const localObra = await getLocalObraById(obra.id);
 
-      if (error) throw error;
+      if (localObra) {
+        console.log('🔄 Atualizando obra do AsyncStorage:', obra.id);
+        // ✅ CORREÇÃO: Preservar origem do AsyncStorage (pode ser 'online' ou 'offline')
+        setObra({ ...localObra, origem: localObra.origem || 'offline' });
+        loadLocalPhotos(localObra.id);
+      } else {
+        // Fallback: Se não encontrou no AsyncStorage, tenta Supabase
+        console.log('⚠️ Obra não está no AsyncStorage, buscando do Supabase...');
 
-      if (updatedObra) {
-        setObra({ ...updatedObra, origem: 'online' });
-        // Não precisa carregar fotos locais - elas já estão no banco com URLs
+        // Se ID é temp_, buscar pelo número da obra
+        let updatedObra = null;
+        let error = null;
+
+        if (obra.id.startsWith('temp_')) {
+          console.log(`📋 ID temporário detectado, buscando pelo número: ${obra.obra}`);
+          const response = await supabase
+            .from('obras')
+            .select('*')
+            .eq('obra', obra.obra)
+            .eq('equipe', obra.equipe)
+            .single();
+
+          updatedObra = response.data;
+          error = response.error;
+        } else {
+          const response = await supabase
+            .from('obras')
+            .select('*')
+            .eq('id', obra.id)
+            .single();
+
+          updatedObra = response.data;
+          error = response.error;
+        }
+
+        if (error) throw error;
+
+        if (updatedObra) {
+          setObra({ ...updatedObra, origem: 'online' });
+        }
       }
     } catch (error) {
       console.error('Erro ao atualizar obra:', error);
@@ -389,16 +481,44 @@ export default function ObraDetalhe() {
   const getPhotosForSection = (sectionKey: string): FotoInfo[] => {
     if (!obra) return [];
 
-    // Pegar fotos do banco (URL)
-    const dbPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined;
-    const validDbPhotos = (dbPhotos || []).filter(f => f.url || f.uri);
+    // Pegar fotos do banco (URL) ou IDs (AsyncStorage offline-first)
+    const dbPhotos = (obra as any)[sectionKey];
 
-    // Se a obra é online, usar apenas fotos do banco (já sincronizadas)
-    if (obra.origem === 'online') {
-      return validDbPhotos;
+    // ✅ CORREÇÃO: Se dbPhotos é array de strings (IDs), buscar URIs dos metadados locais
+    // Isso garante que fotos apareçam mesmo após sincronização
+    if (Array.isArray(dbPhotos) && dbPhotos.length > 0 && typeof dbPhotos[0] === 'string') {
+      // IDs de fotos - buscar URIs do photo-backup usando localPhotos
+      const photoIds = dbPhotos as string[];
+      const fotosFromIds: FotoInfo[] = [];
+
+      for (const photoId of photoIds) {
+        const metadata = localPhotos.find(p => p.id === photoId);
+        if (metadata) {
+          fotosFromIds.push({
+            uri: metadata.compressedPath,
+            url: metadata.supabaseUrl,  // Pode ter URL se já foi sincronizada
+            latitude: metadata.latitude,
+            longitude: metadata.longitude,
+            utmX: metadata.utmX,
+            utmY: metadata.utmY,
+            utmZone: metadata.utmZone,
+          });
+        }
+      }
+
+      if (fotosFromIds.length > 0) {
+        return fotosFromIds;
+      }
     }
 
-    // Para obras offline, combinar com fotos locais
+    // Se dbPhotos é array de objetos (FotoInfo com URL), usar
+    const validDbPhotos = Array.isArray(dbPhotos) && dbPhotos.length > 0 && typeof dbPhotos[0] === 'object'
+      ? (dbPhotos as FotoInfo[]).filter(f => f.url || f.uri)
+      : [];
+
+    // Combinar fotos do banco com fotos locais (para obras online e offline)
+    // - Fotos do banco têm prioridade (já possuem URL)
+    // - Fotos locais (backups) também devem ser exibidas para suportar edição offline
     const typeMap: Record<string, PhotoMetadata['type'] | PhotoMetadata['type'][]> = {
       'fotos_antes': 'antes',
       'fotos_durante': 'durante',
@@ -589,6 +709,16 @@ export default function ObraDetalhe() {
   const handleFinalizarObra = async () => {
     if (!obra || !obra.id) return;
 
+    // Verificar se está online
+    if (!isOnline) {
+      Alert.alert(
+        'Sem Conexão',
+        'É necessário estar conectado à internet para finalizar a obra.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     // Verificar fotos faltantes
     const { total, detalhes } = calcularFotosFaltantes();
 
@@ -611,23 +741,37 @@ export default function ObraDetalhe() {
           style: 'destructive',
           onPress: async () => {
             try {
+              setIsFinalizando(true);
               const dataFechamento = new Date().toISOString();
               const { error } = await supabase
                 .from('obras')
                 .update({
                   status: 'finalizada',
                   finalizada_em: dataFechamento,
-                  data_fechamento: dataFechamento, // Para compatibilidade com sistema web
+                  data_fechamento: dataFechamento,
                 })
                 .eq('id', obra.id);
 
               if (error) throw error;
 
+              // ✅ CRÍTICO: Atualizar AsyncStorage local com novo status
+              console.log('✅ Obra finalizada no Supabase, atualizando AsyncStorage...');
+              const { updateObraOffline } = await import('../lib/offline-sync');
+              await updateObraOffline(obra.id, {
+                status: 'finalizada',
+                finalizada_em: dataFechamento,
+                data_fechamento: dataFechamento,
+              });
+              console.log('✅ AsyncStorage atualizado com status finalizada');
+
               Alert.alert('Sucesso', 'Obra finalizada com sucesso!', [
                 { text: 'OK', onPress: () => router.back() }
               ]);
             } catch (error: any) {
+              console.error('❌ Erro ao finalizar obra:', error);
               Alert.alert('Erro', `Não foi possível finalizar a obra: ${error.message}`);
+            } finally {
+              setIsFinalizando(false);
             }
           },
         },
@@ -678,21 +822,23 @@ export default function ObraDetalhe() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           Detalhes da Obra
         </Text>
-        {obra.origem !== 'offline' && (
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={onRefresh}
-            disabled={refreshing}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={refreshing ? "hourglass-outline" : "refresh"}
-              size={20}
-              color={refreshing ? "#999" : "#007bff"}
-            />
-          </TouchableOpacity>
-        )}
-        {obra.origem === 'offline' && <View style={styles.headerActionPlaceholder} />}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {obra.origem !== 'offline' && (
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={onRefresh}
+              disabled={refreshing}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={refreshing ? "hourglass-outline" : "refresh"}
+                size={20}
+                color={refreshing ? "#999" : "#007bff"}
+              />
+            </TouchableOpacity>
+          )}
+          {obra.origem === 'offline' && <View style={styles.headerActionPlaceholder} />}
+        </View>
       </View>
 
       <ScrollView
@@ -738,14 +884,15 @@ export default function ObraDetalhe() {
         </View>
 
         {/* Botões de ação */}
-        {obra.status !== 'finalizada' && obra.origem !== 'offline' && (() => {
+        {obra.status !== 'finalizada' && (() => {
           const { total: fotosFaltantes } = calcularFotosFaltantes();
-          const podeFinalizar = fotosFaltantes === 0;
+          const podeFinalizar = isOnline && fotosFaltantes === 0;
 
           return (
             <View style={styles.actionButtons}>
+              {/* Botão Adicionar Fotos */}
               <TouchableOpacity
-                style={styles.continuarButton}
+                style={[styles.continuarButton, { flex: 1 }]}
                 onPress={() => {
                   router.push({
                     pathname: '/nova-obra',
@@ -761,23 +908,31 @@ export default function ObraDetalhe() {
                 <Text style={styles.continuarButtonText}>Adicionar Fotos</Text>
               </TouchableOpacity>
 
+              {/* Botão Finalizar Obra */}
               <TouchableOpacity
                 style={[
                   styles.finalizarButton,
-                  !podeFinalizar && styles.finalizarButtonDisabled
+                  { flex: 1 },
+                  (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
                 ]}
                 onPress={handleFinalizarObra}
-                activeOpacity={podeFinalizar ? 0.7 : 1}
-                disabled={!podeFinalizar}
+                activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
+                disabled={!podeFinalizar || isFinalizando}
               >
-                <Ionicons
-                  name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
-                  size={20}
-                  color="#fff"
-                />
-                <Text style={styles.finalizarButtonText}>
-                  {podeFinalizar ? 'Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
-                </Text>
+                {isFinalizando ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons
+                      name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
+                      size={20}
+                      color="#fff"
+                    />
+                    <Text style={styles.finalizarButtonText}>
+                      {podeFinalizar ? 'Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           );
@@ -1112,6 +1267,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionButtons: {
+    flexDirection: 'row',
     marginBottom: 16,
     gap: 12,
   },

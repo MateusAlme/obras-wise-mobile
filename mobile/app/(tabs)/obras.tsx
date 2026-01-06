@@ -4,9 +4,12 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras } from '../../lib/offline-sync';
-import type { PendingObra } from '../../lib/offline-sync';
+import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, saveObraLocal, syncAllLocalObras } from '../../lib/offline-sync';
+import type { PendingObra, LocalObra } from '../../lib/offline-sync';
+import { removeDuplicateObras } from '../../lib/fix-duplicates';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const LOCAL_OBRAS_KEY = '@obras_local';
 
 interface FotoInfo {
   uri?: string;
@@ -55,6 +58,7 @@ export default function Obras() {
   const [refreshing, setRefreshing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
+  const [syncingLocal, setSyncingLocal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [equipeLogada, setEquipeLogada] = useState<string>('');
   const insets = useSafeAreaInsets();
@@ -75,16 +79,17 @@ export default function Obras() {
   }, []);
 
   const combinedObras = useMemo<ObraListItem[]>(() => {
+    // ✅ CORREÇÃO: Preservar origem que já está salva em cada obra
     const pendentes: ObraListItem[] = pendingObrasState.map((obra) => ({
       ...obra,
-      origem: 'offline',
+      origem: obra.origem || 'offline', // Usar origem salva, ou 'offline' como fallback
     }));
 
     // Garantir que onlineObras é sempre um array
     const obrasOnlineArray = Array.isArray(onlineObras) ? onlineObras : [];
     const sincronizadas: ObraListItem[] = obrasOnlineArray.map((obra) => ({
       ...obra,
-      origem: 'online',
+      origem: obra.origem || 'online', // Usar origem salva, ou 'online' como fallback
     }));
 
     return [...pendentes, ...sincronizadas];
@@ -149,27 +154,161 @@ export default function Obras() {
         return;
       }
 
-      const online = await checkInternetConnection();
-      if (!online) {
-        setLoading(false);
-        setRefreshing(false);
-        return;
+      // OFFLINE-FIRST: Buscar do AsyncStorage primeiro
+      console.log('📱 Carregando obras do AsyncStorage...');
+      let localObras = await getLocalObras();
+
+      // Se AsyncStorage vazio, buscar do Supabase (migração)
+      if (localObras.length === 0) {
+        console.log('⚠️ AsyncStorage vazio - buscando do Supabase para migração inicial...');
+        console.log(`🔍 Equipe logada: "${equipe}"`);
+        const online = await checkInternetConnection();
+
+        if (online) {
+          // Buscar TODAS as obras primeiro para debug
+          const { data: todasObras, error: erroTodas } = await supabase
+            .from('obras')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+          console.log(`📊 Total de obras no Supabase: ${todasObras?.length || 0}`);
+
+          if (todasObras && todasObras.length > 0) {
+            // Mostrar equipes únicas
+            const equipesUnicas = [...new Set(todasObras.map(o => o.equipe))];
+            console.log(`👥 Equipes encontradas: ${equipesUnicas.join(', ')}`);
+          }
+
+          // Buscar obras da equipe logada
+          const { data, error } = await supabase
+            .from('obras')
+            .select('*')
+            .eq('equipe', equipe)
+            .order('created_at', { ascending: false });
+
+          console.log(`🎯 Obras da equipe "${equipe}": ${data?.length || 0}`);
+
+          if (error) {
+            console.error('❌ Erro ao buscar obras:', error);
+          }
+
+          if (!error && data) {
+            console.log(`📥 Migrando ${data.length} obra(s) do Supabase para AsyncStorage...`);
+
+            // Salvar cada obra no AsyncStorage
+            for (const obra of data) {
+              // Obras do Supabase já estão sincronizadas
+              const localObras = await getLocalObras();
+              const existingLocal = localObras.find(o => o.id === obra.id);
+
+              // Se já existe local, preservar dados locais (pode ter edições não sincronizadas)
+              if (existingLocal) {
+                console.log(`⚠️ Obra ${obra.id} já existe localmente - preservando versão local`);
+                continue;
+              }
+
+              // Salvar obra do Supabase como já sincronizada
+              const savedObra: LocalObra = {
+                ...obra,
+                id: obra.id,
+                synced: true,  // ✅ Já está no banco
+                locallyModified: false,
+                serverId: obra.id,
+                origem: 'online', // ✅ CRÍTICO: Obra vem do Supabase
+                last_modified: obra.updated_at || obra.created_at,
+                created_at: obra.created_at,
+              } as LocalObra;
+
+              localObras.push(savedObra);
+              await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+              console.log(`✅ Obra ${obra.id} migrada e marcada como sincronizada`);
+            }
+
+            // Recarregar do AsyncStorage
+            localObras = await getLocalObras();
+            console.log(`✅ Migração completa: ${localObras.length} obra(s)`);
+          } else {
+            console.log('⚠️ Nenhuma obra encontrada para esta equipe');
+          }
+        } else {
+          // Se offline e AsyncStorage vazio, não há obras
+          console.log('📴 Offline e AsyncStorage vazio - nenhuma obra disponível');
+        }
       }
 
-      // Filtrar obras apenas da equipe logada
-      const { data, error } = await supabase
-        .from('obras')
-        .select('*')
-        .eq('equipe', equipe)
-        .order('created_at', { ascending: false });
+      // ✅ AUTO-CORREÇÃO: Corrigir obras sincronizadas que faltam campos
+      console.log(`📊 Debug: Total de obras locais: ${localObras.length}`);
+      localObras.forEach((obra, index) => {
+        console.log(`  Obra ${index + 1}: ${obra.obra} - synced:${obra.synced}, origem:${obra.origem}, status:${obra.status}`);
+      });
 
-      if (error) {
-        console.error('Erro ao carregar obras:', error);
-      } else {
-        const lista = data || [];
-        setOnlineObras(lista);
-        await AsyncStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(lista));
+      const obrasComCamposFaltando = localObras.filter(
+        obra => obra.synced && (!obra.origem || !obra.status)
+      );
+
+      console.log(`🔍 Obras que precisam correção: ${obrasComCamposFaltando.length}`);
+
+      if (obrasComCamposFaltando.length > 0) {
+        console.log(`🔧 Auto-correção: ${obrasComCamposFaltando.length} obra(s) sincronizada(s) sem origem/status`);
+        obrasComCamposFaltando.forEach(obra => {
+          console.log(`  - Obra ${obra.obra}: origem=${obra.origem}, status=${obra.status}`);
+        });
+
+        try {
+          // Importar função de correção dinamicamente
+          const { fixObraOrigemStatus } = await import('../../lib/fix-origem-status');
+
+          // Executar correção silenciosamente
+          const resultado = await fixObraOrigemStatus();
+
+          console.log(`📊 Resultado da correção: total=${resultado.total}, corrigidas=${resultado.corrigidas}, erros=${resultado.erros}`);
+
+          if (resultado.corrigidas > 0) {
+            console.log(`✅ Auto-correção: ${resultado.corrigidas} obra(s) corrigida(s) automaticamente`);
+            // Recarregar obras após correção
+            localObras = await getLocalObras();
+          }
+        } catch (error) {
+          console.error('❌ Erro na auto-correção:', error);
+        }
       }
+
+      // Filtrar apenas obras da equipe logada
+      const obrasEquipe = localObras.filter(obra => obra.equipe === equipe);
+
+      // Ordenar por timestamp de criação (mais recente primeiro)
+      obrasEquipe.sort((a, b) => {
+        // Usar created_at como prioridade (timestamp ISO)
+        // Fallback para data da obra se created_at não existir
+        const getTimestamp = (obra: LocalObra) => {
+          if (obra.created_at) {
+            return new Date(obra.created_at).getTime();
+          }
+          if (obra.data) {
+            return new Date(obra.data).getTime();
+          }
+          return 0;
+        };
+
+        const timestampA = getTimestamp(a);
+        const timestampB = getTimestamp(b);
+
+        return timestampB - timestampA; // Decrescente (mais recente primeiro)
+      });
+
+      console.log('🔍 ORDENAÇÃO - Primeiras 3 obras:');
+      obrasEquipe.slice(0, 3).forEach((obra, index) => {
+        console.log(`  ${index + 1}. Obra ${obra.obra} - Data: ${obra.data} - Created: ${obra.created_at || 'N/A'}`);
+      });
+
+      // Converter para formato compatível
+      const obrasFormatadas = obrasEquipe.map(obra => ({
+        ...obra,
+        status: obra.status || 'em_aberto',
+      })) as Obra[];
+
+      setOnlineObras(obrasFormatadas);
+      console.log(`✅ ${obrasFormatadas.length} obra(s) carregadas (ordenadas por data)`);
     } catch (err) {
       console.error('Erro inesperado ao carregar obras:', err);
     } finally {
@@ -216,35 +355,59 @@ export default function Obras() {
   };
 
   const limparCacheERecarregar = async () => {
-    Alert.alert(
-      'Limpar Cache',
-      'Deseja limpar o cache local e recarregar todas as obras do servidor?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Sim, limpar',
-          onPress: async () => {
-            try {
+    try {
+      setLoading(true);
+      console.log('🔄 Atualizando lista de obras...');
+
+      // OFFLINE-FIRST: Apenas recarregar do AsyncStorage
+      // NÃO deletar nada, NÃO buscar do Supabase
+      // Simplesmente atualizar a visualização dos dados locais
+      await carregarObras();
+
+      console.log('✅ Lista atualizada com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao atualizar lista:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar a lista de obras');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLimparDuplicatas = async () => {
+    try {
+      Alert.alert(
+        '🧹 Limpar Duplicatas',
+        'Deseja remover obras duplicadas do dispositivo?\n\nSerá mantida apenas a versão mais recente de cada obra.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Limpar',
+            style: 'destructive',
+            onPress: async () => {
               setLoading(true);
-              // Limpar cache
-              await AsyncStorage.removeItem(HISTORY_CACHE_KEY);
-              setOnlineObras([]);
-              // Recarregar do servidor
-              await carregarObras();
-              Alert.alert('Sucesso!', 'Cache limpo e obras recarregadas do servidor.');
-            } catch (error) {
-              console.error('Erro ao limpar cache:', error);
-              Alert.alert('Erro', 'Não foi possível limpar o cache.');
-            } finally {
-              setLoading(false);
+              try {
+                console.log('🧹 Iniciando limpeza de duplicatas...');
+                const resultado = await removeDuplicateObras();
+
+                await carregarObras(); // Recarregar lista
+
+                Alert.alert(
+                  '✅ Limpeza Concluída',
+                  `Total de obras: ${resultado.total}\nDuplicadas encontradas: ${resultado.duplicadas}\nRemovidas: ${resultado.removidas}`
+                );
+              } catch (error) {
+                console.error('❌ Erro ao limpar duplicatas:', error);
+                Alert.alert('Erro', 'Não foi possível limpar as duplicatas');
+              } finally {
+                setLoading(false);
+              }
             }
-          },
-        },
-      ]
-    );
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Erro:', error);
+    }
   };
 
   const formatarData = (data: string) => {
@@ -341,6 +504,67 @@ export default function Obras() {
     }
   };
 
+  const handleSyncLocalObras = async () => {
+    // Verificar conexão
+    const online = await checkInternetConnection();
+    if (!online) {
+      Alert.alert('Sem Conexão', 'Conecte-se à internet para sincronizar as obras.');
+      return;
+    }
+
+    // Verificar quantas obras não sincronizadas existem
+    const localObras = await getLocalObras();
+    const obrasNaoSincronizadas = localObras.filter(o => !o.synced || o.locallyModified);
+
+    if (obrasNaoSincronizadas.length === 0) {
+      Alert.alert('✅ Tudo Sincronizado', 'Todas as obras já estão sincronizadas com a nuvem.');
+      return;
+    }
+
+    // Confirmar com usuário
+    Alert.alert(
+      '☁️ Sincronizar com Nuvem',
+      `Deseja enviar ${obrasNaoSincronizadas.length} obra(s) para a nuvem?\n\nIsso pode consumir dados móveis.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Sincronizar',
+          onPress: async () => {
+            setSyncingLocal(true);
+            try {
+              console.log(`🔄 Iniciando sincronização de ${obrasNaoSincronizadas.length} obra(s)...`);
+              const result = await syncAllLocalObras();
+
+              if (result.success > 0) {
+                // Recarregar lista após sync
+                await carregarObras();
+              }
+
+              if (result.success === 0 && result.failed === 0) {
+                Alert.alert('Sem Conexão', 'Não foi possível conectar ao servidor.');
+              } else if (result.failed > 0) {
+                Alert.alert(
+                  'Sincronização Parcial',
+                  `✅ ${result.success} obra(s) sincronizada(s)\n❌ ${result.failed} falha(s)\n\nTente novamente para enviar as obras restantes.`
+                );
+              } else {
+                Alert.alert(
+                  '✅ Sincronização Completa',
+                  `${result.success} obra(s) enviada(s) para a nuvem com sucesso!`
+                );
+              }
+            } catch (error) {
+              console.error('❌ Erro ao sincronizar obras locais:', error);
+              Alert.alert('Erro', 'Falha na sincronização. Tente novamente mais tarde.');
+            } finally {
+              setSyncingLocal(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleLogout = async () => {
     Alert.alert(
       'Sair',
@@ -399,27 +623,56 @@ export default function Obras() {
         )}
 
         <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Historico de Obras</Text>
+          <View style={styles.headerTop}>
+            <Text style={styles.title}>Obras</Text>
             <Text style={styles.subtitle}>{subtitleText}</Text>
             {!isOnline && (
-              <Text style={styles.offlineHint}>Sem internet: exibindo dados salvos e pendentes.</Text>
+              <Text style={styles.offlineHint}>📴 Modo Offline</Text>
             )}
           </View>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity
-              style={styles.refreshButton}
-              onPress={limparCacheERecarregar}
-            >
-              <Text style={styles.refreshButtonText}>🔄</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => router.push('/nova-obra')}
-            >
-              <Text style={styles.addButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
+        </View>
+
+        {/* Barra de Ações */}
+        <View style={styles.actionsBar}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => router.push('/nova-obra')}
+          >
+            <Text style={styles.actionButtonIcon}>➕</Text>
+            <Text style={styles.actionButtonLabel}>Nova Obra</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              (!isOnline || syncingLocal) && styles.actionButtonDisabled
+            ]}
+            onPress={handleSyncLocalObras}
+            disabled={!isOnline || syncingLocal}
+          >
+            {syncingLocal ? (
+              <ActivityIndicator size="small" color="#3b82f6" />
+            ) : (
+              <Text style={styles.actionButtonIcon}>☁️</Text>
+            )}
+            <Text style={styles.actionButtonLabel}>Sincronizar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={limparCacheERecarregar}
+          >
+            <Text style={styles.actionButtonIcon}>🔄</Text>
+            <Text style={styles.actionButtonLabel}>Atualizar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleLimparDuplicatas}
+          >
+            <Text style={styles.actionButtonIcon}>🧹</Text>
+            <Text style={styles.actionButtonLabel}>Limpar</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.searchContainer}>
@@ -482,31 +735,58 @@ export default function Obras() {
           filteredObras.map((obra) => {
             const isAberta = obra.status === 'em_aberto' || !obra.status;
             const isFinalizada = obra.status === 'finalizada';
+            const isRascunho = obra.status === 'rascunho';
+            const isSynced = obra.synced === true;
 
             return (
               <TouchableOpacity
-                key={obra.id}
+                key={`${obra.origem}_${obra.id}`}
                 style={[
                   styles.obraCard,
-                  isFinalizada && styles.obraCardFinalizada
+                  isFinalizada && styles.obraCardFinalizada,
+                  isRascunho && styles.obraCardRascunho
                 ]}
                 onPress={() => handleOpenObra(obra)}
               >
+                {/* Indicador de Sincronização */}
+                <View style={styles.syncIndicatorContainer}>
+                  {isSynced ? (
+                    <View style={styles.syncIndicatorSynced}>
+                      <Text style={styles.syncIndicatorIcon}>☁️</Text>
+                      <Text style={styles.syncIndicatorTextSynced}>Sincronizada</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.syncIndicatorPending}>
+                      <Text style={styles.syncIndicatorIcon}>📤</Text>
+                      <Text style={styles.syncIndicatorTextPending}>Aguardando sync</Text>
+                    </View>
+                  )}
+                </View>
+
                 <View style={styles.obraHeader}>
                   <View style={styles.obraHeaderLeft}>
                     <Text style={styles.obraNumero}>Obra {obra.obra}</Text>
-                    {isFinalizada && (
-                      <View style={styles.statusBadgeFinalizada}>
-                        <Text style={styles.statusBadgeText}>✓ Finalizada</Text>
-                      </View>
-                    )}
-                    {isAberta && (
-                      <View style={styles.statusBadgeAberta}>
-                        <Text style={styles.statusBadgeText}>⚠ Em aberto</Text>
-                      </View>
-                    )}
+                    <Text style={styles.obraData}>{formatarData(obra.data)}</Text>
                   </View>
-                  <Text style={styles.obraData}>{formatarData(obra.data)}</Text>
+                </View>
+
+                {/* Status badges abaixo do header */}
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                  {isFinalizada && (
+                    <View style={styles.statusBadgeFinalizada}>
+                      <Text style={styles.statusBadgeText}>✓ Finalizada</Text>
+                    </View>
+                  )}
+                  {isRascunho && (
+                    <View style={styles.statusBadgeRascunho}>
+                      <Text style={styles.statusBadgeText}>⏸️ Rascunho</Text>
+                    </View>
+                  )}
+                  {isAberta && !isRascunho && (
+                    <View style={styles.statusBadgeAberta}>
+                      <Text style={styles.statusBadgeText}>⚠ Em aberto</Text>
+                    </View>
+                  )}
                 </View>
 
                 {isFinalizada && obra.finalizada_em && (
@@ -614,9 +894,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   offlineHint: {
-    fontSize: 12,
-    color: '#b26a00',
+    fontSize: 11,
+    color: '#f59e0b',
     marginTop: 4,
+    fontWeight: '600',
+  },
+  headerTop: {
+    marginBottom: 4,
+  },
+  actionsBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    minHeight: 70,
+  },
+  actionButtonDisabled: {
+    opacity: 0.5,
+  },
+  actionButtonIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  actionButtonLabel: {
+    fontSize: 11,
+    color: '#374151',
+    fontWeight: '600',
+    textAlign: 'center',
   },
   headerButtons: {
     flexDirection: 'row',
@@ -637,6 +958,27 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   refreshButtonText: {
+    fontSize: 24,
+    lineHeight: 28,
+  },
+  syncButton: {
+    backgroundColor: '#3b82f6',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  syncButtonDisabled: {
+    backgroundColor: '#94a3b8',
+    opacity: 0.6,
+  },
+  syncButtonText: {
     fontSize: 24,
     lineHeight: 28,
   },
@@ -801,10 +1143,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
+  statusBadgeRascunho: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  obraCardRascunho: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+  },
   statusBadgeText: {
     fontSize: 12,
     fontWeight: '600',
     color: '#155724',
+  },
+  syncIndicatorContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 10,
+  },
+  syncIndicatorSynced: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#d1f4e0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#10b981',
+  },
+  syncIndicatorPending: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  syncIndicatorIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  syncIndicatorTextSynced: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#059669',
+  },
+  syncIndicatorTextPending: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#d97706',
   },
   alertaFotosPendentes: {
     backgroundColor: '#fff8e1',

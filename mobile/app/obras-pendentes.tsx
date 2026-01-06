@@ -196,7 +196,7 @@ export default function ObrasPendentes() {
         ) : (
           <View style={styles.obrasContainer}>
             {pendingObras.map((obra) => (
-              <View key={obra.id} style={styles.obraCard}>
+              <View key={`pending_${obra.id}`} style={styles.obraCard}>
                 <View style={styles.obraHeader}>
                   <View style={styles.obraInfo}>
                     <Text style={styles.obraTitle}>{obra.obra}</Text>
