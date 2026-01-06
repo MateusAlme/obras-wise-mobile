@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, saveObraLocal, syncAllLocalObras } from '../../lib/offline-sync';
 import type { PendingObra, LocalObra } from '../../lib/offline-sync';
-import { removeDuplicateObras } from '../../lib/fix-duplicates';
+import { fixObraOrigemStatus } from '../../lib/fix-origem-status';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const LOCAL_OBRAS_KEY = '@obras_local';
@@ -373,31 +373,30 @@ export default function Obras() {
     }
   };
 
-  const handleLimparDuplicatas = async () => {
+  const handleCorrigirObras = async () => {
     try {
       Alert.alert(
-        '🧹 Limpar Duplicatas',
-        'Deseja remover obras duplicadas do dispositivo?\n\nSerá mantida apenas a versão mais recente de cada obra.',
+        '🔧 Corrigir Status das Obras',
+        'Deseja corrigir automaticamente o status e origem das obras?\n\nIsto irá buscar os dados corretos do Supabase e atualizar o app.',
         [
           { text: 'Cancelar', style: 'cancel' },
           {
-            text: 'Limpar',
-            style: 'destructive',
+            text: 'Corrigir',
             onPress: async () => {
               setLoading(true);
               try {
-                console.log('🧹 Iniciando limpeza de duplicatas...');
-                const resultado = await removeDuplicateObras();
+                console.log('🔧 Iniciando correção de obras...');
+                const resultado = await fixObraOrigemStatus();
 
                 await carregarObras(); // Recarregar lista
 
                 Alert.alert(
-                  '✅ Limpeza Concluída',
-                  `Total de obras: ${resultado.total}\nDuplicadas encontradas: ${resultado.duplicadas}\nRemovidas: ${resultado.removidas}`
+                  '✅ Correção Concluída',
+                  `Total de obras: ${resultado.total}\nCorrigidas: ${resultado.corrigidas}\nErros: ${resultado.erros}`
                 );
               } catch (error) {
-                console.error('❌ Erro ao limpar duplicatas:', error);
-                Alert.alert('Erro', 'Não foi possível limpar as duplicatas');
+                console.error('❌ Erro ao corrigir obras:', error);
+                Alert.alert('Erro', 'Não foi possível corrigir as obras');
               } finally {
                 setLoading(false);
               }
@@ -660,18 +659,10 @@ export default function Obras() {
 
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={limparCacheERecarregar}
+            onPress={handleCorrigirObras}
           >
-            <Text style={styles.actionButtonIcon}>🔄</Text>
-            <Text style={styles.actionButtonLabel}>Atualizar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleLimparDuplicatas}
-          >
-            <Text style={styles.actionButtonIcon}>🧹</Text>
-            <Text style={styles.actionButtonLabel}>Limpar</Text>
+            <Text style={styles.actionButtonIcon}>🔧</Text>
+            <Text style={styles.actionButtonLabel}>Corrigir</Text>
           </TouchableOpacity>
         </View>
 
