@@ -1,10 +1,9 @@
-// Novos estilos para adicionar em nova-obra.tsx
-// Adicionar na seção de StyleSheet.create
+import { StyleSheet } from 'react-native';
 
+export const novaObraStyles = StyleSheet.create({
   // Container dos botões (modificar o existente ou adicionar)
   buttonContainer: {
     flexDirection: 'row',
-    gap: 12,
     marginTop: 24,
     marginBottom: 32,
   },
@@ -17,6 +16,7 @@
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12, // Espaçamento entre botões
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -37,6 +37,7 @@
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12, // Espaçamento entre botões
     elevation: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -44,10 +45,8 @@
     shadowRadius: 4,
   },
 
-  // Manter botão cancel existente (CINZA)
-  // cancelButton: { ... } // Já existe
-
   // Botão desabilitado (já existe, mas garantir que está presente)
   buttonDisabled: {
     opacity: 0.5,
   },
+});

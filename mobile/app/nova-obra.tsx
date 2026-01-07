@@ -28,9 +28,15 @@ import {
   getPendingObras,
   startAutoSync,
   updateObraOffline,
+  saveObraLocal,
 } from '../lib/offline-sync';
 import type { PendingObra } from '../lib/offline-sync';
-import { backupPhoto } from '../lib/photo-backup';
+import {
+  backupPhoto,
+  getPhotosByObra,
+  getAllPhotoMetadata,
+  updatePhotosObraId,
+} from '../lib/photo-backup';
 import { processObraPhotos, addToUploadQueue } from '../lib/photo-queue';
 import { PlacaScanner } from '../components/PlacaScanner';
 import type { PlacaInfo } from '../lib/placa-parser';
@@ -363,91 +369,215 @@ export default function NovaObra() {
   // Carregar dados da obra em modo de edição
   useEffect(() => {
     if (isEditMode && params.obraData) {
-      try {
-        const obraData = JSON.parse(params.obraData);
-        setObraId(obraData.id);
-        setData(obraData.data);
-        setObra(obraData.obra);
-        setResponsavel(obraData.responsavel);
-        setTipoServico(obraData.tipo_servico);
+      const loadObraDataAsync = async () => {
+        try {
+          const obraData = JSON.parse(params.obraData);
+          setObraId(obraData.id);
+          setData(obraData.data);
+          setObra(obraData.obra);
+          setResponsavel(obraData.responsavel);
+          setTipoServico(obraData.tipo_servico);
 
-        // Carregar fotos existentes
-        if (obraData.fotos_antes?.length) setFotosAntes(obraData.fotos_antes.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_durante?.length) setFotosDurante(obraData.fotos_durante.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_depois?.length) setFotosDepois(obraData.fotos_depois.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_abertura?.length) setFotosAbertura(obraData.fotos_abertura.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_fechamento?.length) setFotosFechamento(obraData.fotos_fechamento.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+          // ✅ Carregar fotos do photo-backup usando os IDs salvos na obra
+          console.log('📸 Buscando fotos da obra:', obraData.id);
 
-        // Carregar fotos DITAIS
-        if (obraData.fotos_ditais_abertura?.length) setFotosDitaisAbertura(obraData.fotos_ditais_abertura.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_ditais_impedir?.length) setFotosDitaisImpedir(obraData.fotos_ditais_impedir.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_ditais_testar?.length) setFotosDitaisTestar(obraData.fotos_ditais_testar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_ditais_aterrar?.length) setFotosDitaisAterrar(obraData.fotos_ditais_aterrar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_ditais_sinalizar?.length) setFotosDitaisSinalizar(obraData.fotos_ditais_sinalizar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+          let localPhotos: any[] = [];
 
-        // Carregar fotos de aterramento
-        if (obraData.fotos_aterramento_vala_aberta?.length) setFotosAterramentoValaAberta(obraData.fotos_aterramento_vala_aberta.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_aterramento_hastes?.length) setFotosAterramentoHastes(obraData.fotos_aterramento_hastes.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_aterramento_vala_fechada?.length) setFotosAterramentoValaFechada(obraData.fotos_aterramento_vala_fechada.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_aterramento_medicao?.length) setFotosAterramentoMedicao(obraData.fotos_aterramento_medicao.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+          try {
+            localPhotos = await getPhotosByObra(obraData.id);
+            console.log(`✅ ${localPhotos.length} foto(s) encontradas no photo-backup`);
+          } catch (err: any) {
+            console.error('❌ Erro ao carregar fotos:', err);
+            console.warn('⚠️ Continuando sem fotos. Você pode adicionar novas fotos normalmente.');
 
-        // Transformador
-        if (obraData.transformador_status) setTransformadorStatus(obraData.transformador_status);
-        if (obraData.fotos_transformador_laudo?.length) setFotosTransformadorLaudo(obraData.fotos_transformador_laudo.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_componente_instalado?.length) setFotosTransformadorComponenteInstalado(obraData.fotos_transformador_componente_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_tombamento_instalado?.length) setFotosTransformadorTombamentoInstalado(obraData.fotos_transformador_tombamento_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_tape?.length) setFotosTransformadorTape(obraData.fotos_transformador_tape.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_placa_instalado?.length) setFotosTransformadorPlacaInstalado(obraData.fotos_transformador_placa_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_instalado?.length) setFotosTransformadorInstalado(obraData.fotos_transformador_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_antes_retirar?.length) setFotosTransformadorAntesRetirar(obraData.fotos_transformador_antes_retirar.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_tombamento_retirado?.length) setFotosTransformadorTombamentoRetirado(obraData.fotos_transformador_tombamento_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_transformador_placa_retirado?.length) setFotosTransformadorPlacaRetirado(obraData.fotos_transformador_placa_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+            // NÃO lançar erro - permitir que a obra abra sem fotos
+            Alert.alert(
+              'Aviso',
+              'Não foi possível carregar as fotos existentes.\n\nVocê pode continuar editando e adicionar novas fotos.',
+              [{ text: 'OK' }]
+            );
+          }
 
-        // Medidor
-        if (obraData.fotos_medidor_padrao?.length) setFotosMedidorPadrao(obraData.fotos_medidor_padrao.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_medidor_leitura?.length) setFotosMedidorLeitura(obraData.fotos_medidor_leitura.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_medidor_selo_born?.length) setFotosMedidorSeloBorn(obraData.fotos_medidor_selo_born.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_medidor_selo_caixa?.length) setFotosMedidorSeloCaixa(obraData.fotos_medidor_selo_caixa.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_medidor_identificador_fase?.length) setFotosMedidorIdentificadorFase(obraData.fotos_medidor_identificador_fase.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+          // Helper: Converter IDs em FotoData com photoId (com tratamento de erro individual)
+          const mapPhotos = (photoIds: string[], fieldName: string = 'fotos') => {
+            try {
+              if (!Array.isArray(photoIds)) {
+                console.warn(`⚠️ ${fieldName}: photoIds não é array, pulando...`);
+                return [];
+              }
 
-        // Checklist
-        if (obraData.fotos_checklist_croqui?.length) setFotosChecklistCroqui(obraData.fotos_checklist_croqui.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_checklist_panoramica_inicial?.length) setFotosChecklistPanoramicaInicial(obraData.fotos_checklist_panoramica_inicial.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_checklist_chede?.length) setFotosChecklistChaveComponente(obraData.fotos_checklist_chede.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_checklist_padrao_geral?.length) setFotosChecklistPadraoGeral(obraData.fotos_checklist_padrao_geral.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_checklist_padrao_interno?.length) setFotosChecklistPadraoInterno(obraData.fotos_checklist_padrao_interno.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_checklist_panoramica_final?.length) setFotosChecklistPanoramicaFinal(obraData.fotos_checklist_panoramica_final.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+              return photoIds.map(photoId => {
+                try {
+                  const photo = localPhotos.find(p => p.id === photoId);
+                  if (photo) {
+                    // ✅ VALIDAÇÃO: Verificar se compressedPath existe e é válido
+                    const uri = photo.compressedPath || photo.originalPath;
 
-        // Altimetria
-        if (obraData.fotos_altimetria_lado_fonte?.length) setFotosAltimetriaLadoFonte(obraData.fotos_altimetria_lado_fonte.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_altimetria_medicao_fonte?.length) setFotosAltimetriaMedicaoFonte(obraData.fotos_altimetria_medicao_fonte.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_altimetria_lado_carga?.length) setFotosAltimetriaLadoCarga(obraData.fotos_altimetria_lado_carga.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_altimetria_medicao_carga?.length) setFotosAltimetriaMedicaoCarga(obraData.fotos_altimetria_medicao_carga.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+                    if (!uri) {
+                      console.warn(`⚠️ ${fieldName}: Foto ${photoId} sem URI válido, pulando...`);
+                      return null;
+                    }
 
-        // Vazamento e Limpeza
-        if (obraData.fotos_vazamento_evidencia?.length) setFotosVazamentoEvidencia(obraData.fotos_vazamento_evidencia.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_vazamento_equipamentos_limpeza?.length) setFotosVazamentoEquipamentosLimpeza(obraData.fotos_vazamento_equipamentos_limpeza.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_vazamento_tombamento_retirado?.length) setFotosVazamentoTombamentoRetirado(obraData.fotos_vazamento_tombamento_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_vazamento_placa_retirado?.length) setFotosVazamentoPlacaRetirado(obraData.fotos_vazamento_placa_retirado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_vazamento_tombamento_instalado?.length) setFotosVazamentoTombamentoInstalado(obraData.fotos_vazamento_tombamento_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_vazamento_placa_instalado?.length) setFotosVazamentoPlacaInstalado(obraData.fotos_vazamento_placa_instalado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.fotos_vazamento_instalacao?.length) setFotosVazamentoInstalacao(obraData.fotos_vazamento_instalacao.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
+                    // Verificar se URI começa com file:// (caminho local válido)
+                    if (!uri.startsWith('file://')) {
+                      console.warn(`⚠️ ${fieldName}: URI inválido para foto ${photoId}: ${uri}`);
+                      return null;
+                    }
 
-        // Documentação
-        if (obraData.doc_cadastro_medidor?.length) setDocCadastroMedidor(obraData.doc_cadastro_medidor.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_laudo_transformador?.length) setDocLaudoTransformador(obraData.doc_laudo_transformador.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_laudo_regulador?.length) setDocLaudoRegulador(obraData.doc_laudo_regulador.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_laudo_religador?.length) setDocLaudoReligador(obraData.doc_laudo_religador.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_apr?.length) setDocApr(obraData.doc_apr.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_fvbt?.length) setDocFvbt(obraData.doc_fvbt.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_termo_desistencia_lpt?.length) setDocTermoDesistenciaLpt(obraData.doc_termo_desistencia_lpt.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_autorizacao_passagem?.length) setDocAutorizacaoPassagem(obraData.doc_autorizacao_passagem.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_materiais_previsto?.length) setDocMateriaisPrevisto(obraData.doc_materiais_previsto.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-        if (obraData.doc_materiais_realizado?.length) setDocMateriaisRealizado(obraData.doc_materiais_realizado.map((f: any) => ({ uri: f.url || f.uri, latitude: f.latitude, longitude: f.longitude })));
-      } catch (error) {
-        console.error('Erro ao carregar dados da obra:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os dados da obra.');
-      }
+                    return {
+                      uri,
+                      latitude: photo.latitude,
+                      longitude: photo.longitude,
+                      utmX: photo.utmX,
+                      utmY: photo.utmY,
+                      utmZone: photo.utmZone,
+                      photoId: photo.id, // ✅ CRÍTICO: Incluir photoId
+                    };
+                  }
+                  console.warn(`⚠️ ${fieldName}: Foto com ID ${photoId} não encontrada no photo-backup`);
+                  return null;
+                } catch (err) {
+                  console.error(`❌ ${fieldName}: Erro ao processar foto ${photoId}:`, err);
+                  return null;
+                }
+              }).filter(Boolean) as FotoData[];
+            } catch (err) {
+              console.error(`❌ Erro ao mapear ${fieldName}:`, err);
+              return [];
+            }
+          };
+
+          // Carregar fotos existentes (arrays de IDs) - COM TRATAMENTO DE ERRO INDIVIDUAL
+          try {
+            if (obraData.fotos_antes?.length) setFotosAntes(mapPhotos(obraData.fotos_antes, 'fotos_antes'));
+            if (obraData.fotos_durante?.length) setFotosDurante(mapPhotos(obraData.fotos_durante, 'fotos_durante'));
+            if (obraData.fotos_depois?.length) setFotosDepois(mapPhotos(obraData.fotos_depois, 'fotos_depois'));
+            if (obraData.fotos_abertura?.length) setFotosAbertura(mapPhotos(obraData.fotos_abertura, 'fotos_abertura'));
+            if (obraData.fotos_fechamento?.length) setFotosFechamento(mapPhotos(obraData.fotos_fechamento, 'fotos_fechamento'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos padrão:', err);
+          }
+
+          // Carregar fotos DITAIS
+          try {
+            if (obraData.fotos_ditais_abertura?.length) setFotosDitaisAbertura(mapPhotos(obraData.fotos_ditais_abertura, 'fotos_ditais_abertura'));
+            if (obraData.fotos_ditais_impedir?.length) setFotosDitaisImpedir(mapPhotos(obraData.fotos_ditais_impedir, 'fotos_ditais_impedir'));
+            if (obraData.fotos_ditais_testar?.length) setFotosDitaisTestar(mapPhotos(obraData.fotos_ditais_testar, 'fotos_ditais_testar'));
+            if (obraData.fotos_ditais_aterrar?.length) setFotosDitaisAterrar(mapPhotos(obraData.fotos_ditais_aterrar, 'fotos_ditais_aterrar'));
+            if (obraData.fotos_ditais_sinalizar?.length) setFotosDitaisSinalizar(mapPhotos(obraData.fotos_ditais_sinalizar, 'fotos_ditais_sinalizar'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos DITAIS:', err);
+          }
+
+          // Carregar fotos de aterramento
+          try {
+            if (obraData.fotos_aterramento_vala_aberta?.length) setFotosAterramentoValaAberta(mapPhotos(obraData.fotos_aterramento_vala_aberta, 'fotos_aterramento_vala_aberta'));
+            if (obraData.fotos_aterramento_hastes?.length) setFotosAterramentoHastes(mapPhotos(obraData.fotos_aterramento_hastes, 'fotos_aterramento_hastes'));
+            if (obraData.fotos_aterramento_vala_fechada?.length) setFotosAterramentoValaFechada(mapPhotos(obraData.fotos_aterramento_vala_fechada, 'fotos_aterramento_vala_fechada'));
+            if (obraData.fotos_aterramento_medicao?.length) setFotosAterramentoMedicao(mapPhotos(obraData.fotos_aterramento_medicao, 'fotos_aterramento_medicao'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos de aterramento:', err);
+          }
+
+          // Transformador
+          try {
+            if (obraData.transformador_status) setTransformadorStatus(obraData.transformador_status);
+            if (obraData.fotos_transformador_laudo?.length) setFotosTransformadorLaudo(mapPhotos(obraData.fotos_transformador_laudo, 'fotos_transformador_laudo'));
+            if (obraData.fotos_transformador_componente_instalado?.length) setFotosTransformadorComponenteInstalado(mapPhotos(obraData.fotos_transformador_componente_instalado, 'fotos_transformador_componente_instalado'));
+            if (obraData.fotos_transformador_tombamento_instalado?.length) setFotosTransformadorTombamentoInstalado(mapPhotos(obraData.fotos_transformador_tombamento_instalado, 'fotos_transformador_tombamento_instalado'));
+            if (obraData.fotos_transformador_tape?.length) setFotosTransformadorTape(mapPhotos(obraData.fotos_transformador_tape, 'fotos_transformador_tape'));
+            if (obraData.fotos_transformador_placa_instalado?.length) setFotosTransformadorPlacaInstalado(mapPhotos(obraData.fotos_transformador_placa_instalado, 'fotos_transformador_placa_instalado'));
+            if (obraData.fotos_transformador_instalado?.length) setFotosTransformadorInstalado(mapPhotos(obraData.fotos_transformador_instalado, 'fotos_transformador_instalado'));
+            if (obraData.fotos_transformador_conexoes_primarias_instalado?.length) setFotosTransformadorConexoesPrimariasInstalado(mapPhotos(obraData.fotos_transformador_conexoes_primarias_instalado, 'fotos_transformador_conexoes_primarias_instalado'));
+            if (obraData.fotos_transformador_conexoes_secundarias_instalado?.length) setFotosTransformadorConexoesSecundariasInstalado(mapPhotos(obraData.fotos_transformador_conexoes_secundarias_instalado, 'fotos_transformador_conexoes_secundarias_instalado'));
+            if (obraData.fotos_transformador_antes_retirar?.length) setFotosTransformadorAntesRetirar(mapPhotos(obraData.fotos_transformador_antes_retirar, 'fotos_transformador_antes_retirar'));
+            if (obraData.fotos_transformador_tombamento_retirado?.length) setFotosTransformadorTombamentoRetirado(mapPhotos(obraData.fotos_transformador_tombamento_retirado, 'fotos_transformador_tombamento_retirado'));
+            if (obraData.fotos_transformador_placa_retirado?.length) setFotosTransformadorPlacaRetirado(mapPhotos(obraData.fotos_transformador_placa_retirado, 'fotos_transformador_placa_retirado'));
+            if (obraData.fotos_transformador_conexoes_primarias_retirado?.length) setFotosTransformadorConexoesPrimariasRetirado(mapPhotos(obraData.fotos_transformador_conexoes_primarias_retirado, 'fotos_transformador_conexoes_primarias_retirado'));
+            if (obraData.fotos_transformador_conexoes_secundarias_retirado?.length) setFotosTransformadorConexoesSecundariasRetirado(mapPhotos(obraData.fotos_transformador_conexoes_secundarias_retirado, 'fotos_transformador_conexoes_secundarias_retirado'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos do transformador:', err);
+          }
+
+          // Medidor
+          try {
+            if (obraData.fotos_medidor_padrao?.length) setFotosMedidorPadrao(mapPhotos(obraData.fotos_medidor_padrao, 'fotos_medidor_padrao'));
+            if (obraData.fotos_medidor_leitura?.length) setFotosMedidorLeitura(mapPhotos(obraData.fotos_medidor_leitura, 'fotos_medidor_leitura'));
+            if (obraData.fotos_medidor_selo_born?.length) setFotosMedidorSeloBorn(mapPhotos(obraData.fotos_medidor_selo_born, 'fotos_medidor_selo_born'));
+            if (obraData.fotos_medidor_selo_caixa?.length) setFotosMedidorSeloCaixa(mapPhotos(obraData.fotos_medidor_selo_caixa, 'fotos_medidor_selo_caixa'));
+            if (obraData.fotos_medidor_identificador_fase?.length) setFotosMedidorIdentificadorFase(mapPhotos(obraData.fotos_medidor_identificador_fase, 'fotos_medidor_identificador_fase'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos do medidor:', err);
+          }
+
+          // Checklist
+          try {
+            if (obraData.fotos_checklist_croqui?.length) setFotosChecklistCroqui(mapPhotos(obraData.fotos_checklist_croqui, 'fotos_checklist_croqui'));
+            if (obraData.fotos_checklist_panoramica_inicial?.length) setFotosChecklistPanoramicaInicial(mapPhotos(obraData.fotos_checklist_panoramica_inicial, 'fotos_checklist_panoramica_inicial'));
+            if (obraData.fotos_checklist_chede?.length) setFotosChecklistChaveComponente(mapPhotos(obraData.fotos_checklist_chede, 'fotos_checklist_chede'));
+            if (obraData.fotos_checklist_padrao_geral?.length) setFotosChecklistPadraoGeral(mapPhotos(obraData.fotos_checklist_padrao_geral, 'fotos_checklist_padrao_geral'));
+            if (obraData.fotos_checklist_padrao_interno?.length) setFotosChecklistPadraoInterno(mapPhotos(obraData.fotos_checklist_padrao_interno, 'fotos_checklist_padrao_interno'));
+            if (obraData.fotos_checklist_panoramica_final?.length) setFotosChecklistPanoramicaFinal(mapPhotos(obraData.fotos_checklist_panoramica_final, 'fotos_checklist_panoramica_final'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos do checklist:', err);
+          }
+
+          // Altimetria
+          try {
+            if (obraData.fotos_altimetria_lado_fonte?.length) setFotosAltimetriaLadoFonte(mapPhotos(obraData.fotos_altimetria_lado_fonte, 'fotos_altimetria_lado_fonte'));
+            if (obraData.fotos_altimetria_medicao_fonte?.length) setFotosAltimetriaMedicaoFonte(mapPhotos(obraData.fotos_altimetria_medicao_fonte, 'fotos_altimetria_medicao_fonte'));
+            if (obraData.fotos_altimetria_lado_carga?.length) setFotosAltimetriaLadoCarga(mapPhotos(obraData.fotos_altimetria_lado_carga, 'fotos_altimetria_lado_carga'));
+            if (obraData.fotos_altimetria_medicao_carga?.length) setFotosAltimetriaMedicaoCarga(mapPhotos(obraData.fotos_altimetria_medicao_carga, 'fotos_altimetria_medicao_carga'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos de altimetria:', err);
+          }
+
+          // Vazamento e Limpeza
+          try {
+            if (obraData.fotos_vazamento_evidencia?.length) setFotosVazamentoEvidencia(mapPhotos(obraData.fotos_vazamento_evidencia, 'fotos_vazamento_evidencia'));
+            if (obraData.fotos_vazamento_equipamentos_limpeza?.length) setFotosVazamentoEquipamentosLimpeza(mapPhotos(obraData.fotos_vazamento_equipamentos_limpeza, 'fotos_vazamento_equipamentos_limpeza'));
+            if (obraData.fotos_vazamento_tombamento_retirado?.length) setFotosVazamentoTombamentoRetirado(mapPhotos(obraData.fotos_vazamento_tombamento_retirado, 'fotos_vazamento_tombamento_retirado'));
+            if (obraData.fotos_vazamento_placa_retirado?.length) setFotosVazamentoPlacaRetirado(mapPhotos(obraData.fotos_vazamento_placa_retirado, 'fotos_vazamento_placa_retirado'));
+            if (obraData.fotos_vazamento_tombamento_instalado?.length) setFotosVazamentoTombamentoInstalado(mapPhotos(obraData.fotos_vazamento_tombamento_instalado, 'fotos_vazamento_tombamento_instalado'));
+            if (obraData.fotos_vazamento_placa_instalado?.length) setFotosVazamentoPlacaInstalado(mapPhotos(obraData.fotos_vazamento_placa_instalado, 'fotos_vazamento_placa_instalado'));
+            if (obraData.fotos_vazamento_instalacao?.length) setFotosVazamentoInstalacao(mapPhotos(obraData.fotos_vazamento_instalacao, 'fotos_vazamento_instalacao'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar fotos de vazamento:', err);
+          }
+
+          // Documentação
+          try {
+            if (obraData.doc_cadastro_medidor?.length) setDocCadastroMedidor(mapPhotos(obraData.doc_cadastro_medidor, 'doc_cadastro_medidor'));
+            if (obraData.doc_laudo_transformador?.length) setDocLaudoTransformador(mapPhotos(obraData.doc_laudo_transformador, 'doc_laudo_transformador'));
+            if (obraData.doc_laudo_regulador?.length) setDocLaudoRegulador(mapPhotos(obraData.doc_laudo_regulador, 'doc_laudo_regulador'));
+            if (obraData.doc_laudo_religador?.length) setDocLaudoReligador(mapPhotos(obraData.doc_laudo_religador, 'doc_laudo_religador'));
+            if (obraData.doc_apr?.length) setDocApr(mapPhotos(obraData.doc_apr, 'doc_apr'));
+            if (obraData.doc_fvbt?.length) setDocFvbt(mapPhotos(obraData.doc_fvbt, 'doc_fvbt'));
+            if (obraData.doc_termo_desistencia_lpt?.length) setDocTermoDesistenciaLpt(mapPhotos(obraData.doc_termo_desistencia_lpt, 'doc_termo_desistencia_lpt'));
+            if (obraData.doc_autorizacao_passagem?.length) setDocAutorizacaoPassagem(mapPhotos(obraData.doc_autorizacao_passagem, 'doc_autorizacao_passagem'));
+            if (obraData.doc_materiais_previsto?.length) setDocMateriaisPrevisto(mapPhotos(obraData.doc_materiais_previsto, 'doc_materiais_previsto'));
+            if (obraData.doc_materiais_realizado?.length) setDocMateriaisRealizado(mapPhotos(obraData.doc_materiais_realizado, 'doc_materiais_realizado'));
+          } catch (err) {
+            console.error('❌ Erro ao carregar documentação:', err);
+          }
+
+          console.log('✅ Fotos carregadas com sucesso em modo de edição');
+        } catch (error: any) {
+          console.error('❌ Erro ao carregar dados da obra:', error);
+
+          // Mensagem específica dependendo do erro
+          let errorMessage = 'Não foi possível carregar os dados da obra.';
+          if (error.message?.includes('módulo de fotos')) {
+            errorMessage = error.message + '\n\nDica: Limpe o cache com:\n1. Feche o app\n2. No terminal: npx expo start -c';
+          } else if (error.message?.includes('LoadBundle')) {
+            errorMessage = 'Erro ao carregar módulos do servidor.\n\nTente:\n1. Reiniciar o servidor Expo\n2. Limpar cache: npx expo start -c';
+          }
+
+          Alert.alert('Erro ao Carregar Obra', errorMessage);
+        }
+      };
+
+      loadObraDataAsync();
     }
   }, [isEditMode, params.obraData]);
 
@@ -1914,8 +2044,9 @@ export default function NovaObra() {
       }
 
       // Todas as fotos foram uploadadas - obter URLs
-      const { getAllPhotoMetadata } = await import('../lib/photo-backup');
+      console.log('📸 Obtendo metadados das fotos...');
       const allPhotos = await getAllPhotoMetadata();
+      console.log(`✅ ${allPhotos.length} foto(s) com metadados carregados`);
 
       const fotosAntesUploaded = allPhotos.filter(p =>
         photoIds.antes.includes(p.id) && p.uploaded
@@ -2483,6 +2614,190 @@ export default function NovaObra() {
     } catch (err) {
       console.error('Erro inesperado:', err);
       Alert.alert('Erro', 'Ocorreu um erro inesperado. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ NOVA FUNÇÃO: Calcular se pode finalizar obra
+  const calcularPodeFinalizar = (): boolean => {
+    // ✅ CRÍTICO: Deve estar online para finalizar
+    if (!isOnline) {
+      return false;
+    }
+
+    // 1. Validar campos básicos
+    if (!data || !obra || !responsavel || !tipoServico) {
+      return false;
+    }
+
+    // 2. Validar fotos de transformador (se aplicável)
+    if (isServicoTransformador && transformadorStatus) {
+      if (transformadorStatus === 'Instalado') {
+        if (fotosTransformadorConexoesPrimariasInstalado.length < 2) return false;
+        if (fotosTransformadorConexoesSecundariasInstalado.length < 2) return false;
+      }
+      if (transformadorStatus === 'Retirado') {
+        if (fotosTransformadorConexoesPrimariasRetirado.length < 2) return false;
+        if (fotosTransformadorConexoesSecundariasRetirado.length < 2) return false;
+      }
+    }
+
+    // 3. Validar fotos de checklist (se aplicável)
+    if (isServicoChecklist && numPostes > 0) {
+      for (const poste of fotosPostes) {
+        if (poste.status === 'instalado') {
+          if (poste.posteInteiro.length < 1) return false;
+          if (poste.engaste.length < 1) return false;
+          if (poste.conexao1.length < 1) return false;
+          if (poste.conexao2.length < 1) return false;
+          if (poste.maiorEsforco.length < 2) return false;
+          if (poste.menorEsforco.length < 2) return false;
+        } else if (poste.status === 'retirado') {
+          if (poste.posteInteiro.length < 2) return false;
+        }
+      }
+    }
+
+    return true; // Todas as validações passaram
+  };
+
+  // ✅ NOVA FUNÇÃO: Pausar obra (salvar rascunho)
+  const handlePausar = async () => {
+    setLoading(true);
+    try {
+      console.log('💾 Pausando obra como rascunho...');
+
+      // Montar IDs das fotos
+      const photoIds = {
+        fotos_antes: isServicoPadrao ? fotosAntes.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_durante: isServicoPadrao ? fotosDurante.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_depois: isServicoPadrao ? fotosDepois.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_abertura: isServicoChave ? fotosAbertura.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_fechamento: isServicoChave ? fotosFechamento.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_ditais_abertura: isServicoDitais ? fotosDitaisAbertura.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_ditais_impedir: isServicoDitais ? fotosDitaisImpedir.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_ditais_testar: isServicoDitais ? fotosDitaisTestar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_ditais_aterrar: isServicoDitais ? fotosDitaisAterrar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_ditais_sinalizar: isServicoDitais ? fotosDitaisSinalizar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_aterramento_vala_aberta: isServicoBookAterramento ? fotosAterramentoValaAberta.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_aterramento_hastes: isServicoBookAterramento ? fotosAterramentoHastes.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_aterramento_vala_fechada: isServicoBookAterramento ? fotosAterramentoValaFechada.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_aterramento_medicao: isServicoBookAterramento ? fotosAterramentoMedicao.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_laudo: isServicoTransformador ? fotosTransformadorLaudo.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_componente_instalado: isServicoTransformador ? fotosTransformadorComponenteInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_tombamento_instalado: isServicoTransformador ? fotosTransformadorTombamentoInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_tape: isServicoTransformador ? fotosTransformadorTape.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_placa_instalado: isServicoTransformador ? fotosTransformadorPlacaInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_instalado: isServicoTransformador ? fotosTransformadorInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_conexoes_primarias_instalado: isServicoTransformador ? fotosTransformadorConexoesPrimariasInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_conexoes_secundarias_instalado: isServicoTransformador ? fotosTransformadorConexoesSecundariasInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_antes_retirar: isServicoTransformador ? fotosTransformadorAntesRetirar.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_tombamento_retirado: isServicoTransformador ? fotosTransformadorTombamentoRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_placa_retirado: isServicoTransformador ? fotosTransformadorPlacaRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_conexoes_primarias_retirado: isServicoTransformador ? fotosTransformadorConexoesPrimariasRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_transformador_conexoes_secundarias_retirado: isServicoTransformador ? fotosTransformadorConexoesSecundariasRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_medidor_padrao: isServicoMedidor ? fotosMedidorPadrao.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_medidor_leitura: isServicoMedidor ? fotosMedidorLeitura.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_medidor_selo_born: isServicoMedidor ? fotosMedidorSeloBorn.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_medidor_selo_caixa: isServicoMedidor ? fotosMedidorSeloCaixa.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_medidor_identificador_fase: isServicoMedidor ? fotosMedidorIdentificadorFase.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_altimetria_lado_fonte: isServicoAltimetria ? fotosAltimetriaLadoFonte.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_altimetria_medicao_fonte: isServicoAltimetria ? fotosAltimetriaMedicaoFonte.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_altimetria_lado_carga: isServicoAltimetria ? fotosAltimetriaLadoCarga.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_altimetria_medicao_carga: isServicoAltimetria ? fotosAltimetriaMedicaoCarga.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_evidencia: isServicoVazamento ? fotosVazamentoEvidencia.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_equipamentos_limpeza: isServicoVazamento ? fotosVazamentoEquipamentosLimpeza.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_tombamento_retirado: isServicoVazamento ? fotosVazamentoTombamentoRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_placa_retirado: isServicoVazamento ? fotosVazamentoPlacaRetirado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_tombamento_instalado: isServicoVazamento ? fotosVazamentoTombamentoInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_placa_instalado: isServicoVazamento ? fotosVazamentoPlacaInstalado.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_vazamento_instalacao: isServicoVazamento ? fotosVazamentoInstalacao.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_croqui: isServicoChecklist ? fotosChecklistCroqui.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_panoramica_inicial: isServicoChecklist ? fotosChecklistPanoramicaInicial.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_chede: isServicoChecklist ? fotosChecklistChaveComponente.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_aterramento_cerca: isServicoChecklist ? fotosAterramentosCerca.flatMap(aterr => aterr.map(f => f.photoId).filter(Boolean) as string[]) : [],
+        fotos_checklist_padrao_geral: isServicoChecklist ? fotosChecklistPadraoGeral.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_padrao_interno: isServicoChecklist ? fotosChecklistPadraoInterno.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_panoramica_final: isServicoChecklist ? fotosChecklistPanoramicaFinal.map(f => f.photoId).filter(Boolean) as string[] : [],
+        fotos_checklist_postes: isServicoChecklist ? fotosPostes.flatMap((poste, index) => [
+          ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.conexao1.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.conexao2.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.maiorEsforco.map(f => f.photoId).filter(Boolean) as string[],
+          ...poste.menorEsforco.map(f => f.photoId).filter(Boolean) as string[],
+        ]) : [],
+        fotos_checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]) : [],
+        doc_cadastro_medidor: isServicoDocumentacao ? docCadastroMedidor.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_laudo_transformador: isServicoDocumentacao ? docLaudoTransformador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_laudo_regulador: isServicoDocumentacao ? docLaudoRegulador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_laudo_religador: isServicoDocumentacao ? docLaudoReligador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_apr: isServicoDocumentacao ? docApr.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_fvbt: isServicoDocumentacao ? docFvbt.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_termo_desistencia_lpt: isServicoDocumentacao ? docTermoDesistenciaLpt.map(f => f.photoId).filter(Boolean) as string[] : [],
+        doc_autorizacao_passagem: isServicoDocumentacao ? docAutorizacaoPassagem.map(f => f.photoId).filter(Boolean) as string[] : [],
+      };
+
+      // Montar dados da obra (ZERO validações - aceita qualquer estado)
+      // ✅ CRÍTICO: Se está editando, usar ID existente. Se está criando, gerar novo ID.
+      const finalObraId = isEditMode && obraId
+        ? obraId  // Reutilizar ID ao editar
+        : `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`; // Novo ID ao criar
+
+      const obraData: any = {
+        id: finalObraId,
+        obra: obra?.trim() || '',
+        data: data || '',
+        responsavel: isCompUser ? 'COMP' : (responsavel || ''),
+        equipe: isCompUser ? (equipeExecutora || '') : (equipe || ''),
+        tipo_servico: tipoServico || '',
+        status: 'rascunho' as const,
+        origem: 'offline' as const,
+        transformador_status: transformadorStatus,
+        num_postes: numPostes,
+        num_seccionamentos: numSeccionamentos,
+        num_aterramento_cerca: numAterramentosCerca,
+        ...photoIds,
+      };
+
+      const savedObraId = await saveObraLocal(obraData);
+
+      console.log(`✅ Obra pausada com ID: ${savedObraId}`);
+
+      // ✅ CRÍTICO: Atualizar obraId das fotos no photo-backup
+      // As fotos foram salvas com backupObraId (tempObraId ou obraId antigo)
+      // Precisamos atualizar para o novo ID da obra salva
+      if (backupObraId !== savedObraId) {
+        console.log(`🔄 Atualizando obraId das fotos de ${backupObraId} para ${savedObraId}`);
+        try {
+          const qtd = await updatePhotosObraId(backupObraId, savedObraId);
+          console.log(`✅ ${qtd} foto(s) atualizadas com novo obraId`);
+        } catch (error) {
+          console.error('❌ Erro ao atualizar obraId das fotos:', error);
+          console.warn('⚠️ Continuando sem atualizar IDs das fotos. As fotos podem não aparecer ao reabrir a obra.');
+        }
+      }
+
+      Alert.alert(
+        '💾 Obra Pausada',
+        'Obra salva como rascunho.\n\nVocê pode continuar editando depois na lista de obras.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Erro ao pausar obra:', error);
+      Alert.alert('Erro', 'Não foi possível pausar a obra. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -5732,30 +6047,66 @@ export default function NovaObra() {
           )}
 
           {/* Botões */}
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleSalvarObra}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>
-              {loading ? 'Salvando...' : 'Salvar Obra'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.buttonContainer}>
+            {/* Botão Pausar - SEMPRE VISÍVEL */}
+            <TouchableOpacity
+              style={[styles.pauseButton, loading && styles.buttonDisabled]}
+              onPress={handlePausar}
+              disabled={loading}
+            >
+              <Text style={styles.pauseButtonText}>
+                {loading ? 'Salvando...' : 'Pausar'}
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => {
-              // Tentar voltar, se não conseguir ir para dashboard
-              if (router.canGoBack()) {
-                router.back();
-              } else {
-                router.replace('/(tabs)');
+            {/* Botão Finalizar/Criar Obra - CONDICIONAL */}
+            {(() => {
+              const podeFinalizarObra = calcularPodeFinalizar();
+              const isRascunhoLocal = isEditMode && obraId?.startsWith('local_');
+
+              // 🔍 DEBUG: Log do estado dos botões
+              console.log('🔘 Estado dos botões:', {
+                podeFinalizarObra,
+                isEditMode,
+                obraId,
+                isRascunhoLocal,
+                botaoTexto: isRascunhoLocal ? 'Criar Obra' : 'Finalizar'
+              });
+
+              // Só mostra botão se: online + completo
+              if (podeFinalizarObra) {
+                return (
+                  <TouchableOpacity
+                    style={[styles.finalizarButton, loading && styles.buttonDisabled]}
+                    onPress={handleSalvarObra}
+                    disabled={loading}
+                  >
+                    <Text style={styles.buttonText}>
+                      {loading
+                        ? (isRascunhoLocal ? 'Criando...' : 'Finalizando...')
+                        : (isRascunhoLocal ? 'Criar Obra' : 'Finalizar')}
+                    </Text>
+                  </TouchableOpacity>
+                );
               }
-            }}
-            disabled={loading}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </TouchableOpacity>
+              return null;
+            })()}
+
+            {/* Botão Cancelar - SEMPRE VISÍVEL */}
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)');
+                }
+              }}
+              disabled={loading}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -6558,21 +6909,63 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   buttonDisabled: {
-    backgroundColor: '#f5a3aa',
+    opacity: 0.5,
   },
   buttonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
   },
+  // Container dos botões
+  buttonContainer: {
+    flexDirection: 'row',
+    marginTop: 24,
+    marginBottom: 32,
+  },
+  // Botão Pausar (AMARELO/LARANJA)
+  pauseButton: {
+    flex: 1,
+    backgroundColor: '#f59e0b',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  pauseButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Botão Finalizar (VERDE)
+  finalizarButton: {
+    flex: 2,
+    backgroundColor: '#10b981',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
   cancelButton: {
+    flex: 1,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginTop: 8,
+    backgroundColor: '#6b7280',
   },
   cancelButtonText: {
-    color: '#666',
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },

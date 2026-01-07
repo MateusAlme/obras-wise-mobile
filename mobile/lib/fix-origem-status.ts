@@ -153,8 +153,8 @@ export const fixObraOrigemStatus = async (): Promise<{
             modificada = true;
           }
 
-          // Atualizar ID se for temp_
-          if (obra.id.startsWith('temp_') && supabaseObra.id) {
+          // Atualizar ID se for temp_ ou local_
+          if ((obra.id.startsWith('temp_') || obra.id.startsWith('local_')) && supabaseObra.id) {
             console.log(`    - ID: ${obra.id} → ${supabaseObra.id}`);
             obra.id = supabaseObra.id;
             obra.serverId = supabaseObra.id;

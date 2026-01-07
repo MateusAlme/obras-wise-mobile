@@ -1101,15 +1101,15 @@ export const syncObra = async (
 
     // Obter URLs das fotos uploadadas
     console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas...`);
-    console.log(`   - fotos_antes: ${obra.fotos_antes.length} IDs`);
-    console.log(`   - fotos_durante: ${obra.fotos_durante.length} IDs`);
-    console.log(`   - fotos_depois: ${obra.fotos_depois.length} IDs`);
+    console.log(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
+    console.log(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
+    console.log(`   - fotos_depois: ${obra.fotos_depois?.length || 0} IDs`);
 
-    const fotosAntesMetadata = await getPhotoMetadatasByIds(obra.fotos_antes);
-    const fotosDuranteMetadata = await getPhotoMetadatasByIds(obra.fotos_durante);
-    const fotosDepoisMetadata = await getPhotoMetadatasByIds(obra.fotos_depois);
-    const fotosAberturaMetadata = await getPhotoMetadatasByIds(obra.fotos_abertura);
-    const fotosFechamentoMetadata = await getPhotoMetadatasByIds(obra.fotos_fechamento);
+    const fotosAntesMetadata = await getPhotoMetadatasByIds(obra.fotos_antes || []);
+    const fotosDuranteMetadata = await getPhotoMetadatasByIds(obra.fotos_durante || []);
+    const fotosDepoisMetadata = await getPhotoMetadatasByIds(obra.fotos_depois || []);
+    const fotosAberturaMetadata = await getPhotoMetadatasByIds(obra.fotos_abertura || []);
+    const fotosFechamentoMetadata = await getPhotoMetadatasByIds(obra.fotos_fechamento || []);
     const fotosDitaisAberturaMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_abertura || []);
     const fotosDitaisImpedirMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_impedir || []);
     const fotosDitaisTestarMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_testar || []);
@@ -1242,8 +1242,16 @@ export const syncObra = async (
       if (fetchError) {
         console.warn('⚠️ Não foi possível buscar obra existente para atualizar, tentando inserir:', fetchError);
       } else if (existingObra) {
-        // Mesclar arrays de fotos: adicionar novas fotos ao final das existentes
-        const merged = (fieldData: any[], existingField: any[]) => ([...(existingField || []), ...(fieldData || [])]);
+        // ✅ CORRIGIDO: Substituir fotos se houver novas, caso contrário manter existentes
+        // Isso evita duplicação ao sincronizar múltiplas vezes
+        const replaceOrKeep = (newData: any[], existingData: any[]) => {
+          // Se há novas fotos, usa elas (substituição completa)
+          if (newData && newData.length > 0) {
+            return newData;
+          }
+          // Caso contrário, mantém as existentes
+          return existingData || [];
+        };
 
         const updatePayload: any = {
           data: obra.data ?? existingObra.data,
@@ -1251,64 +1259,64 @@ export const syncObra = async (
           responsavel: obra.responsavel ?? existingObra.responsavel,
           equipe: obra.equipe ?? existingObra.equipe,
           tipo_servico: obra.tipo_servico ?? existingObra.tipo_servico,
-          // manter status atual do servidor
-          fotos_antes: merged(fotosAntesData, existingObra.fotos_antes),
-          fotos_durante: merged(fotosDuranteData, existingObra.fotos_durante),
-          fotos_depois: merged(fotosDepoisData, existingObra.fotos_depois),
-          fotos_abertura: merged(fotosAberturaData, existingObra.fotos_abertura),
-          fotos_fechamento: merged(fotosFechamentoData, existingObra.fotos_fechamento),
-          fotos_ditais_abertura: merged(fotosDitaisAberturaData, existingObra.fotos_ditais_abertura),
-          fotos_ditais_impedir: merged(fotosDitaisImpedirData, existingObra.fotos_ditais_impedir),
-          fotos_ditais_testar: merged(fotosDitaisTestarData, existingObra.fotos_ditais_testar),
-          fotos_ditais_aterrar: merged(fotosDitaisAterrarData, existingObra.fotos_ditais_aterrar),
-          fotos_ditais_sinalizar: merged(fotosDitaisSinalizarData, existingObra.fotos_ditais_sinalizar),
-          fotos_aterramento_vala_aberta: merged(fotosAterramentoValaAbertaData, existingObra.fotos_aterramento_vala_aberta),
-          fotos_aterramento_hastes: merged(fotosAterramentoHastesData, existingObra.fotos_aterramento_hastes),
-          fotos_aterramento_vala_fechada: merged(fotosAterramentoValaFechadaData, existingObra.fotos_aterramento_vala_fechada),
-          fotos_aterramento_medicao: merged(fotosAterramentoMedicaoData, existingObra.fotos_aterramento_medicao),
+          status: obra.status ?? existingObra.status, // ✅ Manter status da obra local ou do servidor
+          fotos_antes: replaceOrKeep(fotosAntesData, existingObra.fotos_antes),
+          fotos_durante: replaceOrKeep(fotosDuranteData, existingObra.fotos_durante),
+          fotos_depois: replaceOrKeep(fotosDepoisData, existingObra.fotos_depois),
+          fotos_abertura: replaceOrKeep(fotosAberturaData, existingObra.fotos_abertura),
+          fotos_fechamento: replaceOrKeep(fotosFechamentoData, existingObra.fotos_fechamento),
+          fotos_ditais_abertura: replaceOrKeep(fotosDitaisAberturaData, existingObra.fotos_ditais_abertura),
+          fotos_ditais_impedir: replaceOrKeep(fotosDitaisImpedirData, existingObra.fotos_ditais_impedir),
+          fotos_ditais_testar: replaceOrKeep(fotosDitaisTestarData, existingObra.fotos_ditais_testar),
+          fotos_ditais_aterrar: replaceOrKeep(fotosDitaisAterrarData, existingObra.fotos_ditais_aterrar),
+          fotos_ditais_sinalizar: replaceOrKeep(fotosDitaisSinalizarData, existingObra.fotos_ditais_sinalizar),
+          fotos_aterramento_vala_aberta: replaceOrKeep(fotosAterramentoValaAbertaData, existingObra.fotos_aterramento_vala_aberta),
+          fotos_aterramento_hastes: replaceOrKeep(fotosAterramentoHastesData, existingObra.fotos_aterramento_hastes),
+          fotos_aterramento_vala_fechada: replaceOrKeep(fotosAterramentoValaFechadaData, existingObra.fotos_aterramento_vala_fechada),
+          fotos_aterramento_medicao: replaceOrKeep(fotosAterramentoMedicaoData, existingObra.fotos_aterramento_medicao),
           transformador_status: obra.transformador_status ?? existingObra.transformador_status,
-          fotos_transformador_laudo: merged(fotosTransformadorLaudoData, existingObra.fotos_transformador_laudo),
-          fotos_transformador_componente_instalado: merged(fotosTransformadorComponenteInstaladoData, existingObra.fotos_transformador_componente_instalado),
-          fotos_transformador_tombamento_instalado: merged(fotosTransformadorTombamentoInstaladoData, existingObra.fotos_transformador_tombamento_instalado),
-          fotos_transformador_tape: merged(fotosTransformadorTapeData, existingObra.fotos_transformador_tape),
-          fotos_transformador_placa_instalado: merged(fotosTransformadorPlacaInstaladoData, existingObra.fotos_transformador_placa_instalado),
-          fotos_transformador_instalado: merged(fotosTransformadorInstaladoData, existingObra.fotos_transformador_instalado),
-          fotos_transformador_antes_retirar: merged(fotosTransformadorAntesRetirarData, existingObra.fotos_transformador_antes_retirar),
-          fotos_transformador_tombamento_retirado: merged(fotosTransformadorTombamentoRetiradoData, existingObra.fotos_transformador_tombamento_retirado),
-          fotos_transformador_placa_retirado: merged(fotosTransformadorPlacaRetiradoData, existingObra.fotos_transformador_placa_retirado),
-          fotos_medidor_padrao: merged(fotosMedidorPadraoData, existingObra.fotos_medidor_padrao),
-          fotos_medidor_leitura: merged(fotosMedidorLeituraData, existingObra.fotos_medidor_leitura),
-          fotos_medidor_selo_born: merged(fotosMedidorSeloBornData, existingObra.fotos_medidor_selo_born),
-          fotos_medidor_selo_caixa: merged(fotosMedidorSeloCaixaData, existingObra.fotos_medidor_selo_caixa),
-          fotos_medidor_identificador_fase: merged(fotosMedidorIdentificadorFaseData, existingObra.fotos_medidor_identificador_fase),
-          fotos_checklist_croqui: merged(fotosChecklistCroquiData, existingObra.fotos_checklist_croqui),
-          fotos_checklist_panoramica_inicial: merged(fotosChecklistPanoramicaInicialData, existingObra.fotos_checklist_panoramica_inicial),
-          fotos_checklist_chede: merged(fotosChecklistChedeData, existingObra.fotos_checklist_chede),
-          fotos_checklist_aterramento_cerca: merged(fotosChecklistAterramentoCercaData, existingObra.fotos_checklist_aterramento_cerca),
-          fotos_checklist_padrao_geral: merged(fotosChecklistPadraoGeralData, existingObra.fotos_checklist_padrao_geral),
-          fotos_checklist_padrao_interno: merged(fotosChecklistPadraoInternoData, existingObra.fotos_checklist_padrao_interno),
-          fotos_checklist_panoramica_final: merged(fotosChecklistPanoramicaFinalData, existingObra.fotos_checklist_panoramica_final),
-          fotos_checklist_postes: merged(fotosChecklistPostesData, existingObra.fotos_checklist_postes),
-          fotos_checklist_seccionamentos: merged(fotosChecklistSeccionamentosData, existingObra.fotos_checklist_seccionamentos),
-          doc_cadastro_medidor: merged(docCadastroMedidorData, existingObra.doc_cadastro_medidor),
-          doc_laudo_transformador: merged(docLaudoTransformadorData, existingObra.doc_laudo_transformador),
-          doc_laudo_regulador: merged(docLaudoReguladorData, existingObra.doc_laudo_regulador),
-          doc_laudo_religador: merged(docLaudoReligadorData, existingObra.doc_laudo_religador),
-          doc_apr: merged(docAprData, existingObra.doc_apr),
-          doc_fvbt: merged(docFvbtData, existingObra.doc_fvbt),
-          doc_termo_desistencia_lpt: merged(docTermoDesistenciaLptData, existingObra.doc_termo_desistencia_lpt),
-          doc_autorizacao_passagem: merged(docAutorizacaoPassagemData, existingObra.doc_autorizacao_passagem),
-          fotos_altimetria_lado_fonte: merged(fotosAltimetriaLadoFonteData, existingObra.fotos_altimetria_lado_fonte),
-          fotos_altimetria_medicao_fonte: merged(fotosAltimetriaMedicaoFonteData, existingObra.fotos_altimetria_medicao_fonte),
-          fotos_altimetria_lado_carga: merged(fotosAltimetriaLadoCargaData, existingObra.fotos_altimetria_lado_carga),
-          fotos_altimetria_medicao_carga: merged(fotosAltimetriaMedicaoCargaData, existingObra.fotos_altimetria_medicao_carga),
-          fotos_vazamento_evidencia: merged(fotosVazamentoEvidenciaData, existingObra.fotos_vazamento_evidencia),
-          fotos_vazamento_equipamentos_limpeza: merged(fotosVazamentoEquipamentosLimpezaData, existingObra.fotos_vazamento_equipamentos_limpeza),
-          fotos_vazamento_tombamento_retirado: merged(fotosVazamentoTombamentoRetiradoData, existingObra.fotos_vazamento_tombamento_retirado),
-          fotos_vazamento_placa_retirado: merged(fotosVazamentoPlacaRetiradoData, existingObra.fotos_vazamento_placa_retirado),
-          fotos_vazamento_tombamento_instalado: merged(fotosVazamentoTombamentoInstaladoData, existingObra.fotos_vazamento_tombamento_instalado),
-          fotos_vazamento_placa_instalado: merged(fotosVazamentoPlacaInstaladoData, existingObra.fotos_vazamento_placa_instalado),
-          fotos_vazamento_instalacao: merged(fotosVazamentoInstalacaoData, existingObra.fotos_vazamento_instalacao),
+          fotos_transformador_laudo: replaceOrKeep(fotosTransformadorLaudoData, existingObra.fotos_transformador_laudo),
+          fotos_transformador_componente_instalado: replaceOrKeep(fotosTransformadorComponenteInstaladoData, existingObra.fotos_transformador_componente_instalado),
+          fotos_transformador_tombamento_instalado: replaceOrKeep(fotosTransformadorTombamentoInstaladoData, existingObra.fotos_transformador_tombamento_instalado),
+          fotos_transformador_tape: replaceOrKeep(fotosTransformadorTapeData, existingObra.fotos_transformador_tape),
+          fotos_transformador_placa_instalado: replaceOrKeep(fotosTransformadorPlacaInstaladoData, existingObra.fotos_transformador_placa_instalado),
+          fotos_transformador_instalado: replaceOrKeep(fotosTransformadorInstaladoData, existingObra.fotos_transformador_instalado),
+          fotos_transformador_antes_retirar: replaceOrKeep(fotosTransformadorAntesRetirarData, existingObra.fotos_transformador_antes_retirar),
+          fotos_transformador_tombamento_retirado: replaceOrKeep(fotosTransformadorTombamentoRetiradoData, existingObra.fotos_transformador_tombamento_retirado),
+          fotos_transformador_placa_retirado: replaceOrKeep(fotosTransformadorPlacaRetiradoData, existingObra.fotos_transformador_placa_retirado),
+          fotos_medidor_padrao: replaceOrKeep(fotosMedidorPadraoData, existingObra.fotos_medidor_padrao),
+          fotos_medidor_leitura: replaceOrKeep(fotosMedidorLeituraData, existingObra.fotos_medidor_leitura),
+          fotos_medidor_selo_born: replaceOrKeep(fotosMedidorSeloBornData, existingObra.fotos_medidor_selo_born),
+          fotos_medidor_selo_caixa: replaceOrKeep(fotosMedidorSeloCaixaData, existingObra.fotos_medidor_selo_caixa),
+          fotos_medidor_identificador_fase: replaceOrKeep(fotosMedidorIdentificadorFaseData, existingObra.fotos_medidor_identificador_fase),
+          fotos_checklist_croqui: replaceOrKeep(fotosChecklistCroquiData, existingObra.fotos_checklist_croqui),
+          fotos_checklist_panoramica_inicial: replaceOrKeep(fotosChecklistPanoramicaInicialData, existingObra.fotos_checklist_panoramica_inicial),
+          fotos_checklist_chede: replaceOrKeep(fotosChecklistChedeData, existingObra.fotos_checklist_chede),
+          fotos_checklist_aterramento_cerca: replaceOrKeep(fotosChecklistAterramentoCercaData, existingObra.fotos_checklist_aterramento_cerca),
+          fotos_checklist_padrao_geral: replaceOrKeep(fotosChecklistPadraoGeralData, existingObra.fotos_checklist_padrao_geral),
+          fotos_checklist_padrao_interno: replaceOrKeep(fotosChecklistPadraoInternoData, existingObra.fotos_checklist_padrao_interno),
+          fotos_checklist_panoramica_final: replaceOrKeep(fotosChecklistPanoramicaFinalData, existingObra.fotos_checklist_panoramica_final),
+          fotos_checklist_postes: replaceOrKeep(fotosChecklistPostesData, existingObra.fotos_checklist_postes),
+          fotos_checklist_seccionamentos: replaceOrKeep(fotosChecklistSeccionamentosData, existingObra.fotos_checklist_seccionamentos),
+          doc_cadastro_medidor: replaceOrKeep(docCadastroMedidorData, existingObra.doc_cadastro_medidor),
+          doc_laudo_transformador: replaceOrKeep(docLaudoTransformadorData, existingObra.doc_laudo_transformador),
+          doc_laudo_regulador: replaceOrKeep(docLaudoReguladorData, existingObra.doc_laudo_regulador),
+          doc_laudo_religador: replaceOrKeep(docLaudoReligadorData, existingObra.doc_laudo_religador),
+          doc_apr: replaceOrKeep(docAprData, existingObra.doc_apr),
+          doc_fvbt: replaceOrKeep(docFvbtData, existingObra.doc_fvbt),
+          doc_termo_desistencia_lpt: replaceOrKeep(docTermoDesistenciaLptData, existingObra.doc_termo_desistencia_lpt),
+          doc_autorizacao_passagem: replaceOrKeep(docAutorizacaoPassagemData, existingObra.doc_autorizacao_passagem),
+          fotos_altimetria_lado_fonte: replaceOrKeep(fotosAltimetriaLadoFonteData, existingObra.fotos_altimetria_lado_fonte),
+          fotos_altimetria_medicao_fonte: replaceOrKeep(fotosAltimetriaMedicaoFonteData, existingObra.fotos_altimetria_medicao_fonte),
+          fotos_altimetria_lado_carga: replaceOrKeep(fotosAltimetriaLadoCargaData, existingObra.fotos_altimetria_lado_carga),
+          fotos_altimetria_medicao_carga: replaceOrKeep(fotosAltimetriaMedicaoCargaData, existingObra.fotos_altimetria_medicao_carga),
+          fotos_vazamento_evidencia: replaceOrKeep(fotosVazamentoEvidenciaData, existingObra.fotos_vazamento_evidencia),
+          fotos_vazamento_equipamentos_limpeza: replaceOrKeep(fotosVazamentoEquipamentosLimpezaData, existingObra.fotos_vazamento_equipamentos_limpeza),
+          fotos_vazamento_tombamento_retirado: replaceOrKeep(fotosVazamentoTombamentoRetiradoData, existingObra.fotos_vazamento_tombamento_retirado),
+          fotos_vazamento_placa_retirado: replaceOrKeep(fotosVazamentoPlacaRetiradoData, existingObra.fotos_vazamento_placa_retirado),
+          fotos_vazamento_tombamento_instalado: replaceOrKeep(fotosVazamentoTombamentoInstaladoData, existingObra.fotos_vazamento_tombamento_instalado),
+          fotos_vazamento_placa_instalado: replaceOrKeep(fotosVazamentoPlacaInstaladoData, existingObra.fotos_vazamento_placa_instalado),
+          fotos_vazamento_instalacao: replaceOrKeep(fotosVazamentoInstalacaoData, existingObra.fotos_vazamento_instalacao),
         };
 
         // Executar update
@@ -1339,7 +1347,7 @@ export const syncObra = async (
           responsavel: obra.responsavel,
           equipe: obra.equipe,
           tipo_servico: obra.tipo_servico,
-          status: 'em_aberto', // Status inicial da obra
+          status: obra.status || 'em_aberto', // ✅ Usar status da obra, ou 'em_aberto' como fallback
           fotos_antes: fotosAntesData,
           fotos_durante: fotosDuranteData,
           fotos_depois: fotosDepoisData,

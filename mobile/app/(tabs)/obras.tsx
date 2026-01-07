@@ -409,6 +409,43 @@ export default function Obras() {
     }
   };
 
+  const handleMigrarFotos = async () => {
+    try {
+      Alert.alert(
+        '🔄 Migrar Campos de Fotos',
+        'Esta operação vai renomear os campos de fotos das obras antigas para o formato novo.\n\n✅ Corrige campos: antes → fotos_antes\n✅ Corrige todos os tipos de fotos\n✅ Mantém os dados das fotos',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Migrar',
+            onPress: async () => {
+              setLoading(true);
+              try {
+                console.log('🔄 Iniciando migração de campos de fotos...');
+                const { migrateAllPhotoFields } = await import('../../utils/migrate-photo-fields');
+                const resultado = await migrateAllPhotoFields();
+
+                await carregarObras(); // Recarregar lista
+
+                Alert.alert(
+                  '✅ Migração Concluída',
+                  `Total de obras: ${resultado.total}\nObras migradas: ${resultado.migrated}\nErros: ${resultado.errors}\n\n${resultado.migrated > 0 ? 'As fotos devem aparecer agora!' : 'Todas as obras já estavam no formato correto.'}`
+                );
+              } catch (error) {
+                console.error('❌ Erro ao migrar campos de fotos:', error);
+                Alert.alert('Erro', 'Não foi possível migrar os campos de fotos');
+              } finally {
+                setLoading(false);
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('❌ Erro:', error);
+    }
+  };
+
   const formatarData = (data: string) => {
     try {
       // Se a data está no formato YYYY-MM-DD, tratamos como data local
@@ -663,6 +700,14 @@ export default function Obras() {
           >
             <Text style={styles.actionButtonIcon}>🔧</Text>
             <Text style={styles.actionButtonLabel}>Corrigir</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleMigrarFotos}
+          >
+            <Text style={styles.actionButtonIcon}>🔄</Text>
+            <Text style={styles.actionButtonLabel}>Migrar Fotos</Text>
           </TouchableOpacity>
         </View>
 

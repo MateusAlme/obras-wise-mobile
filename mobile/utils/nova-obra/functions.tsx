@@ -1,6 +1,7 @@
 // Novas funções para adicionar em nova-obra.tsx
 // Adicionar após a função prosseguirSalvamento e antes do return
 
+export const novaObraFunctionsExample = `
   // ✅ NOVA FUNÇÃO: Calcular se pode finalizar obra
   const calcularPodeFinalizar = (): boolean => {
     // ✅ CRÍTICO: Deve estar online para finalizar
@@ -76,11 +77,11 @@
 
       const obraId = await saveObraLocal(obraData);
 
-      console.log(`✅ Obra pausada com ID: ${obraId}`);
+      console.log(\`✅ Obra pausada com ID: \${obraId}\`);
 
       Alert.alert(
         '💾 Obra Pausada',
-        'Obra salva como rascunho.\n\nVocê pode continuar editando depois na lista de obras.',
+        'Obra salva como rascunho.\\n\\nVocê pode continuar editando depois na lista de obras.',
         [
           {
             text: 'OK',
@@ -104,3 +105,4 @@
 
   // ✅ RENOMEAR: handleSalvarObra → handleFinalizarObra
   // (A função handleSalvarObra existente deve ser renomeada para handleFinalizarObra)
+`;

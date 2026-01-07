@@ -32,6 +32,17 @@ export function PhotoWithPlaca({
   style,
 }: PhotoWithPlacaProps) {
 
+  // ✅ VALIDAÇÃO: Verificar se URI é válido
+  if (!uri || !uri.startsWith('file://')) {
+    console.warn('⚠️ PhotoWithPlaca: URI inválido ou vazio:', uri);
+    return (
+      <View style={[styles.container, style, styles.errorContainer]}>
+        <Text style={styles.errorText}>❌ Foto não disponível</Text>
+        <Text style={styles.errorSubtext}>Arquivo pode ter sido removido</Text>
+      </View>
+    );
+  }
+
   // Formatar data/hora atual se não fornecida
   const displayDateTime = dateTime || new Date().toLocaleString('pt-BR', {
     day: '2-digit',
@@ -52,7 +63,14 @@ export function PhotoWithPlaca({
 
   return (
     <View style={[styles.container, style]}>
-      <Image source={{ uri }} style={styles.photo} resizeMode="cover" />
+      <Image
+        source={{ uri }}
+        style={styles.photo}
+        resizeMode="cover"
+        onError={(error) => {
+          console.error('❌ Erro ao carregar imagem:', uri, error.nativeEvent);
+        }}
+      />
 
       {/* Placa de Informações no canto inferior esquerdo */}
       {(obraNumero || tipoServico || equipe) && (
@@ -190,5 +208,23 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.25)',
     marginVertical: SCREEN_WIDTH * 0.012,
+  },
+  // ✅ Estilos para estado de erro
+  errorContainer: {
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#dc2626',
+    marginBottom: 4,
+  },
+  errorSubtext: {
+    fontSize: 12,
+    color: '#6b7280',
+    textAlign: 'center',
   },
 });

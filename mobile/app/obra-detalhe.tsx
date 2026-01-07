@@ -903,7 +903,11 @@ export default function ObraDetalhe() {
         {/* Botões de ação */}
         {obra.status !== 'finalizada' && (() => {
           const { total: fotosFaltantes } = calcularFotosFaltantes();
-          const podeFinalizar = isOnline && fotosFaltantes === 0;
+
+          // ✅ CRÍTICO: Obras rascunho locais não podem ser finalizadas diretamente
+          // Elas precisam primeiro ser convertidas em obras online (com UUID válido)
+          const isLocalDraft = obra.status === 'rascunho' && obra.id?.startsWith('local_');
+          const podeFinalizar = !isLocalDraft && isOnline && fotosFaltantes === 0;
 
           return (
             <View style={styles.actionButtons}>
@@ -925,32 +929,34 @@ export default function ObraDetalhe() {
                 <Text style={styles.continuarButtonText}>Adicionar Fotos</Text>
               </TouchableOpacity>
 
-              {/* Botão Finalizar Obra */}
-              <TouchableOpacity
-                style={[
-                  styles.finalizarButton,
-                  { flex: 1 },
-                  (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
-                ]}
-                onPress={handleFinalizarObra}
-                activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
-                disabled={!podeFinalizar || isFinalizando}
-              >
-                {isFinalizando ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Ionicons
-                      name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
-                      size={20}
-                      color="#fff"
-                    />
-                    <Text style={styles.finalizarButtonText}>
-                      {podeFinalizar ? 'Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {/* Botão Finalizar Obra - NÃO aparece para rascunhos locais */}
+              {!isLocalDraft && (
+                <TouchableOpacity
+                  style={[
+                    styles.finalizarButton,
+                    { flex: 1 },
+                    (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
+                  ]}
+                  onPress={handleFinalizarObra}
+                  activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
+                  disabled={!podeFinalizar || isFinalizando}
+                >
+                  {isFinalizando ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
+                        size={20}
+                        color="#fff"
+                      />
+                      <Text style={styles.finalizarButtonText}>
+                        {podeFinalizar ? 'Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           );
         })()}

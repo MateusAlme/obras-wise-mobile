@@ -1,6 +1,7 @@
 // Nova UI dos botões para substituir em nova-obra.tsx
 // Substituir a seção {/* Botões */} (linhas 5734-5758)
 
+export const novaObraButtonsUIExample = `
           {/* Botões */}
           <View style={styles.buttonContainer}>
             {/* Botão Pausar - SEMPRE VISÍVEL */}
@@ -42,3 +43,4 @@
               <Text style={styles.cancelButtonText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
+`;
