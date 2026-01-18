@@ -596,8 +596,18 @@ export default function ObraDetalhe() {
 
     const typeList = Array.isArray(photoType) ? photoType : [photoType];
     const localPhotosForType = localPhotos.filter(p => typeList.includes(p.type));
+
+    // ✅ CORREÇÃO: Evitar duplicação de fotos
+    // Se já temos fotos do banco (validDbPhotos), não adicionar fotos locais duplicadas
+    if (validDbPhotos.length > 0) {
+      // Já temos fotos do banco, não adicionar locais
+      return validDbPhotos;
+    }
+
+    // Se não temos fotos do banco, usar apenas fotos locais
     const localFotoInfos = localPhotosForType.map(p => ({
       uri: p.compressedPath,
+      url: p.supabaseUrl, // Incluir URL se já foi sincronizada
       latitude: p.latitude,
       longitude: p.longitude,
       utmX: p.utmX,
@@ -605,10 +615,7 @@ export default function ObraDetalhe() {
       utmZone: p.utmZone,
     }));
 
-    // Combinar fotos do banco com fotos locais (sem duplicar)
-    // Priorizar fotos do banco (com URL), adicionar locais se necessário
-    const combined = [...validDbPhotos, ...localFotoInfos];
-    return combined;
+    return localFotoInfos;
   };
 
   // Calcular fotos faltantes por tipo de serviço
@@ -743,16 +750,36 @@ export default function ObraDetalhe() {
             try {
               setIsFinalizando(true);
               const dataFechamento = new Date().toISOString();
-              const { error } = await supabase
-                .from('obras')
-                .update({
-                  status: 'finalizada',
-                  finalizada_em: dataFechamento,
-                  data_fechamento: dataFechamento,
-                })
-                .eq('id', obra.id);
 
-              if (error) throw error;
+              // ✅ CRÍTICO: Detectar se é rascunho local (ID começa com 'local_')
+              const isLocalDraft = obra.id.startsWith('local_');
+
+              if (isLocalDraft) {
+                // Para rascunhos locais, usar syncObra que cria no Supabase
+                console.log('📤 Finalizando rascunho local:', obra.id);
+
+                const result = await syncObra(obra.id);
+
+                if (!result.success) {
+                  throw new Error(result.error || 'Erro ao sincronizar obra');
+                }
+
+                console.log('✅ Rascunho sincronizado com sucesso!');
+              } else {
+                // Para obras já no Supabase, fazer UPDATE direto
+                console.log('📤 Finalizando obra existente:', obra.id);
+
+                const { error } = await supabase
+                  .from('obras')
+                  .update({
+                    status: 'finalizada',
+                    finalizada_em: dataFechamento,
+                    data_fechamento: dataFechamento,
+                  })
+                  .eq('id', obra.id);
+
+                if (error) throw error;
+              }
 
               // ✅ CRÍTICO: Atualizar AsyncStorage local com novo status
               console.log('✅ Obra finalizada no Supabase, atualizando AsyncStorage...');
@@ -907,11 +934,14 @@ export default function ObraDetalhe() {
           // ✅ CRÍTICO: Obras rascunho locais não podem ser finalizadas diretamente
           // Elas precisam primeiro ser convertidas em obras online (com UUID válido)
           const isLocalDraft = obra.status === 'rascunho' && obra.id?.startsWith('local_');
-          const podeFinalizar = !isLocalDraft && isOnline && fotosFaltantes === 0;
+          // NOVA LÓGICA: Botão Finalizar aparece para RASCUNHOS também
+          // Mas só fica habilitado se tiver fotos suficientes
+          const podeFinalizar = isOnline && fotosFaltantes === 0;
+          const isObraJaFinalizada = obra.status === 'finalizada';
 
           return (
             <View style={styles.actionButtons}>
-              {/* Botão Adicionar Fotos */}
+              {/* Botão Adicionar Fotos - SEMPRE visível */}
               <TouchableOpacity
                 style={[styles.continuarButton, { flex: 1 }]}
                 onPress={() => {
@@ -929,8 +959,9 @@ export default function ObraDetalhe() {
                 <Text style={styles.continuarButtonText}>Adicionar Fotos</Text>
               </TouchableOpacity>
 
-              {/* Botão Finalizar Obra - NÃO aparece para rascunhos locais */}
-              {!isLocalDraft && (
+              {/* Botão Finalizar Obra - Aparece para RASCUNHOS e OBRAS EM ABERTO */}
+              {/* NÃO aparece para obras já finalizadas */}
+              {!isObraJaFinalizada && (
                 <TouchableOpacity
                   style={[
                     styles.finalizarButton,
@@ -951,7 +982,7 @@ export default function ObraDetalhe() {
                         color="#fff"
                       />
                       <Text style={styles.finalizarButtonText}>
-                        {podeFinalizar ? 'Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
+                        {podeFinalizar ? '📤 Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
                       </Text>
                     </>
                   )}
@@ -962,11 +993,70 @@ export default function ObraDetalhe() {
         })()}
 
         {(() => {
-          const allPhotos = PHOTO_SECTIONS.map(section => {
+          // Filtrar seções relevantes baseado no tipo de serviço
+          const tipoServico = obra?.tipo_servico || '';
+          const isServicoChave = tipoServico === 'Abertura e Fechamento de Chave';
+          const isServicoDitais = tipoServico === 'Ditais';
+          const isServicoBookAterramento = tipoServico === 'Book de Aterramento';
+          const isServicoTransformador = tipoServico === 'Transformador';
+          const isServicoMedidor = tipoServico === 'Instalação do Medidor';
+          const isServicoChecklist = tipoServico === 'Checklist de Fiscalização';
+          const isServicoDocumentacao = tipoServico === 'Documentação';
+          const isServicoAltimetria = tipoServico === 'Altimetria';
+          const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
+          const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento &&
+            !isServicoTransformador && !isServicoMedidor && !isServicoChecklist &&
+            !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento;
+
+          const relevantSections = PHOTO_SECTIONS.filter(section => {
+            // Serviço Padrão: Antes, Durante, Depois
+            if (isServicoPadrao && ['fotos_antes', 'fotos_durante', 'fotos_depois'].includes(section.key)) {
+              return true;
+            }
+            // Chave: Abertura, Fechamento
+            if (isServicoChave && ['fotos_abertura', 'fotos_fechamento'].includes(section.key)) {
+              return true;
+            }
+            // Ditais: 5 fotos
+            if (isServicoDitais && section.key.startsWith('fotos_ditais_')) {
+              return true;
+            }
+            // Book Aterramento: 4 fotos
+            if (isServicoBookAterramento && section.key.startsWith('fotos_aterramento_')) {
+              return true;
+            }
+            // Transformador
+            if (isServicoTransformador && section.key.startsWith('fotos_transformador_')) {
+              return true;
+            }
+            // Medidor
+            if (isServicoMedidor && section.key.startsWith('fotos_medidor_')) {
+              return true;
+            }
+            // Checklist
+            if (isServicoChecklist && section.key.startsWith('fotos_checklist_')) {
+              return true;
+            }
+            // Documentação
+            if (isServicoDocumentacao && section.key.startsWith('doc_')) {
+              return true;
+            }
+            // Altimetria
+            if (isServicoAltimetria && section.key.startsWith('fotos_altimetria_')) {
+              return true;
+            }
+            // Vazamento
+            if (isServicoVazamento && section.key.startsWith('fotos_vazamento_')) {
+              return true;
+            }
+            return false;
+          });
+
+          const allPhotos = relevantSections.map(section => {
             return getPhotosForSection(section.key);
           }).flat();
 
-          if (allPhotos.length === 0) {
+          if (allPhotos.length === 0 && relevantSections.length === 0) {
             return (
               <View style={styles.infoCard}>
                 <Text style={styles.noPhotosTitle}>Nenhuma foto disponível</Text>
@@ -977,38 +1067,61 @@ export default function ObraDetalhe() {
             );
           }
 
-          return PHOTO_SECTIONS.map((section) => {
+          // Card de resumo de fotos faltantes
+          const missingPhotos = relevantSections.filter(section => {
+            const photos = getPhotosForSection(section.key);
+            return photos.length === 0;
+          });
+
+          return (
+            <>
+              {missingPhotos.length > 0 && (
+                <View style={styles.missingPhotosCard}>
+                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando ({missingPhotos.length}):</Text>
+                  {missingPhotos.map(section => (
+                    <Text key={section.key} style={styles.missingPhotoItem}>• {section.label}</Text>
+                  ))}
+                </View>
+              )}
+
+              {relevantSections.map((section) => {
             const photos = getPhotosForSection(section.key);
 
-            if (photos.length === 0) {
-              return null;
-            }
-
+            // Sempre mostrar a seção, mesmo sem fotos
             return (
               <View key={section.key} style={styles.infoCard}>
-                <Text style={styles.photoSectionTitle}>{section.label}</Text>
-                <View style={styles.photoGrid}>
-                  {photos.map((foto, index) => {
-                    const source = getPhotoSource(foto);
-                    if (!source) return null;
+                <Text style={styles.photoSectionTitle}>
+                  {section.label} ({photos.length})
+                  {photos.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
+                {photos.length > 0 ? (
+                  <View style={styles.photoGrid}>
+                    {photos.map((foto, index) => {
+                      const source = getPhotoSource(foto);
+                      if (!source) return null;
 
-                    return (
-                      <TouchableOpacity
-                        key={`${section.key}-${index}`}
-                        onPress={() => openPhotoModal(foto, section.key, index)}
-                        activeOpacity={0.8}
-                      >
-                        <Image
-                          source={source}
-                          style={styles.photoThumb}
-                        />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                      return (
+                        <TouchableOpacity
+                          key={`${section.key}-${index}`}
+                          onPress={() => openPhotoModal(foto, section.key, index)}
+                          activeOpacity={0.8}
+                        >
+                          <Image
+                            source={source}
+                            style={styles.photoThumb}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                )}
               </View>
             );
-          });
+          })}
+            </>
+          );
         })()}
       </ScrollView>
 
@@ -1230,6 +1343,38 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1a1a1a',
     marginBottom: 12,
+  },
+  missingPhotoIndicator: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#ff6f00',
+    fontStyle: 'italic',
+  },
+  noPhotosHint: {
+    fontSize: 14,
+    color: '#999',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  missingPhotosCard: {
+    backgroundColor: '#fff8e1',
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff6f00',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  missingPhotosTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#ff6f00',
+    marginBottom: 8,
+  },
+  missingPhotoItem: {
+    fontSize: 14,
+    color: '#4a4a4a',
+    marginLeft: 4,
+    marginTop: 4,
   },
   photoGrid: {
     flexDirection: 'row',

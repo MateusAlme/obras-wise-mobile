@@ -142,8 +142,17 @@ export default function AcompanhamentoPage() {
   // Mapeamento de tipos de serviço para galerias de fotos permitidas
   const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
     'Emenda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+    'Bandolamento': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+    'Linha Viva': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
     'Transformador': ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_abertura', 'fotos_fechamento'],
+    'Abertura e Fechamento de Chave': ['fotos_abertura', 'fotos_fechamento'],
+    'Poda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+    'Fundação Especial': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+    'Instalação do Medidor': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+    'Checklist de Fiscalização': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
     'DITAIS': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
+    'Ditais': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
+    'Book de Aterramento': ['fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao'],
     'Aterramento': ['fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao'],
     'Medidor': ['fotos_medidor_padrao', 'fotos_medidor_leitura', 'fotos_medidor_selo_born', 'fotos_medidor_selo_caixa', 'fotos_medidor_identificador_fase'],
     'Altimetria': ['fotos_altimetria_lado_fonte', 'fotos_altimetria_medicao_fonte', 'fotos_altimetria_lado_carga', 'fotos_altimetria_medicao_carga'],

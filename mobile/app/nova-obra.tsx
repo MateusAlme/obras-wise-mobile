@@ -20,7 +20,8 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import * as DocumentPicker from 'expo-document-picker';
+// NOTA: DocumentPicker requer Expo Dev Client (não funciona no Expo Go)
+// import * as DocumentPicker from 'expo-document-picker';
 import {
   checkInternetConnection,
   saveObraOffline,
@@ -42,7 +43,6 @@ import { PlacaScanner } from '../components/PlacaScanner';
 import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
 import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
-import { savePhotoToGallery } from '../lib/save-to-gallery';
 // Import dinâmico (lazy) para evitar erro no web
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
@@ -577,7 +577,20 @@ export default function NovaObra() {
         }
       };
 
-      loadObraDataAsync();
+      // PROTEÇÃO: Executar com tratamento de erro
+      loadObraDataAsync().catch((error: any) => {
+        console.error('🚨 Erro CRÍTICO ao carregar dados da obra:', error);
+        console.error('📊 Stack:', error?.stack || 'N/A');
+
+        Alert.alert(
+          'Erro ao Carregar Obra',
+          'Não foi possível carregar os dados da obra. Por favor, tente novamente.',
+          [
+            { text: 'Voltar', onPress: () => router.back() },
+            { text: 'Tentar Novamente', onPress: () => loadObraDataAsync() }
+          ]
+        );
+      });
     }
   }, [isEditMode, params.obraData]);
 
@@ -641,34 +654,91 @@ export default function NovaObra() {
 
 
   const requestPermissions = async () => {
-    const { status: cameraStatus } = await ImagePicker.requestCameraPermissionsAsync();
-    const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+    try {
+      // PROTEÇÃO: Timeout de 30 segundos para solicitação de permissões
+      const permissionsPromise = Promise.all([
+        ImagePicker.requestCameraPermissionsAsync(),
+        Location.requestForegroundPermissionsAsync()
+      ]);
 
-    if (cameraStatus !== 'granted') {
-      Alert.alert('Permissão negada', 'É necessário permitir o acesso à câmera para tirar fotos.');
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout de permissões')), 30000)
+      );
+
+      const [cameraResult, locationResult] = await Promise.race([
+        permissionsPromise,
+        timeoutPromise
+      ]);
+
+      if (cameraResult.status !== 'granted') {
+        Alert.alert(
+          'Permissão de Câmera Negada',
+          'É necessário permitir o acesso à câmera para tirar fotos.\n\nVá em Configurações > Permissões para habilitar.'
+        );
+        return false;
+      }
+
+      if (locationResult.status !== 'granted') {
+        Alert.alert(
+          'Permissão de Localização Negada',
+          'É necessário permitir o acesso à localização para registrar as coordenadas.\n\nAs fotos serão salvas sem localização GPS.'
+        );
+        // Permite continuar sem GPS
+        return true;
+      }
+
+      return true;
+    } catch (error: any) {
+      // PROTEÇÃO ROBUSTA: Nunca crashar ao solicitar permissões
+      console.error('🚨 Erro ao solicitar permissões:', error);
+
+      if (error?.message?.includes('Timeout')) {
+        Alert.alert(
+          'Timeout',
+          'Tempo esgotado ao solicitar permissões. Por favor, tente novamente.'
+        );
+      } else {
+        Alert.alert(
+          'Erro de Permissões',
+          'Não foi possível solicitar permissões. Verifique as configurações do dispositivo.'
+        );
+      }
+
       return false;
     }
-
-    if (locationStatus !== 'granted') {
-      Alert.alert('Permissão negada', 'É necessário permitir o acesso à localização para registrar o local das fotos.');
-      return false;
-    }
-
-    return true;
   };
 
   const getCurrentLocation = async () => {
     try {
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
+      // PROTEÇÃO: Timeout de 10 segundos para evitar travamento
+      const location = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('GPS timeout')), 10000)
+        )
+      ]);
+
+      // VALIDAÇÃO: Verificar se coordenadas são válidas
+      if (!location?.coords?.latitude || !location?.coords?.longitude) {
+        throw new Error('Coordenadas inválidas');
+      }
+
       return {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       };
-    } catch (error) {
-      console.error('Erro ao obter localização:', error);
-      Alert.alert('Aviso', 'Não foi possível obter a localização. A foto será salva sem coordenadas.');
+    } catch (error: any) {
+      // PROTEÇÃO ROBUSTA: Nunca crashar, sempre retornar coordenadas nulas
+      console.warn('⚠️ Erro ao obter localização GPS:', error?.message || error);
+
+      // Mensagem amigável apenas se não for timeout silencioso
+      if (!error?.message?.includes('timeout')) {
+        console.error('📍 GPS Error Details:', error);
+      }
+
+      // NÃO mostrar alert aqui - será tratado no takePicture
       return { latitude: null, longitude: null };
     }
   };
@@ -691,7 +761,8 @@ export default function NovaObra() {
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
-    'checklist_seccionamento' | 'checklist_aterramento_cerca',
+    'checklist_seccionamento' | 'checklist_aterramento_cerca' |
+    'doc_materiais_previsto' | 'doc_materiais_realizado',
     posteIndex?: number,
     seccionamentoIndex?: number,
     aterramentoCercaIndex?: number
@@ -702,68 +773,86 @@ export default function NovaObra() {
     setUploadingPhoto(true);
 
     try {
-      // Tirar foto com compressão otimizada
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'], // Corrigido: usando array ao invés de MediaTypeOptions
-        quality: 0.6, // Reduzido de 0.8 para 0.6 (60% - boa qualidade, tamanho menor)
-        allowsEditing: false,
-        aspect: [4, 3],
-        exif: false, // Não incluir dados EXIF (reduz tamanho)
-      });
+      // Verificar se é foto de documento (scanner mode)
+      const isDocument =
+        tipo === 'doc_materiais_previsto' ||
+        tipo === 'doc_materiais_realizado' ||
+        tipo === 'doc_cadastro_medidor' ||
+        tipo === 'doc_laudo_transformador' ||
+        tipo === 'doc_laudo_regulador' ||
+        tipo === 'doc_laudo_religador';
+
+      // Configurações de câmera baseadas no tipo
+      const cameraOptions = isDocument
+        ? {
+            // 📄 MODO SCANNER: Alta qualidade para documentos
+            mediaTypes: ['images'],
+            quality: 1.0, // 100% de qualidade para documentos (scanner)
+            allowsEditing: true, // Permitir crop/ajuste para documentos
+            aspect: undefined, // Sem restrição de aspecto (livre)
+            exif: true, // Manter EXIF para documentos
+          }
+        : {
+            // 📷 MODO FOTO NORMAL: Otimizado para rapidez
+            mediaTypes: ['images'],
+            quality: 0.4, // 40% de qualidade (processamento rápido)
+            allowsEditing: false,
+            aspect: [4, 3],
+            exif: false,
+          };
+
+      const result = await ImagePicker.launchCameraAsync(cameraOptions);
 
       if (result.canceled) {
         setUploadingPhoto(false);
         return;
       }
 
-      // Obter localização
-      const location = await getCurrentLocation();
-
-      // Preparar dados da placa
-      const placaData = {
-        obraNumero: obra || tempObraId.substring(0, 8),
-        tipoServico: Array.isArray(tipoServico) ? tipoServico[0] : tipoServico || 'Obra',
-        equipe: equipe || equipeExecutora || 'Equipe',
-        dataHora: new Date().toLocaleString('pt-BR', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        latitude: location.latitude,
-        longitude: location.longitude,
-      };
-
-      // Renderizar foto com placa "gravada" (burned-in)
-      // WEB: Canvas API | MOBILE: Skia Canvas
       let photoUri = result.assets[0].uri;
-      console.log('📸 URI ORIGINAL:', photoUri);
+      console.log(`📸 ${isDocument ? '📄 DOCUMENTO' : '📷 FOTO'} - URI ORIGINAL:`, photoUri);
 
-      try {
-        // Renderizar foto com placa gravada (usando import estático)
-        const photoWithPlaca = await renderPhotoWithPlacaBurnedIn(photoUri, placaData);
-        photoUri = photoWithPlaca;
-        console.log('✅ Placa gravada na foto');
-        console.log('📸 URI COM PLACA:', photoUri);
-      } catch (error) {
-        console.error('❌ ERRO ao gravar placa:', error);
-        console.warn('⚠️ Erro ao gravar placa, usando foto original:', error);
-        // Continua com foto original
-      }
+      // Obter GPS apenas para fotos normais (não para documentos)
+      const location = isDocument
+        ? { latitude: null, longitude: null }
+        : await getCurrentLocation();
 
-      // Salvar foto na galeria do dispositivo (em background, não bloqueia)
-      try {
-        const saved = await savePhotoToGallery(photoUri, 'Obras Teccel');
-        if (saved) {
-          console.log('✅ Foto salva na galeria com sucesso');
-        } else {
-          console.warn('⚠️ Não foi possível salvar foto na galeria (permissão negada ou erro)');
+      // Para documentos, NÃO adicionar placa
+      if (isDocument) {
+        console.log('📄 Modo Scanner: Sem placa, sem GPS, qualidade máxima (100%)');
+        // Pular placa completamente
+      } else {
+        // Para fotos normais: adicionar placa
+        const placaData = {
+          obraNumero: obra || tempObraId.substring(0, 8),
+          tipoServico: Array.isArray(tipoServico) ? tipoServico[0] : tipoServico || 'Obra',
+          equipe: equipe || equipeExecutora || 'Equipe',
+          dataHora: new Date().toLocaleString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          latitude: location.latitude,
+          longitude: location.longitude,
+        };
+
+        try {
+          // Renderizar foto com placa gravada
+          const photoWithPlaca = await renderPhotoWithPlacaBurnedIn(photoUri, placaData);
+          photoUri = photoWithPlaca;
+          console.log('✅ Placa gravada na foto');
+          console.log('📸 URI COM PLACA:', photoUri);
+        } catch (error) {
+          console.error('❌ ERRO ao gravar placa:', error);
+          console.warn('⚠️ Erro ao gravar placa, usando foto original:', error);
+          // Continua com foto original
         }
-      } catch (galleryError) {
-        // Não bloquear a operação se falhar ao salvar na galeria
-        console.warn('⚠️ Erro ao salvar foto na galeria:', galleryError);
       }
+
+      // ❌ REMOVIDO: Salvar na galeria (desnecessário, já temos backup em pasta dedicada)
+      // As fotos são automaticamente salvas em backupPhoto() na pasta permanente
+      // Não precisamos solicitar permissão de galeria nem duplicar as fotos
 
       // Obter índice da próxima foto
       let index = 0;
@@ -826,6 +915,14 @@ export default function NovaObra() {
       else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].length;
       // Checklist - aterramento de cerca
       else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].length;
+      // Documentos - Materiais
+      else if (tipo === 'doc_materiais_previsto') index = docMateriaisPrevisto.length;
+      else if (tipo === 'doc_materiais_realizado') index = docMateriaisRealizado.length;
+      // Documentos - Laudos e Cadastros
+      else if (tipo === 'doc_cadastro_medidor') index = docCadastroMedidor.length;
+      else if (tipo === 'doc_laudo_transformador') index = docLaudoTransformador.length;
+      else if (tipo === 'doc_laudo_regulador') index = docLaudoRegulador.length;
+      else if (tipo === 'doc_laudo_religador') index = docLaudoReligador.length;
 
       // FAZER BACKUP PERMANENTE DA FOTO (já com placa gravada)
       const photoMetadata = await backupPhoto(
@@ -1012,6 +1109,18 @@ export default function NovaObra() {
           updated[aterramentoCercaIndex] = [...updated[aterramentoCercaIndex], photoData];
           return updated;
         });
+      } else if (tipo === 'doc_materiais_previsto') {
+        setDocMateriaisPrevisto(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_materiais_realizado') {
+        setDocMateriaisRealizado(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_cadastro_medidor') {
+        setDocCadastroMedidor(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_laudo_transformador') {
+        setDocLaudoTransformador(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_laudo_regulador') {
+        setDocLaudoRegulador(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_laudo_religador') {
+        setDocLaudoReligador(prev => [...prev, photoData]);
       }
 
       Alert.alert(
@@ -1021,11 +1130,37 @@ export default function NovaObra() {
           : '💾 Foto salva com backup local (sem localização)'
       );
 
-    } catch (error) {
-      console.error('Erro ao tirar foto:', error);
-      Alert.alert('Erro', 'Não foi possível tirar a foto. Tente novamente.');
+    } catch (error: any) {
+      // PROTEÇÃO ROBUSTA contra crashes
+      console.error('🚨 Erro CRÍTICO ao tirar foto:', error);
+      console.error('📊 Stack trace:', error?.stack || 'N/A');
+      console.error('📍 Tipo de foto:', tipo);
+
+      // Mensagem amigável baseada no tipo de erro
+      let errorMessage = 'Não foi possível tirar a foto. Tente novamente.';
+
+      if (error?.message?.includes('permission')) {
+        errorMessage = 'Permissão de câmera negada. Verifique as configurações do app.';
+      } else if (error?.message?.includes('location')) {
+        errorMessage = 'Erro ao obter localização GPS. A foto será salva sem coordenadas.';
+      } else if (error?.message?.includes('storage') || error?.message?.includes('disk')) {
+        errorMessage = 'Espaço de armazenamento insuficiente. Libere espaço e tente novamente.';
+      } else if (error?.message?.includes('memory')) {
+        errorMessage = 'Memória insuficiente. Feche outros apps e tente novamente.';
+      }
+
+      Alert.alert(
+        'Erro ao Tirar Foto',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
     } finally {
-      setUploadingPhoto(false);
+      // GARANTIR que o estado sempre seja resetado, mesmo em caso de erro
+      try {
+        setUploadingPhoto(false);
+      } catch (err) {
+        console.error('❌ Erro ao resetar uploadingPhoto:', err);
+      }
     }
   };
 
@@ -1235,6 +1370,18 @@ export default function NovaObra() {
     'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem' |
     'doc_materiais_previsto' | 'doc_materiais_realizado'
   ) => {
+    // NOTA: DocumentPicker requer Expo Dev Client
+    Alert.alert(
+      'Funcionalidade Indisponível',
+      'Upload de documentos PDF requer Expo Dev Client.\n\n' +
+      'Para usar esta funcionalidade, execute:\n' +
+      'npx expo install expo-dev-client\n' +
+      'npx expo prebuild\n' +
+      'npx expo run:android'
+    );
+    return;
+
+    /* CÓDIGO ORIGINAL (requer expo-document-picker)
     setUploadingPhoto(true);
 
     try {
@@ -1324,6 +1471,7 @@ export default function NovaObra() {
     } finally {
       setUploadingPhoto(false);
     }
+    */
   };
 
   const removePhoto = (
@@ -1352,6 +1500,12 @@ export default function NovaObra() {
     seccionamentoIndex?: number,
     aterramentoCercaIndex?: number
   ) => {
+    try {
+      // PROTEÇÃO: Validar parâmetros antes de remover
+      if (typeof index !== 'number' || index < 0) {
+        console.warn('⚠️ Índice inválido para removePhoto:', index);
+        return;
+      }
     if (tipo === 'antes') {
       setFotosAntes(fotosAntes.filter((_, i) => i !== index));
     } else if (tipo === 'durante') {
@@ -1537,6 +1691,15 @@ export default function NovaObra() {
     } else if (tipo === 'doc_materiais_realizado') {
       setDocMateriaisRealizado(docMateriaisRealizado.filter((_, i) => i !== index));
     }
+    } catch (error: any) {
+      // PROTEÇÃO ROBUSTA: Nunca crashar ao remover foto
+      console.error('🚨 Erro ao remover foto:', error);
+      console.error('📍 Tipo:', tipo, 'Index:', index);
+
+      // Não mostrar alert para não interromper fluxo
+      // Apenas logar o erro
+      console.warn('⚠️ Foto não foi removida, mas app continua funcionando');
+    }
   };
 
   const handleSyncPendingObras = async () => {
@@ -1559,11 +1722,23 @@ export default function NovaObra() {
       } else {
         Alert.alert('Sincronizado', `${result.success} obra(s) sincronizadas com sucesso!`);
       }
-    } catch (error) {
-      console.error('Erro ao sincronizar obras pendentes:', error);
-      Alert.alert('Erro', 'Nao foi possivel sincronizar as obras pendentes. Tente novamente.');
+    } catch (error: any) {
+      // PROTEÇÃO ROBUSTA: Nunca crashar na sincronização
+      console.error('🚨 Erro ao sincronizar obras pendentes:', error);
+      console.error('📊 Stack:', error?.stack || 'N/A');
+
+      Alert.alert(
+        'Erro na Sincronização',
+        'Não foi possível sincronizar. As obras permanecem salvas localmente e serão sincronizadas depois.',
+        [{ text: 'OK' }]
+      );
     } finally {
-      setSyncingPending(false);
+      // GARANTIR que o estado seja resetado
+      try {
+        setSyncingPending(false);
+      } catch (err) {
+        console.error('❌ Erro ao resetar syncingPending:', err);
+      }
     }
   };
 
@@ -1586,20 +1761,29 @@ export default function NovaObra() {
       return;
     }
 
-    // Validar número da obra (APENAS 8 ou 10 dígitos numéricos)
+    // Validar número da obra (8 ou 10 dígitos numéricos)
     const obraNumero = obra.trim();
     if (!/^(\d{8}|\d{10})$/.test(obraNumero)) {
       Alert.alert(
         'Número da Obra Inválido',
-        'O número da obra deve conter EXATAMENTE 8 ou 10 dígitos numéricos.\n\nExemplos:\n• 8 dígitos: 12345678\n• 10 dígitos: 0032401637'
+        'O número da obra deve ter 8 ou 10 dígitos.\n\n✅ Aceito: 8 dígitos (12345678) ou 10 dígitos (0032401637)\n❌ Atual: ' + obraNumero.length + ' dígitos'
       );
       return;
     }
 
-    // TRANSFORMADOR - Status é obrigatório, mas fotos são opcionais
+    // TRANSFORMADOR - Status e Laudo são obrigatórios
     if (isServicoTransformador) {
       if (!transformadorStatus) {
         Alert.alert('Erro', 'Selecione se o transformador foi Instalado ou Retirado');
+        return;
+      }
+
+      // ✅ LAUDO OBRIGATÓRIO
+      if (fotosTransformadorLaudo.length === 0) {
+        Alert.alert(
+          'Laudo Obrigatório',
+          'É obrigatório anexar pelo menos 1 foto do laudo do transformador.\n\nPor favor, adicione a foto do laudo antes de salvar.'
+        );
         return;
       }
 
@@ -1611,18 +1795,18 @@ export default function NovaObra() {
         if (!primariasOk || !secundariasOk) {
           const mensagens = [];
           if (!primariasOk) {
-            mensagens.push(`- Conexões Primárias: ${fotosTransformadorConexoesPrimariasInstalado.length}/2 fotos`);
+            mensagens.push(`📸 Conexões Primárias Instalado: ${fotosTransformadorConexoesPrimariasInstalado.length}/2 fotos`);
           }
           if (!secundariasOk) {
-            mensagens.push(`- Conexões Secundárias: ${fotosTransformadorConexoesSecundariasInstalado.length}/2 fotos`);
+            mensagens.push(`📸 Conexões Secundárias Instalado: ${fotosTransformadorConexoesSecundariasInstalado.length}/2 fotos`);
           }
 
           Alert.alert(
-            'Obra Incompleta',
-            `A obra será salva, mas está INCOMPLETA.\n\nFaltam fotos obrigatórias:\n${mensagens.join('\n')}\n\nVocê pode editar a obra depois para adicionar as fotos faltantes.`,
+            '⚠️ Transformador Instalado - Fotos Faltando',
+            `A obra será salva, mas está INCOMPLETA.\n\n❌ Faltam fotos obrigatórias do transformador instalado:\n\n${mensagens.join('\n')}\n\n💡 Você pode editar a obra depois para adicionar as fotos faltantes.`,
             [
-              { text: 'Cancelar', style: 'cancel' },
-              { text: 'Salvar Mesmo Assim', onPress: () => prosseguirSalvamento() }
+              { text: 'Cancelar e Adicionar Fotos', style: 'cancel' },
+              { text: 'Salvar Incompleta', onPress: () => prosseguirSalvamento() }
             ]
           );
           return;
@@ -1636,22 +1820,51 @@ export default function NovaObra() {
         if (!primariasOk || !secundariasOk) {
           const mensagens = [];
           if (!primariasOk) {
-            mensagens.push(`- Conexões Primárias: ${fotosTransformadorConexoesPrimariasRetirado.length}/2 fotos`);
+            mensagens.push(`📸 Conexões Primárias Retirado: ${fotosTransformadorConexoesPrimariasRetirado.length}/2 fotos`);
           }
           if (!secundariasOk) {
-            mensagens.push(`- Conexões Secundárias: ${fotosTransformadorConexoesSecundariasRetirado.length}/2 fotos`);
+            mensagens.push(`📸 Conexões Secundárias Retirado: ${fotosTransformadorConexoesSecundariasRetirado.length}/2 fotos`);
           }
 
           Alert.alert(
-            'Obra Incompleta',
-            `A obra será salva, mas está INCOMPLETA.\n\nFaltam fotos obrigatórias:\n${mensagens.join('\n')}\n\nVocê pode editar a obra depois para adicionar as fotos faltantes.`,
+            '⚠️ Transformador Retirado - Fotos Faltando',
+            `A obra será salva, mas está INCOMPLETA.\n\n❌ Faltam fotos obrigatórias do transformador retirado:\n\n${mensagens.join('\n')}\n\n💡 Você pode editar a obra depois para adicionar as fotos faltantes.`,
             [
-              { text: 'Cancelar', style: 'cancel' },
-              { text: 'Salvar Mesmo Assim', onPress: () => prosseguirSalvamento() }
+              { text: 'Cancelar e Adicionar Fotos', style: 'cancel' },
+              { text: 'Salvar Incompleta', onPress: () => prosseguirSalvamento() }
             ]
           );
           return;
         }
+      }
+    }
+
+    // MEDIDOR - Cadastro é obrigatório
+    if (isServicoMedidor) {
+      if (docCadastroMedidor.length === 0) {
+        Alert.alert(
+          'Cadastro do Medidor Obrigatório',
+          'É obrigatório anexar pelo menos 1 documento/foto do cadastro do medidor.\n\nPor favor, adicione o documento antes de salvar.'
+        );
+        return;
+      }
+    }
+
+    // DOCUMENTAÇÃO - Laudos de Regulador e Religador são obrigatórios (quando aplicável)
+    if (isServicoDocumentacao) {
+      // Verificar se pelo menos um laudo foi anexado (Transformador, Regulador ou Religador)
+      const temAlgumLaudo =
+        docLaudoTransformador.length > 0 ||
+        docLaudoRegulador.length > 0 ||
+        docLaudoReligador.length > 0 ||
+        docCadastroMedidor.length > 0;
+
+      if (!temAlgumLaudo) {
+        Alert.alert(
+          'Documentação Obrigatória',
+          'É obrigatório anexar pelo menos um documento:\n\n• Laudo de Transformador\n• Laudo de Regulador\n• Laudo de Religador\n• Cadastro de Medidor\n\nPor favor, adicione pelo menos um documento antes de salvar.'
+        );
+        return;
       }
     }
 
@@ -1676,11 +1889,11 @@ export default function NovaObra() {
 
       if (postesIncompletos.length > 0) {
         Alert.alert(
-          'Postes Incompletos',
-          `A obra será salva, mas está INCOMPLETA.\n\nFaltam fotos obrigatórias:\n\n${postesIncompletos.join('\n\n')}\n\nVocê pode editar a obra depois para adicionar as fotos faltantes.`,
+          '⚠️ Checklist - Postes Incompletos',
+          `A obra será salva, mas está INCOMPLETA.\n\n❌ Faltam fotos obrigatórias em ${postesIncompletos.length} poste(s):\n\n${postesIncompletos.join('\n\n')}\n\n💡 Você pode editar a obra depois para adicionar as fotos faltantes.`,
           [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Salvar Mesmo Assim', onPress: () => prosseguirSalvamento() }
+            { text: 'Cancelar e Adicionar Fotos', style: 'cancel' },
+            { text: 'Salvar Incompleta', onPress: () => prosseguirSalvamento() }
           ]
         );
         return;
@@ -2235,6 +2448,40 @@ export default function NovaObra() {
         longitude: p.longitude
       }));
 
+      // Fotos de Conexões do Transformador (Instalado)
+      const fotosTransformadorConexoesPrimariasInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_conexoes_primarias_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorConexoesSecundariasInstaladoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_conexoes_secundarias_instalado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      // Fotos de Conexões do Transformador (Retirado)
+      const fotosTransformadorConexoesPrimariasRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_conexoes_primarias_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
+      const fotosTransformadorConexoesSecundariasRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_conexoes_secundarias_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
       // Fotos Instalação de Medidor
       const fotosMedidorPadraoUploaded = allPhotos.filter(p =>
         photoIds.medidor_padrao.includes(p.id) && p.uploaded
@@ -2562,6 +2809,10 @@ export default function NovaObra() {
               fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarUploaded,
               fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoUploaded,
               fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoUploaded,
+              fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstaladoUploaded,
+              fotos_transformador_conexoes_secundarias_instalado: fotosTransformadorConexoesSecundariasInstaladoUploaded,
+              fotos_transformador_conexoes_primarias_retirado: fotosTransformadorConexoesPrimariasRetiradoUploaded,
+              fotos_transformador_conexoes_secundarias_retirado: fotosTransformadorConexoesSecundariasRetiradoUploaded,
               fotos_medidor_padrao: fotosMedidorPadraoUploaded,
               fotos_medidor_leitura: fotosMedidorLeituraUploaded,
               fotos_medidor_selo_born: fotosMedidorSeloBornUploaded,
@@ -2600,6 +2851,39 @@ export default function NovaObra() {
         return;
       }
 
+      // ⭐ Salvar obra completa em cache para permitir edição offline futura
+      console.log('💾 Salvando obra completa no cache para permitir edição offline...');
+      try {
+        const obraCompleta = {
+          id: obraId || obraData.obra, // ID da obra
+          ...obraData,
+          fotos_antes: fotosAntesUploaded,
+          fotos_durante: fotosDuranteUploaded,
+          fotos_depois: fotosDepoisUploaded,
+          fotos_abertura: fotosAberturaUploaded,
+          fotos_fechamento: fotosFechamentoUploaded,
+          status: 'finalizada',
+          cached_at: new Date().toISOString(),
+          has_online_photos: allPhotoIds.length > 0, // Flag indicando que há fotos no servidor
+        };
+
+        // Buscar cache atual
+        const cacheKey = '@obras_finalizadas_cache';
+        const cacheStr = await AsyncStorage.getItem(cacheKey);
+        const cache = cacheStr ? JSON.parse(cacheStr) : {};
+
+        // Adicionar/atualizar obra no cache
+        cache[obraCompleta.id] = obraCompleta;
+
+        // Salvar cache atualizado
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(cache));
+        console.log(`📝 Obra ${obraCompleta.obra} adicionada ao cache (status: finalizada)`);
+        console.log(`✅ Cache atualizado - obra pode ser editada offline futuramente`);
+      } catch (cacheError) {
+        console.error('⚠️ Erro ao salvar cache da obra:', cacheError);
+        // Não bloquear o fluxo se cache falhar
+      }
+
       const tipoArquivoFinal = isServicoDocumentacao ? 'documento(s)' : 'foto(s)';
       const mensagemSucesso = isEditMode
         ? `Fotos adicionadas com sucesso! ${allPhotoIds.length} ${tipoArquivoFinal} enviado(s).`
@@ -2611,55 +2895,85 @@ export default function NovaObra() {
         [{ text: 'OK', onPress: () => router.back() }]
       );
 
-    } catch (err) {
-      console.error('Erro inesperado:', err);
-      Alert.alert('Erro', 'Ocorreu um erro inesperado. Tente novamente.');
+    } catch (err: any) {
+      // PROTEÇÃO ROBUSTA contra crashes no salvamento
+      console.error('🚨 Erro CRÍTICO ao salvar obra:', err);
+      console.error('📊 Stack trace:', err?.stack || 'N/A');
+      console.error('📍 Obra:', obra);
+      console.error('📍 Tipo Serviço:', tipoServico);
+
+      // Mensagem amigável baseada no tipo de erro
+      let errorMessage = 'Ocorreu um erro ao salvar. Seus dados estão protegidos localmente.';
+      let errorTitle = 'Erro ao Salvar';
+
+      if (err?.message?.includes('network') || err?.message?.includes('fetch')) {
+        errorMessage = 'Erro de conexão. A obra foi salva localmente e será sincronizada depois.';
+        errorTitle = 'Problema de Conexão';
+      } else if (err?.message?.includes('storage') || err?.message?.includes('quota')) {
+        errorMessage = 'Espaço de armazenamento insuficiente. Libere espaço e tente novamente.';
+        errorTitle = 'Armazenamento Cheio';
+      } else if (err?.message?.includes('photo') || err?.message?.includes('image')) {
+        errorMessage = 'Erro ao processar fotos. Verifique se as fotos não estão corrompidas.';
+        errorTitle = 'Erro nas Fotos';
+      } else if (err?.message?.includes('permission') || err?.message?.includes('denied')) {
+        errorMessage = 'Permissão negada. Verifique as configurações do app.';
+        errorTitle = 'Permissão Negada';
+      }
+
+      Alert.alert(
+        errorTitle,
+        `${errorMessage}\n\n💾 Suas fotos estão protegidas no backup local.\n\nDeseja tentar salvar novamente?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Tentar Novamente',
+            onPress: () => {
+              // Tentar salvar novamente
+              prosseguirSalvamento().catch(e => {
+                console.error('❌ Segunda tentativa falhou:', e);
+                Alert.alert('Erro Persistente', 'Não foi possível salvar. Contate o suporte.');
+              });
+            }
+          }
+        ]
+      );
     } finally {
-      setLoading(false);
+      // GARANTIR que o estado sempre seja resetado
+      try {
+        setLoading(false);
+      } catch (err) {
+        console.error('❌ Erro ao resetar loading:', err);
+      }
     }
   };
 
   // ✅ NOVA FUNÇÃO: Calcular se pode finalizar obra
   const calcularPodeFinalizar = (): boolean => {
-    // ✅ CRÍTICO: Deve estar online para finalizar
-    if (!isOnline) {
-      return false;
-    }
+    // NOTA: Botão "Finalizar" fica sempre habilitado se campos básicos estão preenchidos
+    // As validações de fotos obrigatórias ocorrem ao clicar (com opção de salvar parcial)
 
-    // 1. Validar campos básicos
+    // 1. Validar apenas campos básicos obrigatórios
     if (!data || !obra || !responsavel || !tipoServico) {
       return false;
     }
 
-    // 2. Validar fotos de transformador (se aplicável)
-    if (isServicoTransformador && transformadorStatus) {
-      if (transformadorStatus === 'Instalado') {
-        if (fotosTransformadorConexoesPrimariasInstalado.length < 2) return false;
-        if (fotosTransformadorConexoesSecundariasInstalado.length < 2) return false;
-      }
-      if (transformadorStatus === 'Retirado') {
-        if (fotosTransformadorConexoesPrimariasRetirado.length < 2) return false;
-        if (fotosTransformadorConexoesSecundariasRetirado.length < 2) return false;
-      }
+    // 2. Para transformador, exigir seleção de status (Instalado/Retirado)
+    if (isServicoTransformador && !transformadorStatus) {
+      return false;
     }
 
-    // 3. Validar fotos de checklist (se aplicável)
+    // 3. Para checklist, exigir que todos os postes tenham status selecionado
     if (isServicoChecklist && numPostes > 0) {
       for (const poste of fotosPostes) {
-        if (poste.status === 'instalado') {
-          if (poste.posteInteiro.length < 1) return false;
-          if (poste.engaste.length < 1) return false;
-          if (poste.conexao1.length < 1) return false;
-          if (poste.conexao2.length < 1) return false;
-          if (poste.maiorEsforco.length < 2) return false;
-          if (poste.menorEsforco.length < 2) return false;
-        } else if (poste.status === 'retirado') {
-          if (poste.posteInteiro.length < 2) return false;
+        if (!poste.status) {
+          return false; // Poste sem status selecionado
         }
       }
     }
 
-    return true; // Todas as validações passaram
+    // ✅ Campos básicos OK - botão habilitado
+    // Validações de fotos serão feitas ao clicar "Finalizar"
+    return true;
   };
 
   // ✅ NOVA FUNÇÃO: Pausar obra (salvar rascunho)
@@ -2995,7 +3309,7 @@ export default function NovaObra() {
                 {isServicoChave
                   ? 'Fotos opcionais: Abertura e Fechamento da Chave'
                   : isServicoDitais
-                  ? 'Fotos opcionais: DITAIS (Abertura, Impedir, Testar, Aterrar, Sinalizar)'
+                  ? 'Fotos opcionais: DITAIS (Desligar, Impedir, Testar, Aterrar, Sinalizar)'
                   : isServicoBookAterramento
                   ? 'Fotos opcionais: Aterramento (Vala Aberta, Hastes, Vala Fechada, Medição)'
                   : isServicoTransformador
@@ -3013,10 +3327,50 @@ export default function NovaObra() {
                   : 'Fotos opcionais: Antes, Durante e Depois. Obras parciais permitidas'}
               </Text>
 
+              {/* Resumo de Fotos Faltantes - Serviço Padrão */}
+              {isServicoPadrao && (fotosAntes.length === 0 || fotosDurante.length === 0 || fotosDepois.length === 0) && (
+                <View style={styles.missingPhotosCard}>
+                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando:</Text>
+                  {fotosAntes.length === 0 && <Text style={styles.missingPhotoItem}>• Antes</Text>}
+                  {fotosDurante.length === 0 && <Text style={styles.missingPhotoItem}>• Durante</Text>}
+                  {fotosDepois.length === 0 && <Text style={styles.missingPhotoItem}>• Depois</Text>}
+                </View>
+              )}
+
+              {/* Resumo de Fotos Faltantes - Abertura/Fechamento */}
+              {isServicoChave && (fotosAbertura.length === 0 || fotosFechamento.length === 0) && (
+                <View style={styles.missingPhotosCard}>
+                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando:</Text>
+                  {fotosAbertura.length === 0 && <Text style={styles.missingPhotoItem}>• Abertura</Text>}
+                  {fotosFechamento.length === 0 && <Text style={styles.missingPhotoItem}>• Fechamento</Text>}
+                </View>
+              )}
+
+              {/* Resumo de Fotos Faltantes - Ditais */}
+              {isServicoDitais && (
+                fotosDitaisAbertura.length === 0 ||
+                fotosDitaisImpedir.length === 0 ||
+                fotosDitaisTestar.length === 0 ||
+                fotosDitaisAterrar.length === 0 ||
+                fotosDitaisSinalizar.length === 0
+              ) && (
+                <View style={styles.missingPhotosCard}>
+                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando:</Text>
+                  {fotosDitaisAbertura.length === 0 && <Text style={styles.missingPhotoItem}>• Desligar</Text>}
+                  {fotosDitaisImpedir.length === 0 && <Text style={styles.missingPhotoItem}>• Impedir</Text>}
+                  {fotosDitaisTestar.length === 0 && <Text style={styles.missingPhotoItem}>• Testar</Text>}
+                  {fotosDitaisAterrar.length === 0 && <Text style={styles.missingPhotoItem}>• Aterrar</Text>}
+                  {fotosDitaisSinalizar.length === 0 && <Text style={styles.missingPhotoItem}>• Sinalizar</Text>}
+                </View>
+              )}
+
               {isServicoPadrao && (
               <>
                 {/* Fotos Antes */}
-                <Text style={styles.photoSectionLabel}>📷 Fotos Antes ({fotosAntes.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  📷 Fotos Antes ({fotosAntes.length})
+                  {fotosAntes.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
             <TouchableOpacity
               style={styles.photoButton}
               onPress={() => takePicture('antes')}
@@ -3059,7 +3413,10 @@ export default function NovaObra() {
             )}
 
             {/* Fotos Durante */}
-            <Text style={styles.photoSectionLabel}>📷 Fotos Durante ({fotosDurante.length})</Text>
+            <Text style={styles.photoSectionLabel}>
+              📷 Fotos Durante ({fotosDurante.length})
+              {fotosDurante.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+            </Text>
             <TouchableOpacity
               style={styles.photoButton}
               onPress={() => takePicture('durante')}
@@ -3102,7 +3459,10 @@ export default function NovaObra() {
             )}
 
             {/* Fotos Depois */}
-            <Text style={styles.photoSectionLabel}>📷 Fotos Depois ({fotosDepois.length})</Text>
+            <Text style={styles.photoSectionLabel}>
+              📷 Fotos Depois ({fotosDepois.length})
+              {fotosDepois.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+            </Text>
             <TouchableOpacity
               style={styles.photoButton}
               onPress={() => takePicture('depois')}
@@ -3149,7 +3509,10 @@ export default function NovaObra() {
             {isServicoChave && (
               <>
                 {/* Fotos Abertura */}
-                <Text style={styles.photoSectionLabel}>🔓 Fotos Abertura ({fotosAbertura.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  🔓 Fotos Abertura ({fotosAbertura.length})
+                  {fotosAbertura.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('abertura')}
@@ -3192,7 +3555,10 @@ export default function NovaObra() {
                 )}
 
                 {/* Fotos Fechamento */}
-                <Text style={styles.photoSectionLabel}>🔒 Fotos Fechamento ({fotosFechamento.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  🔒 Fotos Fechamento ({fotosFechamento.length})
+                  {fotosFechamento.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('fechamento')}
@@ -3239,8 +3605,11 @@ export default function NovaObra() {
             {/* SEÇÃO DITAIS - 5 FOTOS */}
             {isServicoDitais && (
               <>
-                {/* Ditais - Abertura */}
-                <Text style={styles.photoSectionLabel}>📋 Ditais - Abertura ({fotosDitaisAbertura.length})</Text>
+                {/* Ditais - Desligar */}
+                <Text style={styles.photoSectionLabel}>
+                  🔌 Ditais - Desligar ({fotosDitaisAbertura.length})
+                  {fotosDitaisAbertura.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('ditais_abertura')}
@@ -3249,7 +3618,7 @@ export default function NovaObra() {
                   <View style={styles.photoButtonContent}>
                     <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
                     <Text style={styles.photoButtonText}>
-                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Abertura'}
+                      {uploadingPhoto ? 'Processando...' : 'Adicionar Foto Desligar'}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -3283,7 +3652,10 @@ export default function NovaObra() {
                 )}
 
                 {/* Ditais - Impedir */}
-                <Text style={styles.photoSectionLabel}>🚫 Ditais - Impedir ({fotosDitaisImpedir.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  🚫 Ditais - Impedir ({fotosDitaisImpedir.length})
+                  {fotosDitaisImpedir.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('ditais_impedir')}
@@ -3326,7 +3698,10 @@ export default function NovaObra() {
                 )}
 
                 {/* Ditais - Testar */}
-                <Text style={styles.photoSectionLabel}>🔍 Ditais - Testar ({fotosDitaisTestar.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  🔍 Ditais - Testar ({fotosDitaisTestar.length})
+                  {fotosDitaisTestar.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('ditais_testar')}
@@ -3369,7 +3744,10 @@ export default function NovaObra() {
                 )}
 
                 {/* Ditais - Aterrar */}
-                <Text style={styles.photoSectionLabel}>⚡ Ditais - Aterrar ({fotosDitaisAterrar.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  ⚡ Ditais - Aterrar ({fotosDitaisAterrar.length})
+                  {fotosDitaisAterrar.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('ditais_aterrar')}
@@ -3412,7 +3790,10 @@ export default function NovaObra() {
                 )}
 
                 {/* Ditais - Sinalizar */}
-                <Text style={styles.photoSectionLabel}>⚠️ Ditais - Sinalizar ({fotosDitaisSinalizar.length})</Text>
+                <Text style={styles.photoSectionLabel}>
+                  ⚠️ Ditais - Sinalizar ({fotosDitaisSinalizar.length})
+                  {fotosDitaisSinalizar.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
+                </Text>
                 <TouchableOpacity
                   style={styles.photoButton}
                   onPress={() => takePicture('ditais_sinalizar')}
@@ -5719,29 +6100,53 @@ export default function NovaObra() {
             {/* DOCUMENTAÇÃO */}
             {isServicoDocumentacao && (
               <>
-                <Text style={styles.sectionTitle}>📄 Documentação - Arquivos PDF (Opcional)</Text>
-                <Text style={styles.docHint}>Selecione os documentos que deseja enviar. Todos os documentos são opcionais.</Text>
+                <Text style={styles.sectionTitle}>📄 Documentação (Opcional)</Text>
+                <Text style={styles.docHint}>Anexe documentos conforme necessário. Você pode tirar foto ou selecionar PDF. Todos os documentos são opcionais.</Text>
 
                 {/* 1. Cadastro de Medidor */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>📋 Cadastro de Medidor {docCadastroMedidor.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_cadastro_medidor')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_cadastro_medidor')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_cadastro_medidor')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docCadastroMedidor.length > 0 && (
                     <View style={styles.docList}>
                       {docCadastroMedidor.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_cadastro_medidor', index)}
@@ -5757,23 +6162,47 @@ export default function NovaObra() {
                 {/* 2. Laudo de Transformador */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>⚡ Laudo de Transformador {docLaudoTransformador.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_laudo_transformador')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_laudo_transformador')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_laudo_transformador')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docLaudoTransformador.length > 0 && (
                     <View style={styles.docList}>
                       {docLaudoTransformador.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_laudo_transformador', index)}
@@ -5789,23 +6218,47 @@ export default function NovaObra() {
                 {/* 3. Laudo de Regulador */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>🔧 Laudo de Regulador {docLaudoRegulador.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_laudo_regulador')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_laudo_regulador')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_laudo_regulador')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docLaudoRegulador.length > 0 && (
                     <View style={styles.docList}>
                       {docLaudoRegulador.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_laudo_regulador', index)}
@@ -5821,23 +6274,47 @@ export default function NovaObra() {
                 {/* 4. Laudo de Religador */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>🔌 Laudo de Religador {docLaudoReligador.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_laudo_religador')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_laudo_religador')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_laudo_religador')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docLaudoReligador.length > 0 && (
                     <View style={styles.docList}>
                       {docLaudoReligador.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_laudo_religador', index)}
@@ -5980,9 +6457,25 @@ export default function NovaObra() {
 
                 {/* 9. Materiais Previsto */}
                 <View style={styles.docSection}>
-                  <Text style={styles.docSectionTitle}>📋 Materiais Previsto {docMateriaisPrevisto.length > 0 && '✅'}</Text>
+                  <Text style={styles.docSectionTitle}>📋 Materiais Previsto ({docMateriaisPrevisto.length}) {docMateriaisPrevisto.length > 0 && '✅'}</Text>
+
+                  {/* Botão para tirar foto do documento */}
                   <TouchableOpacity
-                    style={styles.docButton}
+                    style={styles.photoButton}
+                    onPress={() => takePicture('doc_materiais_previsto')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto do Documento'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Botão para selecionar PDF (quando disponível) */}
+                  <TouchableOpacity
+                    style={[styles.docButton, { marginTop: 8 }]}
                     onPress={() => selectDocument('doc_materiais_previsto')}
                     disabled={loading || uploadingPhoto}
                   >
@@ -5993,6 +6486,7 @@ export default function NovaObra() {
                       </Text>
                     </View>
                   </TouchableOpacity>
+
                   {docMateriaisPrevisto.length > 0 && (
                     <View style={styles.docList}>
                       {docMateriaisPrevisto.map((doc, index) => (
@@ -6012,9 +6506,25 @@ export default function NovaObra() {
 
                 {/* 10. Materiais Realizado */}
                 <View style={styles.docSection}>
-                  <Text style={styles.docSectionTitle}>✅ Materiais Realizado {docMateriaisRealizado.length > 0 && '✅'}</Text>
+                  <Text style={styles.docSectionTitle}>✅ Materiais Realizado ({docMateriaisRealizado.length}) {docMateriaisRealizado.length > 0 && '✅'}</Text>
+
+                  {/* Botão para tirar foto do documento */}
                   <TouchableOpacity
-                    style={styles.docButton}
+                    style={styles.photoButton}
+                    onPress={() => takePicture('doc_materiais_realizado')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto do Documento'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Botão para selecionar PDF (quando disponível) */}
+                  <TouchableOpacity
+                    style={[styles.docButton, { marginTop: 8 }]}
                     onPress={() => selectDocument('doc_materiais_realizado')}
                     disabled={loading || uploadingPhoto}
                   >
@@ -6025,6 +6535,7 @@ export default function NovaObra() {
                       </Text>
                     </View>
                   </TouchableOpacity>
+
                   {docMateriaisRealizado.length > 0 && (
                     <View style={styles.docList}>
                       {docMateriaisRealizado.map((doc, index) => (
@@ -6046,66 +6557,116 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* Botões */}
+          {/* Botões - UX SIMPLIFICADA */}
           <View style={styles.buttonContainer}>
-            {/* Botão Pausar - SEMPRE VISÍVEL */}
-            <TouchableOpacity
-              style={[styles.pauseButton, loading && styles.buttonDisabled]}
-              onPress={handlePausar}
-              disabled={loading}
-            >
-              <Text style={styles.pauseButtonText}>
-                {loading ? 'Salvando...' : 'Pausar'}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Botão Finalizar/Criar Obra - CONDICIONAL */}
             {(() => {
               const podeFinalizarObra = calcularPodeFinalizar();
               const isRascunhoLocal = isEditMode && obraId?.startsWith('local_');
+              const isObraExistente = isEditMode && !isRascunhoLocal;
 
-              // 🔍 DEBUG: Log do estado dos botões
-              console.log('🔘 Estado dos botões:', {
-                podeFinalizarObra,
-                isEditMode,
-                obraId,
-                isRascunhoLocal,
-                botaoTexto: isRascunhoLocal ? 'Criar Obra' : 'Finalizar'
-              });
-
-              // Só mostra botão se: online + completo
-              if (podeFinalizarObra) {
+              // ===== CENÁRIO 1: NOVA OBRA (não é edição) =====
+              if (!isEditMode) {
                 return (
-                  <TouchableOpacity
-                    style={[styles.finalizarButton, loading && styles.buttonDisabled]}
-                    onPress={handleSalvarObra}
-                    disabled={loading}
-                  >
-                    <Text style={styles.buttonText}>
-                      {loading
-                        ? (isRascunhoLocal ? 'Criando...' : 'Finalizando...')
-                        : (isRascunhoLocal ? 'Criar Obra' : 'Finalizar')}
-                    </Text>
-                  </TouchableOpacity>
+                  <>
+                    {/* Botão principal: Salvar (como rascunho) */}
+                    <TouchableOpacity
+                      style={[styles.saveButton, loading && styles.buttonDisabled, { marginBottom: 0 }]}
+                      onPress={handlePausar}
+                      disabled={loading}
+                    >
+                      <Text style={styles.saveButtonText}>
+                        {loading ? 'Salvando...' : '💾 Salvar'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Botão secundário: Voltar */}
+                    <TouchableOpacity
+                      style={[styles.backButton, { marginBottom: 0 }]}
+                      onPress={() => {
+                        if (router.canGoBack()) {
+                          router.back();
+                        } else {
+                          router.replace('/(tabs)');
+                        }
+                      }}
+                      disabled={loading}
+                    >
+                      <Text style={styles.backButtonText}>← Voltar</Text>
+                    </TouchableOpacity>
+                  </>
                 );
               }
+
+              // ===== CENÁRIO 2: EDITANDO RASCUNHO LOCAL =====
+              // NOTA: Botão "Finalizar" foi REMOVIDO do formulário
+              // Agora só aparece nos DETALHES da obra (tela separada)
+              if (isRascunhoLocal) {
+                return (
+                  <>
+                    {/* Botão principal: Salvar alterações */}
+                    <TouchableOpacity
+                      style={[styles.saveButton, loading && styles.buttonDisabled, { marginBottom: 0 }]}
+                      onPress={handlePausar}
+                      disabled={loading}
+                    >
+                      <Text style={styles.saveButtonText}>
+                        {loading ? 'Salvando...' : '💾 Salvar'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Botão secundário: Voltar */}
+                    <TouchableOpacity
+                      style={[styles.backButton, { marginBottom: 0 }]}
+                      onPress={() => {
+                        if (router.canGoBack()) {
+                          router.back();
+                        } else {
+                          router.replace('/(tabs)');
+                        }
+                      }}
+                      disabled={loading}
+                    >
+                      <Text style={styles.backButtonText}>← Voltar</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              }
+
+              // ===== CENÁRIO 3: EDITANDO OBRA JÁ FINALIZADA =====
+              if (isObraExistente) {
+                return (
+                  <>
+                    {/* Botão principal: Adicionar Fotos */}
+                    <TouchableOpacity
+                      style={[styles.addPhotosButton, loading && styles.buttonDisabled]}
+                      onPress={handleSalvarObra}
+                      disabled={loading}
+                    >
+                      <Text style={styles.buttonText}>
+                        {loading ? '📸 Adicionando...' : '📸 Adicionar Fotos'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Botão secundário: Voltar */}
+                    <TouchableOpacity
+                      style={styles.backButton}
+                      onPress={() => {
+                        if (router.canGoBack()) {
+                          router.back();
+                        } else {
+                          router.replace('/(tabs)');
+                        }
+                      }}
+                      disabled={loading}
+                    >
+                      <Text style={styles.backButtonText}>← Voltar</Text>
+                    </TouchableOpacity>
+                  </>
+                );
+              }
+
               return null;
             })()}
-
-            {/* Botão Cancelar - SEMPRE VISÍVEL */}
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  router.replace('/(tabs)');
-                }
-              }}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -6831,6 +7392,33 @@ const styles = StyleSheet.create({
     marginTop: 16,
     marginBottom: 8,
   },
+  missingPhotoIndicator: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#ff6f00',
+    fontStyle: 'italic',
+  },
+  missingPhotosCard: {
+    backgroundColor: '#fff8e1',
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff6f00',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  missingPhotosTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ff6f00',
+    marginBottom: 6,
+  },
+  missingPhotoItem: {
+    fontSize: 13,
+    color: '#4a4a4a',
+    marginLeft: 4,
+    marginTop: 2,
+  },
   photoHint: {
     fontSize: 13,
     color: '#666',
@@ -6918,7 +7506,8 @@ const styles = StyleSheet.create({
   },
   // Container dos botões
   buttonContainer: {
-    flexDirection: 'row',
+    flexDirection: 'column',
+    gap: 12,
     marginTop: 24,
     marginBottom: 32,
   },
@@ -6968,6 +7557,55 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // ===== NOVOS ESTILOS UX SIMPLIFICADA =====
+  // Botão Salvar (principal para nova obra e rascunhos)
+  saveButton: {
+    backgroundColor: '#10b981', // Verde
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  // Botão Voltar (secundário)
+  backButton: {
+    backgroundColor: '#f3f4f6', // Cinza claro
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  backButtonText: {
+    color: '#374151', // Cinza escuro
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  // Botão Adicionar Fotos (para obra existente)
+  addPhotosButton: {
+    backgroundColor: '#3b82f6', // Azul
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   datePickerContainer: {
     paddingHorizontal: 20,
@@ -7352,6 +7990,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  docButtonRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  docButtonHalf: {
+    flex: 1,
+    marginBottom: 0,
+  },
   docList: {
     marginTop: 12,
   },
@@ -7370,6 +8017,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#1e40af',
+    flex: 1,
+    marginLeft: 8,
+  },
+  docThumbnail: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: '#e0e0e0',
   },
   docRemoveButton: {
     backgroundColor: '#ef4444',

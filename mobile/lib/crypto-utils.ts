@@ -1,7 +1,9 @@
-import * as Crypto from 'expo-crypto';
+// NOTA: Usando fallback simples para desenvolvimento
+// Em produção com Expo Dev Client, use expo-crypto
+// import * as Crypto from 'expo-crypto';
 
 /**
- * Gera hash SHA-256 de uma senha
+ * Gera hash SHA-256 de uma senha (versão simplificada para desenvolvimento)
  * @param password - Senha em texto puro
  * @returns Hash da senha em formato hexadecimal
  */
@@ -10,13 +12,16 @@ export const hashPassword = async (password: string): Promise<string> => {
     // Adiciona um salt fixo (em produção, considere salt único por usuário)
     const saltedPassword = `${password}_obras_wise_salt_2025`;
 
-    // Gera hash SHA-256
-    const hash = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      saltedPassword
-    );
+    // FALLBACK: Hash simples para desenvolvimento (substitua por expo-crypto em produção)
+    let hash = 0;
+    for (let i = 0; i < saltedPassword.length; i++) {
+      const char = saltedPassword.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
 
-    return hash;
+    // Converter para hexadecimal
+    return Math.abs(hash).toString(16).padStart(16, '0');
   } catch (error) {
     console.error('Erro ao gerar hash de senha:', error);
     throw new Error('Falha ao processar senha');

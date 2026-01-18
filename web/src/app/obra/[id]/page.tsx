@@ -14,11 +14,23 @@ import * as XLSX from 'xlsx'
 // Mapeamento de tipos de serviço para galerias de fotos permitidas
 const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
   'Emenda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+  'Bandolamento': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+  'Linha Viva': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
   'Transformador': ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_abertura', 'fotos_fechamento'],
+  'Abertura e Fechamento de Chave': ['fotos_abertura', 'fotos_fechamento'],
+  'Poda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+  'Fundação Especial': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+  'Instalação do Medidor': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+  'Checklist de Fiscalização': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
   'DITAIS': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
   'Ditais': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
   'Book de Aterramento': ['fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao'],
-  'Abertura e Fechamento de Chave': ['fotos_abertura', 'fotos_fechamento'],
+  'Aterramento': ['fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao'],
+  'Medidor': ['fotos_medidor_padrao', 'fotos_medidor_leitura', 'fotos_medidor_selo_born', 'fotos_medidor_selo_caixa', 'fotos_medidor_identificador_fase'],
+  'Altimetria': ['fotos_altimetria_lado_fonte', 'fotos_altimetria_medicao_fonte', 'fotos_altimetria_lado_carga', 'fotos_altimetria_medicao_carga'],
+  'Vazamento': ['fotos_vazamento_evidencia', 'fotos_vazamento_equipamentos_limpeza', 'fotos_vazamento_tombamento_retirado', 'fotos_vazamento_placa_retirado', 'fotos_vazamento_tombamento_instalado', 'fotos_vazamento_placa_instalado', 'fotos_vazamento_instalacao'],
+  'Checklist': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
+  'Documentação': ['doc_cadastro_medidor', 'doc_laudo_transformador', 'doc_laudo_regulador', 'doc_laudo_religador', 'doc_apr', 'doc_fvbt', 'doc_termo_desistencia_lpt']
 }
 
 // Função para verificar se uma galeria deve ser exibida
@@ -62,6 +74,36 @@ export default function ObraDetailPage() {
     }
   }, [params.id])
 
+  // Função para converter IDs de fotos em objetos FotoInfo com URLs
+  function convertPhotoIdsToFotoInfo(photoField: any): FotoInfo[] {
+    if (!photoField) return []
+
+    // Se já é array de objetos com URL, retornar como está
+    if (Array.isArray(photoField) && photoField.length > 0 && typeof photoField[0] === 'object' && photoField[0].url) {
+      return photoField as FotoInfo[]
+    }
+
+    // Se é array de strings (IDs), converter para objetos com URL do storage
+    if (Array.isArray(photoField) && photoField.length > 0 && typeof photoField[0] === 'string') {
+      return photoField.map((photoId: string) => {
+        // Gerar URL do Supabase Storage a partir do photo ID
+        // Formato: obra-photos/{obraId}/{photoId}.jpg
+        const { data } = supabase.storage
+          .from('obra-photos')
+          .getPublicUrl(`${photoId}`)
+
+        return {
+          url: data.publicUrl,
+          latitude: null,
+          longitude: null,
+          placaData: null
+        }
+      })
+    }
+
+    return []
+  }
+
   async function loadObra(id: string) {
     try {
       const { data, error } = await supabase
@@ -71,7 +113,61 @@ export default function ObraDetailPage() {
         .single()
 
       if (error) throw error
-      setObra(data)
+
+      // ✅ CORREÇÃO: Converter IDs de fotos em objetos FotoInfo
+      const obraComFotos = {
+        ...data,
+        fotos_antes: convertPhotoIdsToFotoInfo(data.fotos_antes),
+        fotos_durante: convertPhotoIdsToFotoInfo(data.fotos_durante),
+        fotos_depois: convertPhotoIdsToFotoInfo(data.fotos_depois),
+        fotos_abertura: convertPhotoIdsToFotoInfo(data.fotos_abertura),
+        fotos_fechamento: convertPhotoIdsToFotoInfo(data.fotos_fechamento),
+        fotos_ditais_abertura: convertPhotoIdsToFotoInfo(data.fotos_ditais_abertura),
+        fotos_ditais_impedir: convertPhotoIdsToFotoInfo(data.fotos_ditais_impedir),
+        fotos_ditais_testar: convertPhotoIdsToFotoInfo(data.fotos_ditais_testar),
+        fotos_ditais_aterrar: convertPhotoIdsToFotoInfo(data.fotos_ditais_aterrar),
+        fotos_ditais_sinalizar: convertPhotoIdsToFotoInfo(data.fotos_ditais_sinalizar),
+        fotos_aterramento_vala_aberta: convertPhotoIdsToFotoInfo(data.fotos_aterramento_vala_aberta),
+        fotos_aterramento_hastes: convertPhotoIdsToFotoInfo(data.fotos_aterramento_hastes),
+        fotos_aterramento_vala_fechada: convertPhotoIdsToFotoInfo(data.fotos_aterramento_vala_fechada),
+        fotos_aterramento_medicao: convertPhotoIdsToFotoInfo(data.fotos_aterramento_medicao),
+        fotos_transformador_laudo: convertPhotoIdsToFotoInfo(data.fotos_transformador_laudo),
+        fotos_transformador_componente_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_componente_instalado),
+        fotos_transformador_tombamento_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_tombamento_instalado),
+        fotos_transformador_tape: convertPhotoIdsToFotoInfo(data.fotos_transformador_tape),
+        fotos_transformador_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_placa_instalado),
+        fotos_transformador_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_instalado),
+        fotos_transformador_antes_retirar: convertPhotoIdsToFotoInfo(data.fotos_transformador_antes_retirar),
+        fotos_transformador_tombamento_retirado: convertPhotoIdsToFotoInfo(data.fotos_transformador_tombamento_retirado),
+        fotos_transformador_placa_retirado: convertPhotoIdsToFotoInfo(data.fotos_transformador_placa_retirado),
+        fotos_medidor_padrao: convertPhotoIdsToFotoInfo(data.fotos_medidor_padrao),
+        fotos_medidor_leitura: convertPhotoIdsToFotoInfo(data.fotos_medidor_leitura),
+        fotos_medidor_selo_born: convertPhotoIdsToFotoInfo(data.fotos_medidor_selo_born),
+        fotos_medidor_selo_caixa: convertPhotoIdsToFotoInfo(data.fotos_medidor_selo_caixa),
+        fotos_medidor_identificador_fase: convertPhotoIdsToFotoInfo(data.fotos_medidor_identificador_fase),
+        fotos_checklist_croqui: convertPhotoIdsToFotoInfo(data.fotos_checklist_croqui),
+        fotos_checklist_panoramica_inicial: convertPhotoIdsToFotoInfo(data.fotos_checklist_panoramica_inicial),
+        fotos_checklist_chede: convertPhotoIdsToFotoInfo(data.fotos_checklist_chede),
+        fotos_checklist_aterramento_cerca: convertPhotoIdsToFotoInfo(data.fotos_checklist_aterramento_cerca),
+        fotos_checklist_padrao_geral: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_geral),
+        fotos_checklist_padrao_interno: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_interno),
+        fotos_checklist_panoramica_final: convertPhotoIdsToFotoInfo(data.fotos_checklist_panoramica_final),
+        fotos_checklist_postes: convertPhotoIdsToFotoInfo(data.fotos_checklist_postes),
+        fotos_checklist_seccionamentos: convertPhotoIdsToFotoInfo(data.fotos_checklist_seccionamentos),
+        fotos_altimetria_lado_fonte: convertPhotoIdsToFotoInfo(data.fotos_altimetria_lado_fonte),
+        fotos_altimetria_medicao_fonte: convertPhotoIdsToFotoInfo(data.fotos_altimetria_medicao_fonte),
+        fotos_altimetria_lado_carga: convertPhotoIdsToFotoInfo(data.fotos_altimetria_lado_carga),
+        fotos_altimetria_medicao_carga: convertPhotoIdsToFotoInfo(data.fotos_altimetria_medicao_carga),
+        fotos_vazamento_evidencia: convertPhotoIdsToFotoInfo(data.fotos_vazamento_evidencia),
+        fotos_vazamento_equipamentos_limpeza: convertPhotoIdsToFotoInfo(data.fotos_vazamento_equipamentos_limpeza),
+        fotos_vazamento_tombamento_retirado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_tombamento_retirado),
+        fotos_vazamento_placa_retirado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_retirado),
+        fotos_vazamento_tombamento_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_tombamento_instalado),
+        fotos_vazamento_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_instalado),
+        fotos_vazamento_instalacao: convertPhotoIdsToFotoInfo(data.fotos_vazamento_instalacao),
+      }
+
+      setObra(obraComFotos)
 
       // Carregar atipicidades existentes
       if (data.atipicidades && data.atipicidades.length > 0) {

@@ -87,7 +87,8 @@
       "Bash(if exist .expo rmdir /s /q .expo)",
       "Bash(if exist node_modules.cache rmdir /s /q node_modules.cache)",
       "Bash(ls:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cmd.exe /c \"cd c:\\\\Users\\\\Mateus'' Almeida''\\\\obras-wise-mobile\\\\mobile && if exist .expo rmdir /s /q .expo && if exist node_modules\\\\.cache rmdir /s /q node_modules\\\\.cache\")"
     ],
     "deny": [],
     "ask": []

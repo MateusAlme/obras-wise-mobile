@@ -1473,6 +1473,19 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
       }
     }
 
+    // 🧹 LIMPEZA AUTOMÁTICA: Limpar cache após sincronização bem-sucedida
+    if (success > 0) {
+      try {
+        console.log('🧹 Iniciando limpeza automática de cache após sincronização...');
+        const { cleanupUploadedPhotos } = await import('./photo-backup');
+        const deletedCount = await cleanupUploadedPhotos();
+        console.log(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
+      } catch (error) {
+        console.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
+        // Não falhar a sincronização se a limpeza de cache falhar
+      }
+    }
+
     return { success, failed };
   } finally {
     syncInProgress = false;
