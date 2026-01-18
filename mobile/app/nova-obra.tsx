@@ -780,7 +780,8 @@ export default function NovaObra() {
         tipo === 'doc_cadastro_medidor' ||
         tipo === 'doc_laudo_transformador' ||
         tipo === 'doc_laudo_regulador' ||
-        tipo === 'doc_laudo_religador';
+        tipo === 'doc_laudo_religador' ||
+        tipo === 'doc_apr';
 
       // Configurações de câmera baseadas no tipo
       const cameraOptions = isDocument
@@ -923,6 +924,7 @@ export default function NovaObra() {
       else if (tipo === 'doc_laudo_transformador') index = docLaudoTransformador.length;
       else if (tipo === 'doc_laudo_regulador') index = docLaudoRegulador.length;
       else if (tipo === 'doc_laudo_religador') index = docLaudoReligador.length;
+      else if (tipo === 'doc_apr') index = docApr.length;
 
       // FAZER BACKUP PERMANENTE DA FOTO (já com placa gravada)
       const photoMetadata = await backupPhoto(
@@ -1121,6 +1123,8 @@ export default function NovaObra() {
         setDocLaudoRegulador(prev => [...prev, photoData]);
       } else if (tipo === 'doc_laudo_religador') {
         setDocLaudoReligador(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_apr') {
+        setDocApr(prev => [...prev, photoData]);
       }
 
       Alert.alert(
@@ -1767,6 +1771,15 @@ export default function NovaObra() {
       Alert.alert(
         'Número da Obra Inválido',
         'O número da obra deve ter 8 ou 10 dígitos.\n\n✅ Aceito: 8 dígitos (12345678) ou 10 dígitos (0032401637)\n❌ Atual: ' + obraNumero.length + ' dígitos'
+      );
+      return;
+    }
+
+    // ⚠️ APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS
+    if (docApr.length === 0) {
+      Alert.alert(
+        '⚠️ APR Obrigatória',
+        'É obrigatório anexar a APR (Análise Preliminar de Risco) para finalizar a obra.\n\nPor favor, tire uma foto ou selecione o PDF da APR antes de salvar.'
       );
       return;
     }
@@ -3298,6 +3311,77 @@ export default function NovaObra() {
               <Text style={styles.hint}>
                 Selecione a equipe que está executando o serviço
               </Text>
+            </View>
+          )}
+
+          {/* APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS */}
+          {tipoServico && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>⚠️ APR - Análise Preliminar de Risco (OBRIGATÓRIO)</Text>
+              <Text style={styles.aprHint}>
+                É obrigatório anexar a APR para finalizar a obra. Use o modo scanner para melhor qualidade.
+              </Text>
+
+              <View style={styles.aprSection}>
+                {/* Botões lado a lado: Foto + PDF */}
+                <View style={styles.docButtonRow}>
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf, docApr.length === 0 && styles.aprButtonRequired]}
+                    onPress={() => takePicture('doc_apr')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf, docApr.length === 0 && styles.aprButtonRequired]}
+                    onPress={() => selectDocument('doc_apr')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {docApr.length > 0 && (
+                  <View style={styles.docList}>
+                    {docApr.map((doc, index) => (
+                      <View key={index} style={styles.docItem}>
+                        {doc.uri ? (
+                          <>
+                            <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                            <Text style={styles.docFileName}>📷 APR Foto {index + 1}</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.docFileName}>📄 APR Documento {index + 1}</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.docRemoveButton}
+                          onPress={() => removePhoto('doc_apr', index)}
+                        >
+                          <Text style={styles.docRemoveText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {docApr.length === 0 && (
+                  <View style={styles.aprWarning}>
+                    <Text style={styles.aprWarningIcon}>⚠️</Text>
+                    <Text style={styles.aprWarningText}>APR pendente - Obrigatório para finalizar obra</Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
 
@@ -6327,39 +6411,7 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 5. APR - Análise Preliminar de Risco */}
-                <View style={styles.docSection}>
-                  <Text style={styles.docSectionTitle}>⚠️ Análise Preliminar de Risco (APR) {docApr.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_apr')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  {docApr.length > 0 && (
-                    <View style={styles.docList}>
-                      {docApr.map((doc, index) => (
-                        <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
-                          <TouchableOpacity
-                            style={styles.docRemoveButton}
-                            onPress={() => removePhoto('doc_apr', index)}
-                          >
-                            <Text style={styles.docRemoveText}>×</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-
-                {/* 6. FVBT - Formulário de Vistoria de Baixa Tensão */}
+                {/* 5. FVBT - Formulário de Vistoria de Baixa Tensão */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>📝 Formulário de Vistoria de Baixa Tensão (FVBT) {docFvbt.length > 0 && '✅'}</Text>
                   <TouchableOpacity
@@ -6391,7 +6443,7 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 7. Termo de Desistência - LPT */}
+                {/* 6. Termo de Desistência - LPT */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>📋 Termo de Desistência - LPT {docTermoDesistenciaLpt.length > 0 && '✅'}</Text>
                   <TouchableOpacity
@@ -6423,7 +6475,7 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 8. Autorização de Passagem */}
+                {/* 7. Autorização de Passagem */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>🚧 Autorização de Passagem {docAutorizacaoPassagem.length > 0 && '✅'}</Text>
                   <TouchableOpacity
@@ -6455,7 +6507,7 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 9. Materiais Previsto */}
+                {/* 8. Materiais Previsto */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>📋 Materiais Previsto ({docMateriaisPrevisto.length}) {docMateriaisPrevisto.length > 0 && '✅'}</Text>
 
@@ -6504,7 +6556,7 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 10. Materiais Realizado */}
+                {/* 9. Materiais Realizado */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>✅ Materiais Realizado ({docMateriaisRealizado.length}) {docMateriaisRealizado.length > 0 && '✅'}</Text>
 
@@ -8039,6 +8091,46 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 22,
+  },
+  // Estilos do APR (obrigatório)
+  aprHint: {
+    fontSize: 13,
+    color: '#d97706',
+    marginBottom: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  aprSection: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#fbbf24',
+  },
+  aprButtonRequired: {
+    borderColor: '#f59e0b',
+    borderWidth: 2,
+  },
+  aprWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+  },
+  aprWarningIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  aprWarningText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400e',
+    fontWeight: '600',
   },
   // Modal de visualização de foto
   photoModalContainer: {
