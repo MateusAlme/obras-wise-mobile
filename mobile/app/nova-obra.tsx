@@ -1765,12 +1765,23 @@ export default function NovaObra() {
       return;
     }
 
-    // Validar número da obra (8 ou 10 dígitos numéricos)
+    // Validar número da obra (EXATAMENTE 8 ou 10 dígitos numéricos)
     const obraNumero = obra.trim();
-    if (!/^(\d{8}|\d{10})$/.test(obraNumero)) {
+
+    // Verificar se contém apenas números
+    if (!/^\d+$/.test(obraNumero)) {
       Alert.alert(
         'Número da Obra Inválido',
-        'O número da obra deve ter 8 ou 10 dígitos.\n\n✅ Aceito: 8 dígitos (12345678) ou 10 dígitos (0032401637)\n❌ Atual: ' + obraNumero.length + ' dígitos'
+        'O número da obra deve conter apenas números.\n\n❌ Atual: ' + obraNumero
+      );
+      return;
+    }
+
+    // Verificar se tem EXATAMENTE 8 ou 10 dígitos (não aceita 9!)
+    if (obraNumero.length !== 8 && obraNumero.length !== 10) {
+      Alert.alert(
+        'Número da Obra Inválido',
+        'O número da obra deve ter EXATAMENTE 8 ou 10 dígitos.\n\n✅ Aceito: 8 dígitos (ex: 12345678) ou 10 dígitos (ex: 0032401637)\n❌ Atual: ' + obraNumero.length + ' dígitos (' + obraNumero + ')'
       );
       return;
     }
@@ -1791,7 +1802,16 @@ export default function NovaObra() {
         return;
       }
 
-      // ✅ LAUDO OBRIGATÓRIO
+      // ✅ LAUDO OBRIGATÓRIO (verificar ambos: campo fixo e book)
+      if (transformadorStatus === 'Instalado' && docLaudoTransformador.length === 0) {
+        Alert.alert(
+          '⚡ Laudo de Transformador Obrigatório',
+          'É obrigatório anexar o laudo do transformador instalado.\n\nPor favor, tire uma foto ou selecione o PDF do laudo antes de salvar.'
+        );
+        return;
+      }
+
+      // Validação antiga do laudo (para retrocompatibilidade)
       if (fotosTransformadorLaudo.length === 0) {
         Alert.alert(
           'Laudo Obrigatório',
@@ -3323,34 +3343,19 @@ export default function NovaObra() {
               </Text>
 
               <View style={styles.aprSection}>
-                {/* Botões lado a lado: Foto + PDF */}
-                <View style={styles.docButtonRow}>
-                  <TouchableOpacity
-                    style={[styles.docButton, styles.docButtonHalf, docApr.length === 0 && styles.aprButtonRequired]}
-                    onPress={() => takePicture('doc_apr')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.docButton, styles.docButtonHalf, docApr.length === 0 && styles.aprButtonRequired]}
-                    onPress={() => selectDocument('doc_apr')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
+                {/* Botão: Apenas Tirar Foto (sem PDF) */}
+                <TouchableOpacity
+                  style={[styles.docButton, docApr.length === 0 && styles.aprButtonRequired]}
+                  onPress={() => takePicture('doc_apr')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Tirar Foto da APR'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
 
                 {docApr.length > 0 && (
                   <View style={styles.docList}>
@@ -3379,6 +3384,148 @@ export default function NovaObra() {
                   <View style={styles.aprWarning}>
                     <Text style={styles.aprWarningIcon}>⚠️</Text>
                     <Text style={styles.aprWarningText}>APR pendente - Obrigatório para finalizar obra</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* CADASTRO DE MEDIDOR - OBRIGATÓRIO QUANDO MEDIDOR */}
+          {isServicoMedidor && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>📋 Cadastro de Medidor (OBRIGATÓRIO)</Text>
+              <Text style={styles.aprHint}>
+                É obrigatório anexar o cadastro do medidor. Use o modo scanner para melhor qualidade.
+              </Text>
+
+              <View style={styles.aprSection}>
+                {/* Botões lado a lado: Foto + PDF */}
+                <View style={styles.docButtonRow}>
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf, docCadastroMedidor.length === 0 && styles.aprButtonRequired]}
+                    onPress={() => takePicture('doc_cadastro_medidor')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf, docCadastroMedidor.length === 0 && styles.aprButtonRequired]}
+                    onPress={() => selectDocument('doc_cadastro_medidor')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {docCadastroMedidor.length > 0 && (
+                  <View style={styles.docList}>
+                    {docCadastroMedidor.map((doc, index) => (
+                      <View key={index} style={styles.docItem}>
+                        {doc.uri ? (
+                          <>
+                            <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                            <Text style={styles.docFileName}>📷 Cadastro {index + 1}</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.docFileName}>📄 Cadastro {index + 1}</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.docRemoveButton}
+                          onPress={() => removePhoto('doc_cadastro_medidor', index)}
+                        >
+                          <Text style={styles.docRemoveText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {docCadastroMedidor.length === 0 && (
+                  <View style={styles.aprWarning}>
+                    <Text style={styles.aprWarningIcon}>⚠️</Text>
+                    <Text style={styles.aprWarningText}>Cadastro pendente - Obrigatório para instalação do medidor</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* LAUDO TRANSFORMADOR - OBRIGATÓRIO QUANDO TRANSFORMADOR INSTALADO */}
+          {isServicoTransformador && transformadorStatus === 'Instalado' && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>⚡ Laudo de Transformador (OBRIGATÓRIO)</Text>
+              <Text style={styles.aprHint}>
+                É obrigatório anexar o laudo do transformador instalado. Use o modo scanner para melhor qualidade.
+              </Text>
+
+              <View style={styles.aprSection}>
+                {/* Botões lado a lado: Foto + PDF */}
+                <View style={styles.docButtonRow}>
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf, docLaudoTransformador.length === 0 && styles.aprButtonRequired]}
+                    onPress={() => takePicture('doc_laudo_transformador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf, docLaudoTransformador.length === 0 && styles.aprButtonRequired]}
+                    onPress={() => selectDocument('doc_laudo_transformador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {docLaudoTransformador.length > 0 && (
+                  <View style={styles.docList}>
+                    {docLaudoTransformador.map((doc, index) => (
+                      <View key={index} style={styles.docItem}>
+                        {doc.uri ? (
+                          <>
+                            <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                            <Text style={styles.docFileName}>📷 Laudo {index + 1}</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.docFileName}>📄 Laudo {index + 1}</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.docRemoveButton}
+                          onPress={() => removePhoto('doc_laudo_transformador', index)}
+                        >
+                          <Text style={styles.docRemoveText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {docLaudoTransformador.length === 0 && (
+                  <View style={styles.aprWarning}>
+                    <Text style={styles.aprWarningIcon}>⚠️</Text>
+                    <Text style={styles.aprWarningText}>Laudo pendente - Obrigatório para transformador instalado</Text>
                   </View>
                 )}
               </View>
