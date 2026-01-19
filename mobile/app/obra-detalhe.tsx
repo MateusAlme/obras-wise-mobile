@@ -1072,32 +1072,8 @@ export default function ObraDetalhe() {
             return photos.length === 0;
           });
 
-          // Verificar documentos obrigatórios faltantes
+          // Não há mais documentos obrigatórios fixos
           const missingDocs: string[] = [];
-
-          // APR é obrigatória em TODOS os serviços
-          const docApr = obra?.doc_apr || [];
-          if (docApr.length === 0) {
-            missingDocs.push('⚠️ APR - Análise Preliminar de Risco');
-          }
-
-          // Laudo Transformador obrigatório quando Transformador Instalado
-          const isTransformadorInstalado = obra?.tipo_servico === 'Transformador' && obra?.transformador_status === 'Instalado';
-          if (isTransformadorInstalado) {
-            const docLaudo = obra?.doc_laudo_transformador || [];
-            if (docLaudo.length === 0) {
-              missingDocs.push('⚡ Laudo de Transformador');
-            }
-          }
-
-          // Cadastro Medidor obrigatório quando Instalação do Medidor
-          const isMedidor = obra?.tipo_servico === 'Instalação do Medidor';
-          if (isMedidor) {
-            const docCadastro = obra?.doc_cadastro_medidor || [];
-            if (docCadastro.length === 0) {
-              missingDocs.push('📋 Cadastro de Medidor');
-            }
-          }
 
           const totalFaltando = missingPhotos.length + missingDocs.length;
 
