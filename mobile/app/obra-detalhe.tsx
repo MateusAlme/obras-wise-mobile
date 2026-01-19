@@ -231,7 +231,6 @@ const PHOTO_SECTIONS = [
   { key: 'doc_laudo_transformador', label: 'Documentação - Laudo de Transformador' },
   { key: 'doc_laudo_regulador', label: 'Documentação - Laudo de Regulador' },
   { key: 'doc_laudo_religador', label: 'Documentação - Laudo de Religador' },
-  { key: 'doc_apr', label: 'Documentação - APR (Análise Preliminar de Risco)' },
   { key: 'doc_fvbt', label: 'Documentação - FVBT (Formulário de Vistoria de Baixa Tensão)' },
   { key: 'doc_termo_desistencia_lpt', label: 'Documentação - Termo de Desistência LPT' },
   { key: 'doc_autorizacao_passagem', label: 'Documentação - Autorização de Passagem' },
