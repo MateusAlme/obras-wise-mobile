@@ -3570,42 +3570,53 @@ export default function NovaObra() {
                   : 'Fotos opcionais: Antes, Durante e Depois. Obras parciais permitidas'}
               </Text>
 
-              {/* Resumo de Fotos Faltantes - Serviço Padrão */}
-              {isServicoPadrao && (fotosAntes.length === 0 || fotosDurante.length === 0 || fotosDepois.length === 0) && (
-                <View style={styles.missingPhotosCard}>
-                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando:</Text>
-                  {fotosAntes.length === 0 && <Text style={styles.missingPhotoItem}>• Antes</Text>}
-                  {fotosDurante.length === 0 && <Text style={styles.missingPhotoItem}>• Durante</Text>}
-                  {fotosDepois.length === 0 && <Text style={styles.missingPhotoItem}>• Depois</Text>}
-                </View>
-              )}
+              {/* Resumo GERAL de Documentos e Fotos Faltantes */}
+              {(() => {
+                const missing: string[] = [];
 
-              {/* Resumo de Fotos Faltantes - Abertura/Fechamento */}
-              {isServicoChave && (fotosAbertura.length === 0 || fotosFechamento.length === 0) && (
-                <View style={styles.missingPhotosCard}>
-                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando:</Text>
-                  {fotosAbertura.length === 0 && <Text style={styles.missingPhotoItem}>• Abertura</Text>}
-                  {fotosFechamento.length === 0 && <Text style={styles.missingPhotoItem}>• Fechamento</Text>}
-                </View>
-              )}
+                // Documentos obrigatórios
+                if (docApr.length === 0) {
+                  missing.push('⚠️ APR - Análise Preliminar de Risco');
+                }
+                if (isServicoTransformador && transformadorStatus === 'Instalado' && docLaudoTransformador.length === 0) {
+                  missing.push('⚡ Laudo de Transformador');
+                }
+                if (isServicoMedidor && docCadastroMedidor.length === 0) {
+                  missing.push('📋 Cadastro de Medidor');
+                }
 
-              {/* Resumo de Fotos Faltantes - Ditais */}
-              {isServicoDitais && (
-                fotosDitaisAbertura.length === 0 ||
-                fotosDitaisImpedir.length === 0 ||
-                fotosDitaisTestar.length === 0 ||
-                fotosDitaisAterrar.length === 0 ||
-                fotosDitaisSinalizar.length === 0
-              ) && (
-                <View style={styles.missingPhotosCard}>
-                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando:</Text>
-                  {fotosDitaisAbertura.length === 0 && <Text style={styles.missingPhotoItem}>• Desligar</Text>}
-                  {fotosDitaisImpedir.length === 0 && <Text style={styles.missingPhotoItem}>• Impedir</Text>}
-                  {fotosDitaisTestar.length === 0 && <Text style={styles.missingPhotoItem}>• Testar</Text>}
-                  {fotosDitaisAterrar.length === 0 && <Text style={styles.missingPhotoItem}>• Aterrar</Text>}
-                  {fotosDitaisSinalizar.length === 0 && <Text style={styles.missingPhotoItem}>• Sinalizar</Text>}
-                </View>
-              )}
+                // Fotos do serviço padrão
+                if (isServicoPadrao) {
+                  if (fotosAntes.length === 0) missing.push('📷 Fotos Antes');
+                  if (fotosDurante.length === 0) missing.push('📷 Fotos Durante');
+                  if (fotosDepois.length === 0) missing.push('📷 Fotos Depois');
+                }
+
+                // Fotos Abertura/Fechamento
+                if (isServicoChave) {
+                  if (fotosAbertura.length === 0) missing.push('📷 Abertura');
+                  if (fotosFechamento.length === 0) missing.push('📷 Fechamento');
+                }
+
+                // Fotos Ditais
+                if (isServicoDitais) {
+                  if (fotosDitaisAbertura.length === 0) missing.push('📷 Desligar');
+                  if (fotosDitaisImpedir.length === 0) missing.push('📷 Impedir');
+                  if (fotosDitaisTestar.length === 0) missing.push('📷 Testar');
+                  if (fotosDitaisAterrar.length === 0) missing.push('📷 Aterrar');
+                  if (fotosDitaisSinalizar.length === 0) missing.push('📷 Sinalizar');
+                }
+
+                return missing.length > 0 ? (
+                  <View style={styles.missingPhotosCard}>
+                    <Text style={styles.missingPhotosTitle}>⚠️ Faltando ({missing.length}):</Text>
+                    {missing.map((item, index) => (
+                      <Text key={index} style={styles.missingPhotoItem}>• {item}</Text>
+                    ))}
+                  </View>
+                ) : null;
+              })()}
+
 
               {isServicoPadrao && (
               <>

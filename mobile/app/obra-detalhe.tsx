@@ -1073,11 +1073,43 @@ export default function ObraDetalhe() {
             return photos.length === 0;
           });
 
+          // Verificar documentos obrigatórios faltantes
+          const missingDocs: string[] = [];
+
+          // APR é obrigatória em TODOS os serviços
+          const docApr = obra?.doc_apr || [];
+          if (docApr.length === 0) {
+            missingDocs.push('⚠️ APR - Análise Preliminar de Risco');
+          }
+
+          // Laudo Transformador obrigatório quando Transformador Instalado
+          const isTransformadorInstalado = obra?.tipo_servico === 'Transformador' && obra?.transformador_status === 'Instalado';
+          if (isTransformadorInstalado) {
+            const docLaudo = obra?.doc_laudo_transformador || [];
+            if (docLaudo.length === 0) {
+              missingDocs.push('⚡ Laudo de Transformador');
+            }
+          }
+
+          // Cadastro Medidor obrigatório quando Instalação do Medidor
+          const isMedidor = obra?.tipo_servico === 'Instalação do Medidor';
+          if (isMedidor) {
+            const docCadastro = obra?.doc_cadastro_medidor || [];
+            if (docCadastro.length === 0) {
+              missingDocs.push('📋 Cadastro de Medidor');
+            }
+          }
+
+          const totalFaltando = missingPhotos.length + missingDocs.length;
+
           return (
             <>
-              {missingPhotos.length > 0 && (
+              {totalFaltando > 0 && (
                 <View style={styles.missingPhotosCard}>
-                  <Text style={styles.missingPhotosTitle}>⚠️ Fotos Faltando ({missingPhotos.length}):</Text>
+                  <Text style={styles.missingPhotosTitle}>⚠️ Faltando ({totalFaltando}):</Text>
+                  {missingDocs.map((doc, index) => (
+                    <Text key={`doc-${index}`} style={styles.missingPhotoItem}>• {doc}</Text>
+                  ))}
                   {missingPhotos.map(section => (
                     <Text key={section.key} style={styles.missingPhotoItem}>• {section.label}</Text>
                   ))}
