@@ -787,7 +787,7 @@ export default function NovaObra() {
       const cameraOptions = isDocument
         ? {
             // 📄 MODO SCANNER: Alta qualidade para documentos
-            mediaTypes: ['images'],
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
             quality: 1.0, // 100% de qualidade para documentos (scanner)
             allowsEditing: true, // Permitir crop/ajuste para documentos
             aspect: undefined, // Sem restrição de aspecto (livre)
@@ -795,10 +795,10 @@ export default function NovaObra() {
           }
         : {
             // 📷 MODO FOTO NORMAL: Otimizado para rapidez
-            mediaTypes: ['images'],
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
             quality: 0.4, // 40% de qualidade (processamento rápido)
             allowsEditing: false,
-            aspect: [4, 3],
+            aspect: [4, 3] as [number, number],
             exif: false,
           };
 
