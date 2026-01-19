@@ -1786,11 +1786,15 @@ export default function NovaObra() {
       return;
     }
 
-    // ⚠️ APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS
+    // ⚠️ APR - OBRIGATÓRIO (avisar mas permitir salvar rascunho)
     if (docApr.length === 0) {
       Alert.alert(
-        '⚠️ APR Obrigatória',
-        'É obrigatório anexar a APR (Análise Preliminar de Risco) para finalizar a obra.\n\nPor favor, tire uma foto ou selecione o PDF da APR antes de salvar.'
+        '⚠️ APR Pendente',
+        'A APR (Análise Preliminar de Risco) é obrigatória para finalizar a obra.\n\nA obra será salva como RASCUNHO. Você pode adicionar a APR depois.',
+        [
+          { text: 'Cancelar e Adicionar APR', style: 'cancel' },
+          { text: 'Salvar Rascunho', onPress: () => prosseguirSalvamento() }
+        ]
       );
       return;
     }
@@ -1802,11 +1806,15 @@ export default function NovaObra() {
         return;
       }
 
-      // ✅ LAUDO OBRIGATÓRIO (verificar ambos: campo fixo e book)
+      // ⚡ LAUDO OBRIGATÓRIO (avisar mas permitir salvar rascunho)
       if (transformadorStatus === 'Instalado' && docLaudoTransformador.length === 0) {
         Alert.alert(
-          '⚡ Laudo de Transformador Obrigatório',
-          'É obrigatório anexar o laudo do transformador instalado.\n\nPor favor, tire uma foto ou selecione o PDF do laudo antes de salvar.'
+          '⚡ Laudo de Transformador Pendente',
+          'O laudo do transformador instalado é obrigatório para finalizar a obra.\n\nA obra será salva como RASCUNHO. Você pode adicionar o laudo depois.',
+          [
+            { text: 'Cancelar e Adicionar Laudo', style: 'cancel' },
+            { text: 'Salvar Rascunho', onPress: () => prosseguirSalvamento() }
+          ]
         );
         return;
       }
@@ -1872,12 +1880,16 @@ export default function NovaObra() {
       }
     }
 
-    // MEDIDOR - Cadastro é obrigatório
+    // 📋 MEDIDOR - Cadastro obrigatório (avisar mas permitir salvar rascunho)
     if (isServicoMedidor) {
       if (docCadastroMedidor.length === 0) {
         Alert.alert(
-          'Cadastro do Medidor Obrigatório',
-          'É obrigatório anexar pelo menos 1 documento/foto do cadastro do medidor.\n\nPor favor, adicione o documento antes de salvar.'
+          '📋 Cadastro de Medidor Pendente',
+          'O cadastro do medidor é obrigatório para finalizar a obra.\n\nA obra será salva como RASCUNHO. Você pode adicionar o cadastro depois.',
+          [
+            { text: 'Cancelar e Adicionar Cadastro', style: 'cancel' },
+            { text: 'Salvar Rascunho', onPress: () => prosseguirSalvamento() }
+          ]
         );
         return;
       }
