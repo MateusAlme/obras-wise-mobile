@@ -3002,7 +3002,16 @@ export default function NovaObra() {
       return false;
     }
 
-    // 2. Para transformador, exigir seleção de status (Instalado/Retirado)
+    // 2. Validar número da obra (EXATAMENTE 8 ou 10 dígitos)
+    const obraNumero = obra.trim();
+    if (!/^\d+$/.test(obraNumero)) {
+      return false; // Não é só números
+    }
+    if (obraNumero.length !== 8 && obraNumero.length !== 10) {
+      return false; // Não tem 8 nem 10 dígitos (bloqueia 9!)
+    }
+
+    // 3. Para transformador, exigir seleção de status (Instalado/Retirado)
     if (isServicoTransformador && !transformadorStatus) {
       return false;
     }
