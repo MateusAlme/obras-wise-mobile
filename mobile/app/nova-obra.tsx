@@ -781,7 +781,10 @@ export default function NovaObra() {
         tipo === 'doc_laudo_transformador' ||
         tipo === 'doc_laudo_regulador' ||
         tipo === 'doc_laudo_religador' ||
-        tipo === 'doc_apr';
+        tipo === 'doc_apr' ||
+        tipo === 'doc_fvbt' ||
+        tipo === 'doc_termo_desistencia_lpt' ||
+        tipo === 'doc_autorizacao_passagem';
 
       // Configurações de câmera baseadas no tipo
       const cameraOptions = isDocument
@@ -925,6 +928,9 @@ export default function NovaObra() {
       else if (tipo === 'doc_laudo_regulador') index = docLaudoRegulador.length;
       else if (tipo === 'doc_laudo_religador') index = docLaudoReligador.length;
       else if (tipo === 'doc_apr') index = docApr.length;
+      else if (tipo === 'doc_fvbt') index = docFvbt.length;
+      else if (tipo === 'doc_termo_desistencia_lpt') index = docTermoDesistenciaLpt.length;
+      else if (tipo === 'doc_autorizacao_passagem') index = docAutorizacaoPassagem.length;
 
       // FAZER BACKUP PERMANENTE DA FOTO (já com placa gravada)
       const photoMetadata = await backupPhoto(
@@ -1125,6 +1131,12 @@ export default function NovaObra() {
         setDocLaudoReligador(prev => [...prev, photoData]);
       } else if (tipo === 'doc_apr') {
         setDocApr(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_fvbt') {
+        setDocFvbt(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_termo_desistencia_lpt') {
+        setDocTermoDesistenciaLpt(prev => [...prev, photoData]);
+      } else if (tipo === 'doc_autorizacao_passagem') {
+        setDocAutorizacaoPassagem(prev => [...prev, photoData]);
       }
 
       Alert.alert(
@@ -6344,23 +6356,47 @@ export default function NovaObra() {
                 {/* 5. FVBT - Formulário de Vistoria de Baixa Tensão */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>📝 Formulário de Vistoria de Baixa Tensão (FVBT) {docFvbt.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_fvbt')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_fvbt')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_fvbt')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docFvbt.length > 0 && (
                     <View style={styles.docList}>
                       {docFvbt.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_fvbt', index)}
@@ -6376,23 +6412,47 @@ export default function NovaObra() {
                 {/* 6. Termo de Desistência - LPT */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>📋 Termo de Desistência - LPT {docTermoDesistenciaLpt.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_termo_desistencia_lpt')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_termo_desistencia_lpt')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_termo_desistencia_lpt')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docTermoDesistenciaLpt.length > 0 && (
                     <View style={styles.docList}>
                       {docTermoDesistenciaLpt.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_termo_desistencia_lpt', index)}
@@ -6408,23 +6468,47 @@ export default function NovaObra() {
                 {/* 7. Autorização de Passagem */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>🚧 Autorização de Passagem {docAutorizacaoPassagem.length > 0 && '✅'}</Text>
-                  <TouchableOpacity
-                    style={styles.docButton}
-                    onPress={() => selectDocument('doc_autorizacao_passagem')}
-                    disabled={loading || uploadingPhoto}
-                  >
-                    <View style={styles.photoButtonContent}>
-                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                      <Text style={styles.photoButtonText}>
-                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+
+                  {/* Botões lado a lado: Foto + PDF */}
+                  <View style={styles.docButtonRow}>
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => takePicture('doc_autorizacao_passagem')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.docButton, styles.docButtonHalf]}
+                      onPress={() => selectDocument('doc_autorizacao_passagem')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  </View>
                   {docAutorizacaoPassagem.length > 0 && (
                     <View style={styles.docList}>
                       {docAutorizacaoPassagem.map((doc, index) => (
                         <View key={index} style={styles.docItem}>
-                          <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          {doc.uri ? (
+                            <>
+                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                              <Text style={styles.docFileName}>📷 Foto {index + 1}</Text>
+                            </>
+                          ) : (
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
+                          )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_autorizacao_passagem', index)}
