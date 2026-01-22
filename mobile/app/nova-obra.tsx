@@ -1798,10 +1798,30 @@ export default function NovaObra() {
       return;
     }
 
-    // TRANSFORMADOR - Status é obrigatório
+    // ⚠️ APR - OBRIGATÓRIA EM TODOS OS SERVIÇOS (exceto Documentação)
+    if (!isServicoDocumentacao && docApr.length === 0) {
+      Alert.alert(
+        '⚠️ APR Obrigatória',
+        'A APR (Análise Preliminar de Risco) é obrigatória para finalizar a obra.\n\nPor favor, tire a foto da APR antes de salvar.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // TRANSFORMADOR - Status e Laudo são obrigatórios
     if (isServicoTransformador) {
       if (!transformadorStatus) {
         Alert.alert('Erro', 'Selecione se o transformador foi Instalado ou Retirado');
+        return;
+      }
+
+      // ⚡ LAUDO TRANSFORMADOR - OBRIGATÓRIO quando Transformador Instalado (exceto Documentação)
+      if (!isServicoDocumentacao && transformadorStatus === 'Instalado' && docLaudoTransformador.length === 0) {
+        Alert.alert(
+          '⚡ Laudo de Transformador Obrigatório',
+          'O Laudo do Transformador instalado é obrigatório para finalizar a obra.\n\nPor favor, anexe o laudo antes de salvar.',
+          [{ text: 'OK' }]
+        );
         return;
       }
 
@@ -1866,6 +1886,15 @@ export default function NovaObra() {
       }
     }
 
+    // 📋 MEDIDOR - CADASTRO OBRIGATÓRIO (exceto Documentação)
+    if (!isServicoDocumentacao && isServicoMedidor && docCadastroMedidor.length === 0) {
+      Alert.alert(
+        '📋 Cadastro de Medidor Obrigatório',
+        'O Cadastro de Medidor é obrigatório para finalizar a obra.\n\nPor favor, anexe o cadastro antes de salvar.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
 
     // DOCUMENTAÇÃO - Laudos de Regulador e Religador são obrigatórios (quando aplicável)
     if (isServicoDocumentacao) {
@@ -3328,12 +3357,18 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* APR - OPCIONAL EM TODOS OS SERVIÇOS */}
+          {/* APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS (exceto Documentação) */}
           {tipoServico && (
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>📋 APR - Análise Preliminar de Risco (Opcional)</Text>
+              <Text style={styles.label}>
+                📋 APR - Análise Preliminar de Risco {!isServicoDocumentacao && '(OBRIGATÓRIO)'}
+                {isServicoDocumentacao && '(Opcional)'}
+              </Text>
               <Text style={styles.hint}>
-                Você pode anexar a APR aqui. Use o modo scanner para melhor qualidade.
+                {!isServicoDocumentacao
+                  ? 'É obrigatório anexar a APR para finalizar a obra. Use o modo scanner para melhor qualidade.'
+                  : 'Você pode anexar a APR aqui. Use o modo scanner para melhor qualidade.'
+                }
               </Text>
 
               <View style={styles.docSection}>
@@ -3377,12 +3412,18 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* CADASTRO DE MEDIDOR - OPCIONAL QUANDO MEDIDOR */}
+          {/* CADASTRO DE MEDIDOR - OBRIGATÓRIO QUANDO MEDIDOR (exceto Documentação) */}
           {isServicoMedidor && (
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>📋 Cadastro de Medidor (Opcional)</Text>
+              <Text style={styles.label}>
+                📋 Cadastro de Medidor {!isServicoDocumentacao && '(OBRIGATÓRIO)'}
+                {isServicoDocumentacao && '(Opcional)'}
+              </Text>
               <Text style={styles.hint}>
-                Você pode anexar o cadastro do medidor aqui. Use o modo scanner para melhor qualidade.
+                {!isServicoDocumentacao
+                  ? 'É obrigatório anexar o cadastro do medidor para finalizar a obra. Use o modo scanner para melhor qualidade.'
+                  : 'Você pode anexar o cadastro do medidor aqui. Use o modo scanner para melhor qualidade.'
+                }
               </Text>
 
               <View style={styles.docSection}>
@@ -3441,12 +3482,18 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* LAUDO TRANSFORMADOR - OPCIONAL QUANDO TRANSFORMADOR INSTALADO */}
+          {/* LAUDO TRANSFORMADOR - OBRIGATÓRIO QUANDO TRANSFORMADOR INSTALADO (exceto Documentação) */}
           {isServicoTransformador && transformadorStatus === 'Instalado' && (
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>⚡ Laudo de Transformador (Opcional)</Text>
+              <Text style={styles.label}>
+                ⚡ Laudo de Transformador {!isServicoDocumentacao && '(OBRIGATÓRIO)'}
+                {isServicoDocumentacao && '(Opcional)'}
+              </Text>
               <Text style={styles.hint}>
-                Você pode anexar o laudo do transformador instalado aqui. Use o modo scanner para melhor qualidade.
+                {!isServicoDocumentacao
+                  ? 'É obrigatório anexar o laudo do transformador instalado para finalizar a obra. Use o modo scanner para melhor qualidade.'
+                  : 'Você pode anexar o laudo do transformador instalado aqui. Use o modo scanner para melhor qualidade.'
+                }
               </Text>
 
               <View style={styles.docSection}>
