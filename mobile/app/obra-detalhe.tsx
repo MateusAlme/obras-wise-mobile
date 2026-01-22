@@ -132,6 +132,10 @@ type ObraPayload = (PendingObra & {
   fotos_transformador_antes_retirar?: FotoInfo[];
   fotos_transformador_tombamento_retirado?: FotoInfo[];
   fotos_transformador_placa_retirado?: FotoInfo[];
+  fotos_transformador_conexoes_primarias_instalado?: FotoInfo[];
+  fotos_transformador_conexoes_secundarias_instalado?: FotoInfo[];
+  fotos_transformador_conexoes_primarias_retirado?: FotoInfo[];
+  fotos_transformador_conexoes_secundarias_retirado?: FotoInfo[];
   // MEDIDOR - 5 fotos
   fotos_medidor_padrao?: FotoInfo[];
   fotos_medidor_leitura?: FotoInfo[];
@@ -202,6 +206,13 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_transformador_antes_retirar', label: 'Transformador - Antes de Retirar' },
   { key: 'fotos_transformador_tombamento_retirado', label: 'Transformador - Tombamento (Retirado)' },
   { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa (Retirado)' },
+  { key: 'fotos_transformador_conexoes_primarias_instalado', label: 'Transformador - Conexões Primárias (Instalado)' },
+  { key: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Transformador - Conexões Secundárias (Instalado)' },
+  { key: 'fotos_transformador_conexoes_primarias_retirado', label: 'Transformador - Conexões Primárias (Retirado)' },
+  { key: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Transformador - Conexões Secundárias (Retirado)' },
+  { key: 'doc_apr', label: 'APR - Análise Preliminar de Risco' },
+  { key: 'doc_laudo_transformador_servico', label: 'Laudo de Transformador' },
+  { key: 'doc_cadastro_medidor_servico', label: 'Cadastro de Medidor' },
   { key: 'fotos_medidor_padrao', label: 'Medidor - Padrão c/ Medidor Instalado' },
   { key: 'fotos_medidor_leitura', label: 'Medidor - Leitura c/ Medidor Instalado' },
   { key: 'fotos_medidor_selo_born', label: 'Medidor - Selo do Born do Medidor' },
@@ -578,8 +589,14 @@ export default function ObraDetalhe() {
       'fotos_vazamento_tombamento_instalado': 'vazamento_tombamento_instalado',
       'fotos_vazamento_placa_instalado': 'vazamento_placa_instalado',
       'fotos_vazamento_instalacao': 'vazamento_instalacao',
+      'fotos_transformador_conexoes_primarias_instalado': 'transformador_conexoes_primarias_instalado',
+      'fotos_transformador_conexoes_secundarias_instalado': 'transformador_conexoes_secundarias_instalado',
+      'fotos_transformador_conexoes_primarias_retirado': 'transformador_conexoes_primarias_retirado',
+      'fotos_transformador_conexoes_secundarias_retirado': 'transformador_conexoes_secundarias_retirado',
       'doc_cadastro_medidor': 'doc_cadastro_medidor',
+      'doc_cadastro_medidor_servico': 'doc_cadastro_medidor',
       'doc_laudo_transformador': 'doc_laudo_transformador',
+      'doc_laudo_transformador_servico': 'doc_laudo_transformador',
       'doc_laudo_regulador': 'doc_laudo_regulador',
       'doc_laudo_religador': 'doc_laudo_religador',
       'doc_apr': 'doc_apr',
