@@ -1759,9 +1759,29 @@ export default function NovaObra() {
   };
 
   const handleSalvarObra = async () => {
-    // Validações
-    if (!data || !obra || !responsavel || !tipoServico) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios');
+    // ===== VALIDAÇÕES BÁSICAS OBRIGATÓRIAS (SEMPRE) =====
+
+    // 1. Data da obra
+    if (!data) {
+      Alert.alert('❌ Campo Obrigatório', 'Selecione a data da obra');
+      return;
+    }
+
+    // 2. Número da obra
+    if (!obra || obra.trim() === '') {
+      Alert.alert('❌ Campo Obrigatório', 'Digite o número da obra');
+      return;
+    }
+
+    // 3. Responsável (Encarregado)
+    if (!responsavel || responsavel.trim() === '') {
+      Alert.alert('❌ Campo Obrigatório', 'Digite o nome do encarregado/responsável');
+      return;
+    }
+
+    // 4. Tipo de Serviço
+    if (!tipoServico) {
+      Alert.alert('❌ Campo Obrigatório', 'Selecione o tipo de serviço');
       return;
     }
 
@@ -3034,6 +3054,65 @@ export default function NovaObra() {
 
   // ✅ NOVA FUNÇÃO: Pausar obra (salvar rascunho)
   const handlePausar = async () => {
+    // ===== VALIDAÇÕES BÁSICAS OBRIGATÓRIAS (SEMPRE) =====
+
+    // 1. Data da obra
+    if (!data) {
+      Alert.alert('❌ Campo Obrigatório', 'Selecione a data da obra');
+      return;
+    }
+
+    // 2. Número da obra
+    if (!obra || obra.trim() === '') {
+      Alert.alert('❌ Campo Obrigatório', 'Digite o número da obra');
+      return;
+    }
+
+    // Validar número da obra (EXATAMENTE 8 ou 10 dígitos numéricos)
+    const obraNumero = obra.trim();
+
+    // Verificar se contém apenas números
+    if (!/^\d+$/.test(obraNumero)) {
+      Alert.alert(
+        'Número da Obra Inválido',
+        'O número da obra deve conter apenas números.\n\n❌ Atual: ' + obraNumero
+      );
+      return;
+    }
+
+    // Verificar se tem EXATAMENTE 8 ou 10 dígitos (não aceita 9!)
+    if (obraNumero.length !== 8 && obraNumero.length !== 10) {
+      Alert.alert(
+        'Número da Obra Inválido',
+        'O número da obra deve ter EXATAMENTE 8 ou 10 dígitos.\n\n✅ Aceito: 8 dígitos (ex: 12345678) ou 10 dígitos (ex: 0032401637)\n❌ Atual: ' + obraNumero.length + ' dígitos (' + obraNumero + ')'
+      );
+      return;
+    }
+
+    // 3. Responsável (Encarregado)
+    if (!responsavel || responsavel.trim() === '') {
+      Alert.alert('❌ Campo Obrigatório', 'Digite o nome do encarregado/responsável');
+      return;
+    }
+
+    // 4. Tipo de Serviço
+    if (!tipoServico) {
+      Alert.alert('❌ Campo Obrigatório', 'Selecione o tipo de serviço');
+      return;
+    }
+
+    // Validação específica para COMP
+    if (isCompUser && !equipeExecutora) {
+      Alert.alert('❌ Campo Obrigatório', 'Selecione a equipe executora do serviço');
+      return;
+    }
+
+    // Validação para equipes normais
+    if (!isCompUser && !equipe) {
+      Alert.alert('Erro', 'Equipe não identificada. Faça login novamente.');
+      return;
+    }
+
     setLoading(true);
     try {
       console.log('💾 Pausando obra como rascunho...');
