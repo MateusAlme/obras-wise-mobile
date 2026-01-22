@@ -2096,12 +2096,13 @@ export default function NovaObra() {
         checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]) : [],
         // Fotos dinâmicas - aterramentos de cerca
         checklist_aterramento_cerca: isServicoChecklist ? fotosAterramentosCerca.flatMap(aterr => aterr.map(f => f.photoId).filter(Boolean) as string[]) : [],
-        // Documentação (PDFs) - opcional
-        doc_cadastro_medidor: isServicoDocumentacao ? docCadastroMedidor.map(f => f.photoId).filter(Boolean) as string[] : [],
-        doc_laudo_transformador: isServicoDocumentacao ? docLaudoTransformador.map(f => f.photoId).filter(Boolean) as string[] : [],
+        // Documentação - APR (todos os serviços), Laudo/Cadastro (serviços específicos)
+        doc_apr: docApr.map(f => f.photoId).filter(Boolean) as string[], // APR em TODOS os serviços
+        doc_cadastro_medidor: docCadastroMedidor.map(f => f.photoId).filter(Boolean) as string[], // Quando Medidor OU Documentação
+        doc_laudo_transformador: docLaudoTransformador.map(f => f.photoId).filter(Boolean) as string[], // Quando Transformador OU Documentação
+        // Documentação exclusiva (só no book Documentação)
         doc_laudo_regulador: isServicoDocumentacao ? docLaudoRegulador.map(f => f.photoId).filter(Boolean) as string[] : [],
         doc_laudo_religador: isServicoDocumentacao ? docLaudoReligador.map(f => f.photoId).filter(Boolean) as string[] : [],
-        doc_apr: isServicoDocumentacao ? docApr.map(f => f.photoId).filter(Boolean) as string[] : [],
         doc_fvbt: isServicoDocumentacao ? docFvbt.map(f => f.photoId).filter(Boolean) as string[] : [],
         doc_termo_desistencia_lpt: isServicoDocumentacao ? docTermoDesistenciaLpt.map(f => f.photoId).filter(Boolean) as string[] : [],
         doc_autorizacao_passagem: isServicoDocumentacao ? docAutorizacaoPassagem.map(f => f.photoId).filter(Boolean) as string[] : [],
@@ -3324,6 +3325,183 @@ export default function NovaObra() {
               <Text style={styles.hint}>
                 Selecione a equipe que está executando o serviço
               </Text>
+            </View>
+          )}
+
+          {/* APR - OPCIONAL EM TODOS OS SERVIÇOS */}
+          {tipoServico && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>📋 APR - Análise Preliminar de Risco (Opcional)</Text>
+              <Text style={styles.hint}>
+                Você pode anexar a APR aqui. Use o modo scanner para melhor qualidade.
+              </Text>
+
+              <View style={styles.docSection}>
+                {/* Botão: Apenas Tirar Foto (sem PDF) */}
+                <TouchableOpacity
+                  style={styles.docButton}
+                  onPress={() => takePicture('doc_apr')}
+                  disabled={loading || uploadingPhoto}
+                >
+                  <View style={styles.photoButtonContent}>
+                    <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                    <Text style={styles.photoButtonText}>
+                      {uploadingPhoto ? 'Processando...' : 'Tirar Foto da APR'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                {docApr.length > 0 && (
+                  <View style={styles.docList}>
+                    {docApr.map((doc, index) => (
+                      <View key={index} style={styles.docItem}>
+                        {doc.uri ? (
+                          <>
+                            <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                            <Text style={styles.docFileName}>📷 APR Foto {index + 1}</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.docFileName}>📄 APR Documento {index + 1}</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.docRemoveButton}
+                          onPress={() => removePhoto('doc_apr', index)}
+                        >
+                          <Text style={styles.docRemoveText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* CADASTRO DE MEDIDOR - OPCIONAL QUANDO MEDIDOR */}
+          {isServicoMedidor && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>📋 Cadastro de Medidor (Opcional)</Text>
+              <Text style={styles.hint}>
+                Você pode anexar o cadastro do medidor aqui. Use o modo scanner para melhor qualidade.
+              </Text>
+
+              <View style={styles.docSection}>
+                {/* Botões lado a lado: Foto + PDF */}
+                <View style={styles.docButtonRow}>
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf]}
+                    onPress={() => takePicture('doc_cadastro_medidor')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf]}
+                    onPress={() => selectDocument('doc_cadastro_medidor')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {docCadastroMedidor.length > 0 && (
+                  <View style={styles.docList}>
+                    {docCadastroMedidor.map((doc, index) => (
+                      <View key={index} style={styles.docItem}>
+                        {doc.uri ? (
+                          <>
+                            <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                            <Text style={styles.docFileName}>📷 Cadastro {index + 1}</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.docFileName}>📄 Cadastro {index + 1}</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.docRemoveButton}
+                          onPress={() => removePhoto('doc_cadastro_medidor', index)}
+                        >
+                          <Text style={styles.docRemoveText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* LAUDO TRANSFORMADOR - OPCIONAL QUANDO TRANSFORMADOR INSTALADO */}
+          {isServicoTransformador && transformadorStatus === 'Instalado' && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>⚡ Laudo de Transformador (Opcional)</Text>
+              <Text style={styles.hint}>
+                Você pode anexar o laudo do transformador instalado aqui. Use o modo scanner para melhor qualidade.
+              </Text>
+
+              <View style={styles.docSection}>
+                {/* Botões lado a lado: Foto + PDF */}
+                <View style={styles.docButtonRow}>
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf]}
+                    onPress={() => takePicture('doc_laudo_transformador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.docButton, styles.docButtonHalf]}
+                    onPress={() => selectDocument('doc_laudo_transformador')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <View style={styles.photoButtonContent}>
+                      <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
+                      <Text style={styles.photoButtonText}>
+                        {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                </View>
+
+                {docLaudoTransformador.length > 0 && (
+                  <View style={styles.docList}>
+                    {docLaudoTransformador.map((doc, index) => (
+                      <View key={index} style={styles.docItem}>
+                        {doc.uri ? (
+                          <>
+                            <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
+                            <Text style={styles.docFileName}>📷 Laudo {index + 1}</Text>
+                          </>
+                        ) : (
+                          <Text style={styles.docFileName}>📄 Laudo {index + 1}</Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.docRemoveButton}
+                          onPress={() => removePhoto('doc_laudo_transformador', index)}
+                        >
+                          <Text style={styles.docRemoveText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
             </View>
           )}
 
