@@ -6524,11 +6524,8 @@ export default function NovaObra() {
                 {/* 8. Materiais Previsto/Realizado */}
                 <View style={styles.docSection}>
                   <Text style={styles.docSectionTitle}>
-                    📋 Materiais Previsto/Realizado ({docMateriaisPrevisto.length + docMateriaisRealizado.length}) {(docMateriaisPrevisto.length > 0 || docMateriaisRealizado.length > 0) && '✅'}
+                    📋 Materiais Previsto/Realizado ({docMateriaisPrevisto.length}) {docMateriaisPrevisto.length > 0 && '✅'}
                   </Text>
-
-                  {/* Subtítulo: Previsto */}
-                  <Text style={styles.docSubtitle}>📝 Previsto ({docMateriaisPrevisto.length})</Text>
 
                   {/* Botões lado a lado: Foto + PDF */}
                   <View style={styles.docButtonRow}>
@@ -6566,69 +6563,14 @@ export default function NovaObra() {
                           {doc.uri ? (
                             <>
                               <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
-                              <Text style={styles.docFileName}>📷 Previsto {index + 1}</Text>
+                              <Text style={styles.docFileName}>📷 Documento {index + 1}</Text>
                             </>
                           ) : (
-                            <Text style={styles.docFileName}>📄 Previsto {index + 1}</Text>
+                            <Text style={styles.docFileName}>📄 Documento {index + 1}</Text>
                           )}
                           <TouchableOpacity
                             style={styles.docRemoveButton}
                             onPress={() => removePhoto('doc_materiais_previsto', index)}
-                          >
-                            <Text style={styles.docRemoveText}>×</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-
-                  {/* Subtítulo: Realizado */}
-                  <Text style={[styles.docSubtitle, { marginTop: 16 }]}>✅ Realizado ({docMateriaisRealizado.length})</Text>
-
-                  {/* Botões lado a lado: Foto + PDF */}
-                  <View style={styles.docButtonRow}>
-                    <TouchableOpacity
-                      style={[styles.docButton, styles.docButtonHalf]}
-                      onPress={() => takePicture('doc_materiais_realizado')}
-                      disabled={loading || uploadingPhoto}
-                    >
-                      <View style={styles.photoButtonContent}>
-                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📷'}</Text>
-                        <Text style={styles.photoButtonText}>
-                          {uploadingPhoto ? 'Processando...' : 'Tirar Foto'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.docButton, styles.docButtonHalf]}
-                      onPress={() => selectDocument('doc_materiais_realizado')}
-                      disabled={loading || uploadingPhoto}
-                    >
-                      <View style={styles.photoButtonContent}>
-                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '📁'}</Text>
-                        <Text style={styles.photoButtonText}>
-                          {uploadingPhoto ? 'Selecionando...' : 'Selecionar PDF'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  </View>
-
-                  {docMateriaisRealizado.length > 0 && (
-                    <View style={styles.docList}>
-                      {docMateriaisRealizado.map((doc, index) => (
-                        <View key={index} style={styles.docItem}>
-                          {doc.uri ? (
-                            <>
-                              <Image source={{ uri: doc.uri }} style={styles.docThumbnail} />
-                              <Text style={styles.docFileName}>📷 Realizado {index + 1}</Text>
-                            </>
-                          ) : (
-                            <Text style={styles.docFileName}>📄 Realizado {index + 1}</Text>
-                          )}
-                          <TouchableOpacity
-                            style={styles.docRemoveButton}
-                            onPress={() => removePhoto('doc_materiais_realizado', index)}
                           >
                             <Text style={styles.docRemoveText}>×</Text>
                           </TouchableOpacity>
