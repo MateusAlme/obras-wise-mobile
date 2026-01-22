@@ -1041,19 +1041,31 @@ export default function ObraDetalhe() {
             if (isServicoBookAterramento && section.key.startsWith('fotos_aterramento_')) {
               return true;
             }
+            // APR - Aparece em TODOS os serviços
+            if (section.key === 'doc_apr') {
+              return true;
+            }
             // Transformador
             if (isServicoTransformador && section.key.startsWith('fotos_transformador_')) {
+              return true;
+            }
+            // Laudo Transformador - Aparece quando Transformador
+            if (isServicoTransformador && section.key === 'doc_laudo_transformador_servico') {
               return true;
             }
             // Medidor
             if (isServicoMedidor && section.key.startsWith('fotos_medidor_')) {
               return true;
             }
+            // Cadastro Medidor - Aparece quando Medidor
+            if (isServicoMedidor && section.key === 'doc_cadastro_medidor_servico') {
+              return true;
+            }
             // Checklist
             if (isServicoChecklist && section.key.startsWith('fotos_checklist_')) {
               return true;
             }
-            // Documentação
+            // Documentação - Todos os docs aparecem no book Documentação
             if (isServicoDocumentacao && section.key.startsWith('doc_')) {
               return true;
             }
