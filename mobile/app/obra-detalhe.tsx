@@ -491,8 +491,17 @@ export default function ObraDetalhe() {
   const getPhotosForSection = (sectionKey: string): FotoInfo[] => {
     if (!obra) return [];
 
+    // Mapear chaves especiais para campos do banco
+    const keyMapping: Record<string, string> = {
+      'doc_laudo_transformador_servico': 'doc_laudo_transformador',
+      'doc_cadastro_medidor_servico': 'doc_cadastro_medidor',
+    };
+
+    // Usar chave mapeada ou a original
+    const dbKey = keyMapping[sectionKey] || sectionKey;
+
     // Pegar fotos do banco (URL) ou IDs (AsyncStorage offline-first)
-    const dbPhotos = (obra as any)[sectionKey];
+    const dbPhotos = (obra as any)[dbKey];
 
     // ✅ CORREÇÃO: Se dbPhotos é array de strings (IDs), buscar URIs dos metadados locais
     // Isso garante que fotos apareçam mesmo após sincronização
