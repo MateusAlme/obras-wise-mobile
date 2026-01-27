@@ -2866,7 +2866,7 @@ export default function NovaObra() {
           // MODO OFFLINE: Salvar edições localmente com a função updateObraOffline
           await updateObraOffline(obraId, obraData, photoIds);
           await loadPendingObras();
-          
+
           Alert.alert(
             '📱 Alterações Salvas Offline',
             'Obra atualizada localmente.\n\nSerá sincronizada quando houver internet',
