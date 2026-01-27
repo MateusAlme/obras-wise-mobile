@@ -4,9 +4,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
-import type { PendingObra, LocalObra } from '../lib/offline-sync';
-import { getLocalObraById, restoreObraPhotos, forceUpdateObraFromSupabase, syncObra, checkInternetConnection } from '../lib/offline-sync';
-import { getPhotosByObra, getPhotoMetadatasByIds, type PhotoMetadata } from '../lib/photo-backup';
+import type { PendingObra } from '../lib/offline-sync';
+import { getLocalObraById, forceUpdateObraFromSupabase, syncLocalObra, checkInternetConnection } from '../lib/offline-sync';
+import { getPhotosByObraWithFallback, type PhotoMetadata } from '../lib/photo-backup';
 import { supabase } from '../lib/supabase';
 
 type FotoInfo = {
@@ -27,7 +27,7 @@ type OnlineObra = {
   responsavel: string;
   equipe: string;
   tipo_servico: string;
-  status?: 'em_aberto' | 'finalizada';
+  status?: 'em_aberto' | 'rascunho' | 'finalizada';
   finalizada_em?: string | null;
   fotos_antes?: FotoInfo[];
   fotos_durante?: FotoInfo[];
@@ -103,7 +103,7 @@ type OnlineObra = {
 
 type ObraPayload = (PendingObra & {
   origem?: 'offline';
-  status?: 'em_aberto' | 'finalizada';
+  status?: 'em_aberto' | 'rascunho' | 'finalizada';
   finalizada_em?: string | null;
   fotos_antes?: FotoInfo[];
   fotos_durante?: FotoInfo[];
@@ -183,36 +183,41 @@ type ObraDetalheData = (OnlineObra | ObraPayload) & {
 };
 
 const PHOTO_SECTIONS = [
+  // 📋 DOCUMENTAÇÃO OBRIGATÓRIA (aparecem primeiro)
+  { key: 'doc_apr', label: 'APR - Análise Preliminar de Risco' },
+  { key: 'doc_laudo_transformador_servico', label: 'Laudo de Transformador' },
+  { key: 'doc_cadastro_medidor_servico', label: 'Cadastro de Medidor' },
+  // 📸 FOTOS BÁSICAS
   { key: 'fotos_antes', label: 'Fotos Antes' },
   { key: 'fotos_durante', label: 'Fotos Durante' },
   { key: 'fotos_depois', label: 'Fotos Depois' },
   { key: 'fotos_abertura', label: 'Fotos Abertura Chave' },
   { key: 'fotos_fechamento', label: 'Fotos Fechamento Chave' },
+  // DITAIS
   { key: 'fotos_ditais_abertura', label: 'DITAIS - Abertura' },
   { key: 'fotos_ditais_impedir', label: 'DITAIS - Impedir' },
   { key: 'fotos_ditais_testar', label: 'DITAIS - Testar' },
   { key: 'fotos_ditais_aterrar', label: 'DITAIS - Aterrar' },
   { key: 'fotos_ditais_sinalizar', label: 'DITAIS - Sinalizar' },
+  // BOOK ATERRAMENTO
   { key: 'fotos_aterramento_vala_aberta', label: 'Book Aterramento - Vala Aberta' },
   { key: 'fotos_aterramento_hastes', label: 'Book Aterramento - Hastes Aplicadas' },
   { key: 'fotos_aterramento_vala_fechada', label: 'Book Aterramento - Vala Fechada' },
   { key: 'fotos_aterramento_medicao', label: 'Book Aterramento - Medição Terrômetro' },
-  { key: 'fotos_transformador_laudo', label: 'Transformador - Laudo' },
+  // TRANSFORMADOR (Instalado)
   { key: 'fotos_transformador_componente_instalado', label: 'Transformador - Componente Instalado' },
   { key: 'fotos_transformador_tombamento_instalado', label: 'Transformador - Tombamento (Instalado)' },
   { key: 'fotos_transformador_tape', label: 'Transformador - Tape' },
   { key: 'fotos_transformador_placa_instalado', label: 'Transformador - Placa (Instalado)' },
   { key: 'fotos_transformador_instalado', label: 'Transformador - Instalado' },
+  { key: 'fotos_transformador_conexoes_primarias_instalado', label: 'Transformador - Conexões Primárias (Instalado)' },
+  { key: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Transformador - Conexões Secundárias (Instalado)' },
+  // TRANSFORMADOR (Retirado)
   { key: 'fotos_transformador_antes_retirar', label: 'Transformador - Antes de Retirar' },
   { key: 'fotos_transformador_tombamento_retirado', label: 'Transformador - Tombamento (Retirado)' },
   { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa (Retirado)' },
-  { key: 'fotos_transformador_conexoes_primarias_instalado', label: 'Transformador - Conexões Primárias (Instalado)' },
-  { key: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Transformador - Conexões Secundárias (Instalado)' },
   { key: 'fotos_transformador_conexoes_primarias_retirado', label: 'Transformador - Conexões Primárias (Retirado)' },
   { key: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Transformador - Conexões Secundárias (Retirado)' },
-  { key: 'doc_apr', label: 'APR - Análise Preliminar de Risco' },
-  { key: 'doc_laudo_transformador_servico', label: 'Laudo de Transformador' },
-  { key: 'doc_cadastro_medidor_servico', label: 'Cadastro de Medidor' },
   { key: 'fotos_medidor_padrao', label: 'Medidor - Padrão c/ Medidor Instalado' },
   { key: 'fotos_medidor_leitura', label: 'Medidor - Leitura c/ Medidor Instalado' },
   { key: 'fotos_medidor_selo_born', label: 'Medidor - Selo do Born do Medidor' },
@@ -282,7 +287,6 @@ export default function ObraDetalhe() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<FotoInfo | null>(null);
   const [selectedPhotoSection, setSelectedPhotoSection] = useState<string | null>(null);
-  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [isFinalizando, setIsFinalizando] = useState(false);
@@ -348,16 +352,16 @@ export default function ObraDetalhe() {
               // Recarregar obra atualizada
               const obraAtualizada = await getLocalObraById(parsed.id);
               if (obraAtualizada) {
-                setObra({ ...obraAtualizada, origem: obraAtualizada.origem || 'offline' });
-                loadLocalPhotos(parsed.id);
+                setObra({ ...obraAtualizada, origem: obraAtualizada.origem || 'offline' } as ObraDetalheData);
+                loadLocalPhotos(parsed.id, obraAtualizada);
                 return;
               }
             }
           }
 
           // ✅ CORREÇÃO: Preservar origem do AsyncStorage (pode ser 'online' ou 'offline')
-          setObra({ ...localObra, origem: localObra.origem || 'offline' });
-          loadLocalPhotos(parsed.id);
+          setObra({ ...localObra, origem: localObra.origem || 'offline' } as ObraDetalheData);
+          loadLocalPhotos(parsed.id, localObra);
           return;
         }
       }
@@ -368,7 +372,7 @@ export default function ObraDetalhe() {
 
       // Carregar fotos locais se for offline
       if (parsed.id && parsed.origem === 'offline') {
-        loadLocalPhotos(parsed.id);
+        loadLocalPhotos(parsed.id, parsed);
       }
     } catch (error) {
       console.error('Erro ao carregar detalhes da obra:', error);
@@ -388,8 +392,8 @@ export default function ObraDetalhe() {
       if (localObra) {
         console.log('🔄 Atualizando obra do AsyncStorage:', obra.id);
         // ✅ CORREÇÃO: Preservar origem do AsyncStorage (pode ser 'online' ou 'offline')
-        setObra({ ...localObra, origem: localObra.origem || 'offline' });
-        loadLocalPhotos(localObra.id);
+        setObra({ ...localObra, origem: localObra.origem || 'offline' } as ObraDetalheData);
+        loadLocalPhotos(localObra.id, localObra);
       } else {
         // Fallback: Se não encontrou no AsyncStorage, tenta Supabase
         console.log('⚠️ Obra não está no AsyncStorage, buscando do Supabase...');
@@ -437,10 +441,9 @@ export default function ObraDetalhe() {
     refreshObraData();
   };
 
-  const openPhotoModal = (foto: FotoInfo, sectionKey?: string, photoIndex?: number) => {
+  const openPhotoModal = (foto: FotoInfo, sectionKey?: string) => {
     setSelectedPhoto(foto);
     setSelectedPhotoSection(sectionKey || null);
-    setSelectedPhotoIndex(photoIndex !== undefined ? photoIndex : null);
     setModalVisible(true);
   };
 
@@ -448,7 +451,6 @@ export default function ObraDetalhe() {
     setModalVisible(false);
     setSelectedPhoto(null);
     setSelectedPhotoSection(null);
-    setSelectedPhotoIndex(null);
   };
 
   const handleRefazerFoto = () => {
@@ -478,16 +480,56 @@ export default function ObraDetalhe() {
     );
   };
 
-  const loadLocalPhotos = async (obraId: string) => {
+  const loadLocalPhotos = async (obraId: string, obraData?: any) => {
     try {
-      const photos = await getPhotosByObra(obraId);
+      // Coletar todos os IDs de fotos da obra para o fallback
+      const sourceObra = obraData || obra;
+      const allPhotoIds: string[] = sourceObra ? [
+        ...(sourceObra.fotos_antes || []),
+        ...(sourceObra.fotos_durante || []),
+        ...(sourceObra.fotos_depois || []),
+        ...(sourceObra.fotos_abertura || []),
+        ...(sourceObra.fotos_fechamento || []),
+        ...(sourceObra.fotos_ditais_abertura || []),
+        ...(sourceObra.fotos_ditais_impedir || []),
+        ...(sourceObra.fotos_ditais_testar || []),
+        ...(sourceObra.fotos_ditais_aterrar || []),
+        ...(sourceObra.fotos_ditais_sinalizar || []),
+        ...(sourceObra.fotos_aterramento_vala_aberta || []),
+        ...(sourceObra.fotos_aterramento_hastes || []),
+        ...(sourceObra.fotos_aterramento_vala_fechada || []),
+        ...(sourceObra.fotos_aterramento_medicao || []),
+        ...(sourceObra.fotos_transformador_laudo || []),
+        ...(sourceObra.fotos_transformador_componente_instalado || []),
+        ...(sourceObra.fotos_transformador_tombamento_instalado || []),
+        ...(sourceObra.fotos_transformador_tape || []),
+        ...(sourceObra.fotos_transformador_placa_instalado || []),
+        ...(sourceObra.fotos_transformador_instalado || []),
+        ...(sourceObra.fotos_transformador_antes_retirar || []),
+        ...(sourceObra.fotos_transformador_tombamento_retirado || []),
+        ...(sourceObra.fotos_transformador_placa_retirado || []),
+        ...(sourceObra.fotos_transformador_conexoes_primarias_instalado || []),
+        ...(sourceObra.fotos_transformador_conexoes_secundarias_instalado || []),
+        ...(sourceObra.fotos_transformador_conexoes_primarias_retirado || []),
+        ...(sourceObra.fotos_transformador_conexoes_secundarias_retirado || []),
+        ...(sourceObra.doc_laudo_transformador || []),
+        ...(sourceObra.doc_cadastro_medidor || []),
+        ...(sourceObra.doc_apr || []),
+        ...(sourceObra.doc_laudo_regulador || []),
+        ...(sourceObra.doc_laudo_religador || []),
+        ...(sourceObra.doc_fvbt || []),
+      ].filter(id => typeof id === 'string') : [];
+
+      // Usar função com fallback para encontrar fotos mesmo quando obraId mudou
+      const photos = await getPhotosByObraWithFallback(obraId, allPhotoIds);
+      console.log(`📸 [loadLocalPhotos] Carregou ${photos.length} foto(s) para obra ${obraId}`);
       setLocalPhotos(photos);
     } catch (error) {
       console.error('Erro ao carregar fotos locais:', error);
     }
   };
 
-  // Mescla fotos do banco com fotos locais
+  // Mescla fotos do banco com fotos locais - SIMPLIFICADO
   const getPhotosForSection = (sectionKey: string): FotoInfo[] => {
     if (!obra) return [];
 
@@ -500,45 +542,8 @@ export default function ObraDetalhe() {
     // Usar chave mapeada ou a original
     const dbKey = keyMapping[sectionKey] || sectionKey;
 
-    // Pegar fotos do banco (URL) ou IDs (AsyncStorage offline-first)
-    const dbPhotos = (obra as any)[dbKey];
-
-    // ✅ CORREÇÃO: Se dbPhotos é array de strings (IDs), buscar URIs dos metadados locais
-    // Isso garante que fotos apareçam mesmo após sincronização
-    if (Array.isArray(dbPhotos) && dbPhotos.length > 0 && typeof dbPhotos[0] === 'string') {
-      // IDs de fotos - buscar URIs do photo-backup usando localPhotos
-      const photoIds = dbPhotos as string[];
-      const fotosFromIds: FotoInfo[] = [];
-
-      for (const photoId of photoIds) {
-        const metadata = localPhotos.find(p => p.id === photoId);
-        if (metadata) {
-          fotosFromIds.push({
-            uri: metadata.compressedPath,
-            url: metadata.supabaseUrl,  // Pode ter URL se já foi sincronizada
-            latitude: metadata.latitude,
-            longitude: metadata.longitude,
-            utmX: metadata.utmX,
-            utmY: metadata.utmY,
-            utmZone: metadata.utmZone,
-          });
-        }
-      }
-
-      if (fotosFromIds.length > 0) {
-        return fotosFromIds;
-      }
-    }
-
-    // Se dbPhotos é array de objetos (FotoInfo com URL), usar
-    const validDbPhotos = Array.isArray(dbPhotos) && dbPhotos.length > 0 && typeof dbPhotos[0] === 'object'
-      ? (dbPhotos as FotoInfo[]).filter(f => f.url || f.uri)
-      : [];
-
-    // Combinar fotos do banco com fotos locais (para obras online e offline)
-    // - Fotos do banco têm prioridade (já possuem URL)
-    // - Fotos locais (backups) também devem ser exibidas para suportar edição offline
-    const typeMap: Record<string, PhotoMetadata['type'] | PhotoMetadata['type'][]> = {
+    // Mapeamento unificado de seção para tipo de foto
+    const typeMap: Record<string, string | string[]> = {
       'fotos_antes': 'antes',
       'fotos_durante': 'durante',
       'fotos_depois': 'depois',
@@ -559,11 +564,11 @@ export default function ObraDetalhe() {
       'fotos_transformador_tape': 'transformador_tape',
       'fotos_transformador_placa_instalado': 'transformador_placa_instalado',
       'fotos_transformador_instalado': 'transformador_instalado',
-      'fotos_transformador_conexoes_primarias_instalado': 'transformador_conexoes_primarias_instalado',
-      'fotos_transformador_conexoes_secundarias_instalado': 'transformador_conexoes_secundarias_instalado',
       'fotos_transformador_antes_retirar': 'transformador_antes_retirar',
       'fotos_transformador_tombamento_retirado': 'transformador_tombamento_retirado',
       'fotos_transformador_placa_retirado': 'transformador_placa_retirado',
+      'fotos_transformador_conexoes_primarias_instalado': 'transformador_conexoes_primarias_instalado',
+      'fotos_transformador_conexoes_secundarias_instalado': 'transformador_conexoes_secundarias_instalado',
       'fotos_transformador_conexoes_primarias_retirado': 'transformador_conexoes_primarias_retirado',
       'fotos_transformador_conexoes_secundarias_retirado': 'transformador_conexoes_secundarias_retirado',
       'fotos_medidor_padrao': 'medidor_padrao',
@@ -598,49 +603,65 @@ export default function ObraDetalhe() {
       'fotos_vazamento_tombamento_instalado': 'vazamento_tombamento_instalado',
       'fotos_vazamento_placa_instalado': 'vazamento_placa_instalado',
       'fotos_vazamento_instalacao': 'vazamento_instalacao',
-      'fotos_transformador_conexoes_primarias_instalado': 'transformador_conexoes_primarias_instalado',
-      'fotos_transformador_conexoes_secundarias_instalado': 'transformador_conexoes_secundarias_instalado',
-      'fotos_transformador_conexoes_primarias_retirado': 'transformador_conexoes_primarias_retirado',
-      'fotos_transformador_conexoes_secundarias_retirado': 'transformador_conexoes_secundarias_retirado',
       'doc_cadastro_medidor': 'doc_cadastro_medidor',
-      'doc_cadastro_medidor_servico': 'doc_cadastro_medidor',
       'doc_laudo_transformador': 'doc_laudo_transformador',
-      'doc_laudo_transformador_servico': 'doc_laudo_transformador',
       'doc_laudo_regulador': 'doc_laudo_regulador',
       'doc_laudo_religador': 'doc_laudo_religador',
       'doc_apr': 'doc_apr',
       'doc_fvbt': 'doc_fvbt',
       'doc_termo_desistencia_lpt': 'doc_termo_desistencia_lpt',
       'doc_autorizacao_passagem': 'doc_autorizacao_passagem',
-      'doc_materiais_previsto': 'doc_materiais_previsto',
-      'doc_materiais_realizado': 'doc_materiais_realizado',
     };
 
-    const photoType = typeMap[sectionKey];
+    // Pegar fotos do banco (URL) ou IDs (AsyncStorage offline-first)
+    const dbPhotos = (obra as any)[dbKey];
+
+    // 1. Se dbPhotos é array de objetos com URL/URI, usar diretamente
+    if (Array.isArray(dbPhotos) && dbPhotos.length > 0 && typeof dbPhotos[0] === 'object') {
+      return (dbPhotos as FotoInfo[]).filter(f => f.url || f.uri);
+    }
+
+    // 2. Se dbPhotos é array de strings (IDs), buscar nos metadados locais
+    if (Array.isArray(dbPhotos) && dbPhotos.length > 0 && typeof dbPhotos[0] === 'string') {
+      const photoIds = dbPhotos as string[];
+      const fotos: FotoInfo[] = [];
+
+      for (const photoId of photoIds) {
+        const metadata = localPhotos.find(p => p.id === photoId);
+        if (metadata) {
+          fotos.push({
+            url: metadata.supabaseUrl || metadata.uploadUrl,
+            uri: (metadata.supabaseUrl || metadata.uploadUrl) ? undefined : metadata.compressedPath,
+            latitude: metadata.latitude,
+            longitude: metadata.longitude,
+            utmX: metadata.utmX,
+            utmY: metadata.utmY,
+            utmZone: metadata.utmZone,
+          });
+        }
+      }
+
+      if (fotos.length > 0) {
+        return fotos;
+      }
+    }
+
+    // 3. Fallback: buscar por tipo no localPhotos
+    const photoType = typeMap[sectionKey] || typeMap[dbKey];
     if (!photoType) return [];
 
     const typeList = Array.isArray(photoType) ? photoType : [photoType];
     const localPhotosForType = localPhotos.filter(p => typeList.includes(p.type));
 
-    // ✅ CORREÇÃO: Evitar duplicação de fotos
-    // Se já temos fotos do banco (validDbPhotos), não adicionar fotos locais duplicadas
-    if (validDbPhotos.length > 0) {
-      // Já temos fotos do banco, não adicionar locais
-      return validDbPhotos;
-    }
-
-    // Se não temos fotos do banco, usar apenas fotos locais
-    const localFotoInfos = localPhotosForType.map(p => ({
-      uri: p.compressedPath,
-      url: p.supabaseUrl, // Incluir URL se já foi sincronizada
+    return localPhotosForType.map(p => ({
+      url: p.supabaseUrl || p.uploadUrl,
+      uri: (p.supabaseUrl || p.uploadUrl) ? undefined : p.compressedPath,
       latitude: p.latitude,
       longitude: p.longitude,
       utmX: p.utmX,
       utmY: p.utmY,
       utmZone: p.utmZone,
     }));
-
-    return localFotoInfos;
   };
 
   // Calcular fotos faltantes por tipo de serviço
@@ -649,6 +670,12 @@ export default function ObraDetalhe() {
 
     const tiposServico = obra.tipo_servico.split(',').map(t => t.trim());
     const faltantes: string[] = [];
+
+    // ⚡ APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS (exceto Documentação)
+    const isDocumentacao = tiposServico.includes('Documentação');
+    if (!isDocumentacao && !getPhotosForSection('doc_apr').length) {
+      faltantes.push('APR - Análise Preliminar de Risco');
+    }
 
     tiposServico.forEach(tipo => {
       switch (tipo) {
@@ -670,6 +697,10 @@ export default function ObraDetalhe() {
           if (!getPhotosForSection('fotos_aterramento_medicao').length) faltantes.push('Medição');
           break;
         case 'Transformador':
+          // ⚡ LAUDO TRANSFORMADOR - OBRIGATÓRIO
+          if (!getPhotosForSection('doc_laudo_transformador_servico').length) {
+            faltantes.push('Laudo de Transformador');
+          }
           // Validar apenas campos específicos com base no status
           if (obra.transformador_status === 'Instalado') {
             if (!getPhotosForSection('fotos_transformador_componente_instalado').length) faltantes.push('Componente Instalado');
@@ -703,6 +734,10 @@ export default function ObraDetalhe() {
           // Laudo é opcional
           break;
         case 'Instalação do Medidor':
+          // 📋 CADASTRO DE MEDIDOR - OBRIGATÓRIO
+          if (!getPhotosForSection('doc_cadastro_medidor_servico').length) {
+            faltantes.push('Cadastro de Medidor');
+          }
           if (!getPhotosForSection('fotos_medidor_padrao').length) faltantes.push('Padrão');
           if (!getPhotosForSection('fotos_medidor_leitura').length) faltantes.push('Leitura');
           if (!getPhotosForSection('fotos_medidor_selo_born').length) faltantes.push('Selo Born');
@@ -780,13 +815,13 @@ export default function ObraDetalhe() {
               const isLocalDraft = obra.id.startsWith('local_');
 
               if (isLocalDraft) {
-                // Para rascunhos locais, usar syncObra que cria no Supabase
+                // Para rascunhos locais, usar syncLocalObra que cria no Supabase
                 console.log('📤 Finalizando rascunho local:', obra.id);
 
-                const result = await syncObra(obra.id);
+                const success = await syncLocalObra(obra.id);
 
-                if (!result.success) {
-                  throw new Error(result.error || 'Erro ao sincronizar obra');
+                if (!success) {
+                  throw new Error('Erro ao sincronizar obra');
                 }
 
                 console.log('✅ Rascunho sincronizado com sucesso!');
@@ -954,65 +989,72 @@ export default function ObraDetalhe() {
 
         {/* Botões de ação */}
         {obra.status !== 'finalizada' && (() => {
-          const { total: fotosFaltantes } = calcularFotosFaltantes();
-
-          // ✅ CRÍTICO: Obras rascunho locais não podem ser finalizadas diretamente
-          // Elas precisam primeiro ser convertidas em obras online (com UUID válido)
-          const isLocalDraft = obra.status === 'rascunho' && obra.id?.startsWith('local_');
-          // NOVA LÓGICA: Botão Finalizar aparece para RASCUNHOS também
-          // Mas só fica habilitado se tiver fotos suficientes
+          const { total: fotosFaltantes, detalhes: fotosFaltantesDetalhes } = calcularFotosFaltantes();
           const podeFinalizar = isOnline && fotosFaltantes === 0;
-          const isObraJaFinalizada = obra.status === 'finalizada';
 
           return (
-            <View style={styles.actionButtons}>
-              {/* Botão Adicionar Fotos - SEMPRE visível */}
-              <TouchableOpacity
-                style={[styles.continuarButton, { flex: 1 }]}
-                onPress={() => {
-                  router.push({
-                    pathname: '/nova-obra',
-                    params: {
-                      editMode: 'true',
-                      obraData: JSON.stringify(obra)
-                    }
-                  });
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="camera" size={20} color="#fff" />
-                <Text style={styles.continuarButtonText}>Adicionar Fotos</Text>
-              </TouchableOpacity>
-
-              {/* Botão Finalizar Obra - Aparece para RASCUNHOS e OBRAS EM ABERTO */}
-              {/* NÃO aparece para obras já finalizadas */}
-              {!isObraJaFinalizada && (
-                <TouchableOpacity
-                  style={[
-                    styles.finalizarButton,
-                    { flex: 1 },
-                    (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
-                  ]}
-                  onPress={handleFinalizarObra}
-                  activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
-                  disabled={!podeFinalizar || isFinalizando}
-                >
-                  {isFinalizando ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons
-                        name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
-                        size={20}
-                        color="#fff"
-                      />
-                      <Text style={styles.finalizarButtonText}>
-                        {podeFinalizar ? '📤 Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
+            <View>
+              {/* Lista de fotos faltantes */}
+              {fotosFaltantes > 0 && (
+                <View style={styles.fotosFaltantesContainer}>
+                  <Text style={styles.fotosFaltantesTitle}>
+                    📋 Fotos obrigatórias faltantes ({fotosFaltantes}):
+                  </Text>
+                  {fotosFaltantesDetalhes.map((foto, index) => (
+                    <Text key={index} style={styles.fotosFaltantesItem}>
+                      • {foto}
+                    </Text>
+                  ))}
+                </View>
               )}
+
+              <View style={styles.actionButtons}>
+                {/* Botão Adicionar Fotos - SEMPRE visível */}
+                <TouchableOpacity
+                  style={[styles.continuarButton, { flex: 1 }]}
+                  onPress={() => {
+                    router.push({
+                      pathname: '/nova-obra',
+                      params: {
+                        editMode: 'true',
+                        obraData: JSON.stringify(obra)
+                      }
+                    });
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="camera" size={20} color="#fff" />
+                  <Text style={styles.continuarButtonText}>Adicionar Fotos</Text>
+                </TouchableOpacity>
+
+                {/* Botão Finalizar Obra - Aparece para RASCUNHOS e OBRAS EM ABERTO */}
+                {/* (já estamos dentro do bloco onde status !== 'finalizada') */}
+                <TouchableOpacity
+                    style={[
+                      styles.finalizarButton,
+                      { flex: 1 },
+                      (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
+                    ]}
+                    onPress={handleFinalizarObra}
+                    activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
+                    disabled={!podeFinalizar || isFinalizando}
+                  >
+                    {isFinalizando ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
+                          size={20}
+                          color="#fff"
+                        />
+                        <Text style={styles.finalizarButtonText}>
+                          {podeFinalizar ? '📤 Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+              </View>
             </View>
           );
         })()}
@@ -1054,9 +1096,25 @@ export default function ObraDetalhe() {
             if (section.key === 'doc_apr') {
               return true;
             }
-            // Transformador
+            // Transformador - Filtrar por status (Instalado/Retirado)
             if (isServicoTransformador && section.key.startsWith('fotos_transformador_')) {
-              return true;
+              // Fotos comuns (independente do status)
+              if (['fotos_transformador_laudo', 'fotos_transformador_tape', 'fotos_transformador_instalado'].includes(section.key)) {
+                return true;
+              }
+              // Fotos específicas do status Instalado
+              if (obra.transformador_status === 'Instalado') {
+                if (section.key.includes('_instalado')) {
+                  return true;
+                }
+              }
+              // Fotos específicas do status Retirado
+              if (obra.transformador_status === 'Retirado') {
+                if (section.key.includes('_retirado')) {
+                  return true;
+                }
+              }
+              return false;
             }
             // Laudo Transformador - Aparece quando Transformador
             if (isServicoTransformador && section.key === 'doc_laudo_transformador_servico') {
@@ -1076,6 +1134,14 @@ export default function ObraDetalhe() {
             }
             // Documentação - Todos os docs aparecem no book Documentação
             if (isServicoDocumentacao && section.key.startsWith('doc_')) {
+              // Evitar duplicação: quando Transformador ou Medidor, não mostrar versões genéricas
+              // porque já estão aparecendo como doc_laudo_transformador_servico e doc_cadastro_medidor_servico
+              if (isServicoTransformador && section.key === 'doc_laudo_transformador') {
+                return false; // Já aparece como doc_laudo_transformador_servico
+              }
+              if (isServicoMedidor && section.key === 'doc_cadastro_medidor') {
+                return false; // Já aparece como doc_cadastro_medidor_servico
+              }
               return true;
             }
             // Altimetria
@@ -1104,31 +1170,8 @@ export default function ObraDetalhe() {
             );
           }
 
-          // Card de resumo de fotos faltantes
-          const missingPhotos = relevantSections.filter(section => {
-            const photos = getPhotosForSection(section.key);
-            return photos.length === 0;
-          });
-
-          // Não há mais documentos obrigatórios fixos
-          const missingDocs: string[] = [];
-
-          const totalFaltando = missingPhotos.length + missingDocs.length;
-
           return (
             <>
-              {totalFaltando > 0 && (
-                <View style={styles.missingPhotosCard}>
-                  <Text style={styles.missingPhotosTitle}>⚠️ Faltando ({totalFaltando}):</Text>
-                  {missingDocs.map((doc, index) => (
-                    <Text key={`doc-${index}`} style={styles.missingPhotoItem}>• {doc}</Text>
-                  ))}
-                  {missingPhotos.map(section => (
-                    <Text key={section.key} style={styles.missingPhotoItem}>• {section.label}</Text>
-                  ))}
-                </View>
-              )}
-
               {relevantSections.map((section) => {
             const photos = getPhotosForSection(section.key);
 
@@ -1137,7 +1180,6 @@ export default function ObraDetalhe() {
               <View key={section.key} style={styles.infoCard}>
                 <Text style={styles.photoSectionTitle}>
                   {section.label} ({photos.length})
-                  {photos.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️ Faltando</Text>}
                 </Text>
                 {photos.length > 0 ? (
                   <View style={styles.photoGrid}>
@@ -1148,7 +1190,7 @@ export default function ObraDetalhe() {
                       return (
                         <TouchableOpacity
                           key={`${section.key}-${index}`}
-                          onPress={() => openPhotoModal(foto, section.key, index)}
+                          onPress={() => openPhotoModal(foto, section.key)}
                           activeOpacity={0.8}
                         >
                           <Image
@@ -1389,36 +1431,10 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 12,
   },
-  missingPhotoIndicator: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#ff6f00',
-    fontStyle: 'italic',
-  },
   noPhotosHint: {
     fontSize: 14,
     color: '#999',
     fontStyle: 'italic',
-    marginTop: 4,
-  },
-  missingPhotosCard: {
-    backgroundColor: '#fff8e1',
-    borderLeftWidth: 4,
-    borderLeftColor: '#ff6f00',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-  },
-  missingPhotosTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#ff6f00',
-    marginBottom: 8,
-  },
-  missingPhotoItem: {
-    fontSize: 14,
-    color: '#4a4a4a',
-    marginLeft: 4,
     marginTop: 4,
   },
   photoGrid: {
@@ -1478,6 +1494,26 @@ const styles = StyleSheet.create({
   emptyBackButtonText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  fotosFaltantesContainer: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  fotosFaltantesTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#856404',
+    marginBottom: 8,
+  },
+  fotosFaltantesItem: {
+    fontSize: 14,
+    color: '#856404',
+    marginLeft: 8,
+    marginBottom: 4,
   },
   actionButtons: {
     flexDirection: 'row',

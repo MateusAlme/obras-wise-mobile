@@ -42,6 +42,7 @@ export interface PhotoMetadata {
   timestamp: string;
   uploaded: boolean;
   uploadUrl?: string;
+  supabaseUrl?: string; // URL pública após upload para o Supabase
   retries: number;
   lastRetryAt?: string;
 }
@@ -249,7 +250,56 @@ export const getPhotosByObra = async (obraId: string): Promise<PhotoMetadata[]> 
 };
 
 /**
- * Marca uma foto como uploaded
+ * Obtém fotos de uma obra específica, incluindo possíveis IDs antigos
+ * Útil quando o obraId foi atualizado mas os IDs das fotos ainda contêm o obraId antigo
+ */
+export const getPhotosByObraWithFallback = async (
+  obraId: string,
+  photoIdsInObra?: string[]
+): Promise<PhotoMetadata[]> => {
+  const allMetadata = await getAllPhotoMetadata();
+
+  // Primeiro, buscar pelo obraId direto
+  let photos = allMetadata.filter(m => m.obraId === obraId);
+
+  // Se não encontrou fotos e temos IDs na obra, tentar extrair obraIds dos IDs das fotos
+  if (photos.length === 0 && photoIdsInObra && photoIdsInObra.length > 0) {
+    // Extrair possíveis obraIds dos IDs das fotos
+    const possibleObraIds = new Set<string>();
+
+    for (const photoId of photoIdsInObra) {
+      // Formato: obraId_tipo_index_timestamp
+      // Tentar extrair o obraId do início do ID
+      const match = photoId.match(/^(.+?)_(antes|durante|depois|abertura|fechamento|ditais_|aterramento_|transformador_|medidor_|checklist_|altimetria_|vazamento_|doc_)/);
+      if (match && match[1]) {
+        possibleObraIds.add(match[1]);
+      }
+    }
+
+    // Buscar fotos por qualquer um dos possíveis obraIds
+    if (possibleObraIds.size > 0) {
+      console.log(`🔍 [getPhotosByObraWithFallback] Buscando por possíveis obraIds: ${Array.from(possibleObraIds).join(', ')}`);
+      photos = allMetadata.filter(m => possibleObraIds.has(m.obraId));
+
+      if (photos.length > 0) {
+        console.log(`✅ [getPhotosByObraWithFallback] Encontrou ${photos.length} foto(s) com obraIds alternativos`);
+      }
+    }
+  }
+
+  return photos;
+};
+
+/**
+ * Obtém metadatas de fotos a partir dos IDs
+ */
+export const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoMetadata[]> => {
+  const allMetadata = await getAllPhotoMetadata();
+  return allMetadata.filter(p => photoIds.includes(p.id));
+};
+
+/**
+ * Marca uma foto como uploaded e salva a URL do Supabase
  */
 export const markPhotoAsUploaded = async (photoId: string, uploadUrl: string): Promise<void> => {
   try {
@@ -259,6 +309,7 @@ export const markPhotoAsUploaded = async (photoId: string, uploadUrl: string): P
     if (photo) {
       photo.uploaded = true;
       photo.uploadUrl = uploadUrl;
+      photo.supabaseUrl = uploadUrl; // ✅ Salvar em ambos os campos para compatibilidade
       await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(allMetadata));
     }
   } catch (error) {
@@ -270,6 +321,7 @@ export const markPhotoAsUploaded = async (photoId: string, uploadUrl: string): P
 /**
  * Atualiza o obraId de todas as fotos associadas a uma obra
  * Útil quando uma obra offline é sincronizada e recebe um novo ID do servidor
+ * Também atualiza fotos cujo ID começa com o oldObraId (para cobrir casos de IDs compostos)
  */
 export const updatePhotosObraId = async (oldObraId: string, newObraId: string): Promise<number> => {
   try {
@@ -277,7 +329,14 @@ export const updatePhotosObraId = async (oldObraId: string, newObraId: string): 
     let updatedCount = 0;
 
     const updatedMetadata = allMetadata.map(photo => {
+      // Atualizar se obraId bate exatamente
       if (photo.obraId === oldObraId) {
+        updatedCount++;
+        return { ...photo, obraId: newObraId };
+      }
+      // ✅ Também atualizar se o ID da foto começa com o oldObraId
+      // Isso cobre casos onde fotos foram salvas com IDs compostos
+      if (photo.id.startsWith(oldObraId + '_')) {
         updatedCount++;
         return { ...photo, obraId: newObraId };
       }
@@ -313,6 +372,8 @@ export const incrementPhotoRetries = async (photoId: string): Promise<void> => {
 
 /**
  * Deleta backup de uma foto após upload bem-sucedido
+ * IMPORTANTE: Mantém os metadados para que a URL do Supabase fique disponível
+ * Os metadados só são removidos quando a obra é completamente sincronizada
  */
 export const deletePhotoBackup = async (photoId: string): Promise<void> => {
   try {
@@ -320,20 +381,28 @@ export const deletePhotoBackup = async (photoId: string): Promise<void> => {
     const photo = allMetadata.find(m => m.id === photoId);
 
     if (photo) {
-      // Deletar arquivos físicos
-      const backupInfo = await FileSystem.getInfoAsync(photo.backupPath);
-      if (backupInfo.exists) {
-        await FileSystem.deleteAsync(photo.backupPath);
+      // Deletar arquivos físicos (mas MANTER metadados com URL do Supabase)
+      try {
+        const backupInfo = await FileSystem.getInfoAsync(photo.backupPath);
+        if (backupInfo.exists) {
+          await FileSystem.deleteAsync(photo.backupPath);
+        }
+      } catch (e) {
+        // Ignorar erros ao deletar arquivos
       }
 
-      const compressedInfo = await FileSystem.getInfoAsync(photo.compressedPath);
-      if (compressedInfo.exists) {
-        await FileSystem.deleteAsync(photo.compressedPath);
+      try {
+        const compressedInfo = await FileSystem.getInfoAsync(photo.compressedPath);
+        if (compressedInfo.exists) {
+          await FileSystem.deleteAsync(photo.compressedPath);
+        }
+      } catch (e) {
+        // Ignorar erros ao deletar arquivos
       }
 
-      // Remover metadata
-      const updatedMetadata = allMetadata.filter(m => m.id !== photoId);
-      await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(updatedMetadata));
+      // ✅ NÃO remover metadados - eles contêm a URL do Supabase
+      // Os metadados serão limpos posteriormente pela função cleanupUploadedPhotos
+      console.log(`✅ [deletePhotoBackup] Arquivos físicos removidos, metadados mantidos para: ${photoId}`);
     }
   } catch (error) {
     console.error('Erro ao deletar backup da foto:', error);

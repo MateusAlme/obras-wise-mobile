@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
-import { Text, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -12,14 +13,19 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: true,
         tabBarActiveTintColor: '#dc3545',
-        tabBarInactiveTintColor: '#999',
+        tabBarInactiveTintColor: '#6b7280',
         tabBarStyle: {
           backgroundColor: '#fff',
           borderTopWidth: 1,
-          borderTopColor: '#e0e0e0',
+          borderTopColor: '#e5e7eb',
           paddingBottom: tabBarBottom,
           paddingTop: 8,
           height: tabBarHeight,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 4,
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -33,8 +39,12 @@ export default function TabLayout() {
         options={{
           title: 'Dashboard',
           tabBarLabel: 'Início',
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="home" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -43,8 +53,12 @@ export default function TabLayout() {
         options={{
           title: 'Obras',
           tabBarLabel: 'Obras',
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="construction" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'construct' : 'construct-outline'}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
@@ -53,28 +67,15 @@ export default function TabLayout() {
         options={{
           title: 'Perfil',
           tabBarLabel: 'Perfil',
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name="person" color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
     </Tabs>
-  );
-}
-
-function TabBarIcon({ name, color }: { name: string; color: string }) {
-  // Simple icon replacement - you can use @expo/vector-icons later
-  const icons: { [key: string]: string } = {
-    home: '🏠',
-    construction: '🏗️',
-    person: '👤',
-  };
-
-  const iconText = icons[name] || '📱';
-
-  return (
-    <Text style={{ fontSize: 22, marginTop: 2, color }}>
-      {iconText}
-    </Text>
   );
 }

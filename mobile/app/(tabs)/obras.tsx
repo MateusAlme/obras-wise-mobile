@@ -4,9 +4,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, saveObraLocal, syncAllLocalObras } from '../../lib/offline-sync';
+import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras } from '../../lib/offline-sync';
 import type { PendingObra, LocalObra } from '../../lib/offline-sync';
-import { fixObraOrigemStatus } from '../../lib/fix-origem-status';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const LOCAL_OBRAS_KEY = '@obras_local';
@@ -26,27 +25,27 @@ interface Obra {
   equipe: string;
   tipo_servico: string;
   created_at: string;
-  status?: 'em_aberto' | 'finalizada';
+  status?: 'em_aberto' | 'finalizada' | 'rascunho';
   finalizada_em?: string | null;
-  fotos_antes?: FotoInfo[];
-  fotos_durante?: FotoInfo[];
-  fotos_depois?: FotoInfo[];
-  fotos_abertura?: FotoInfo[];
-  fotos_fechamento?: FotoInfo[];
-  fotos_ditais_abertura?: FotoInfo[];
-  fotos_ditais_impedir?: FotoInfo[];
-  fotos_ditais_testar?: FotoInfo[];
-  fotos_ditais_aterrar?: FotoInfo[];
-  fotos_ditais_sinalizar?: FotoInfo[];
-  fotos_aterramento_vala_aberta?: FotoInfo[];
-  fotos_aterramento_hastes?: FotoInfo[];
-  fotos_aterramento_vala_fechada?: FotoInfo[];
-  fotos_aterramento_medicao?: FotoInfo[];
+  synced?: boolean;
+  origem?: 'online' | 'offline';
+  fotos_antes?: string[] | FotoInfo[];
+  fotos_durante?: string[] | FotoInfo[];
+  fotos_depois?: string[] | FotoInfo[];
+  fotos_abertura?: string[] | FotoInfo[];
+  fotos_fechamento?: string[] | FotoInfo[];
+  fotos_ditais_abertura?: string[] | FotoInfo[];
+  fotos_ditais_impedir?: string[] | FotoInfo[];
+  fotos_ditais_testar?: string[] | FotoInfo[];
+  fotos_ditais_aterrar?: string[] | FotoInfo[];
+  fotos_ditais_sinalizar?: string[] | FotoInfo[];
+  fotos_aterramento_vala_aberta?: string[] | FotoInfo[];
+  fotos_aterramento_hastes?: string[] | FotoInfo[];
+  fotos_aterramento_vala_fechada?: string[] | FotoInfo[];
+  fotos_aterramento_medicao?: string[] | FotoInfo[];
 }
 
-type ObraListItem =
-  | (Obra & { origem: 'online'; sync_status?: undefined })
-  | ((PendingObra & { origem: 'offline' }) & Obra);
+type ObraListItem = (Obra & { origem: 'online' | 'offline'; sync_status?: string; error_message?: string });
 
 const HISTORY_CACHE_KEY = '@obras_history_cache';
 
@@ -58,7 +57,6 @@ export default function Obras() {
   const [refreshing, setRefreshing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
-  const [syncingLocal, setSyncingLocal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [equipeLogada, setEquipeLogada] = useState<string>('');
   const insets = useSafeAreaInsets();
@@ -142,175 +140,158 @@ export default function Obras() {
     };
   }, []);
 
-  const carregarObras = async () => {
+  /**
+   * Busca e sincroniza obras do Supabase para AsyncStorage (migração)
+   */
+  const migrateObrasDeSupabase = async (equipe: string) => {
+    const online = await checkInternetConnection();
+    if (!online) {
+      console.log('📴 Offline - pulando busca do Supabase');
+      return;
+    }
+
     try {
-      // Verificar se há equipe logada
-      const equipe = await AsyncStorage.getItem('@equipe_logada');
-      if (!equipe) {
-        console.log('Nenhuma equipe logada, redirecionando para login');
-        setLoading(false);
-        setRefreshing(false);
-        router.replace('/login');
+      // Buscar TODAS as obras para debug
+      const { data: todasObras } = await supabase
+        .from('obras')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      console.log(`📊 Total de obras no Supabase: ${todasObras?.length || 0}`);
+
+      if (todasObras && todasObras.length > 0) {
+        const equipesUnicas = [...new Set(todasObras.map(o => o.equipe))];
+        console.log(`👥 Equipes encontradas: ${equipesUnicas.join(', ')}`);
+      }
+
+      // Buscar obras da equipe logada
+      const { data, error } = await supabase
+        .from('obras')
+        .select('*')
+        .eq('equipe', equipe)
+        .order('created_at', { ascending: false });
+
+      console.log(`🎯 Obras da equipe "${equipe}": ${data?.length || 0}`);
+
+      if (error) {
+        console.error('❌ Erro ao buscar obras:', error);
         return;
       }
 
-      // OFFLINE-FIRST: Buscar do AsyncStorage primeiro
-      console.log('📱 Carregando obras do AsyncStorage...');
-      let localObras = await getLocalObras();
-
-      // Se AsyncStorage vazio, buscar do Supabase (migração)
-      if (localObras.length === 0) {
-        console.log('⚠️ AsyncStorage vazio - buscando do Supabase para migração inicial...');
-        console.log(`🔍 Equipe logada: "${equipe}"`);
-        const online = await checkInternetConnection();
-
-        if (online) {
-          // Buscar TODAS as obras primeiro para debug
-          const { data: todasObras, error: erroTodas } = await supabase
-            .from('obras')
-            .select('*')
-            .order('created_at', { ascending: false });
-
-          console.log(`📊 Total de obras no Supabase: ${todasObras?.length || 0}`);
-
-          if (todasObras && todasObras.length > 0) {
-            // Mostrar equipes únicas
-            const equipesUnicas = [...new Set(todasObras.map(o => o.equipe))];
-            console.log(`👥 Equipes encontradas: ${equipesUnicas.join(', ')}`);
-          }
-
-          // Buscar obras da equipe logada
-          const { data, error } = await supabase
-            .from('obras')
-            .select('*')
-            .eq('equipe', equipe)
-            .order('created_at', { ascending: false });
-
-          console.log(`🎯 Obras da equipe "${equipe}": ${data?.length || 0}`);
-
-          if (error) {
-            console.error('❌ Erro ao buscar obras:', error);
-          }
-
-          if (!error && data) {
-            console.log(`📥 Migrando ${data.length} obra(s) do Supabase para AsyncStorage...`);
-
-            // Salvar cada obra no AsyncStorage
-            for (const obra of data) {
-              // Obras do Supabase já estão sincronizadas
-              const localObras = await getLocalObras();
-              const existingLocal = localObras.find(o => o.id === obra.id);
-
-              // Se já existe local, preservar dados locais (pode ter edições não sincronizadas)
-              if (existingLocal) {
-                console.log(`⚠️ Obra ${obra.id} já existe localmente - preservando versão local`);
-                continue;
-              }
-
-              // Salvar obra do Supabase como já sincronizada
-              const savedObra: LocalObra = {
-                ...obra,
-                id: obra.id,
-                synced: true,  // ✅ Já está no banco
-                locallyModified: false,
-                serverId: obra.id,
-                origem: 'online', // ✅ CRÍTICO: Obra vem do Supabase
-                last_modified: obra.updated_at || obra.created_at,
-                created_at: obra.created_at,
-              } as LocalObra;
-
-              localObras.push(savedObra);
-              await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-              console.log(`✅ Obra ${obra.id} migrada e marcada como sincronizada`);
-            }
-
-            // Recarregar do AsyncStorage
-            localObras = await getLocalObras();
-            console.log(`✅ Migração completa: ${localObras.length} obra(s)`);
-          } else {
-            console.log('⚠️ Nenhuma obra encontrada para esta equipe');
-          }
-        } else {
-          // Se offline e AsyncStorage vazio, não há obras
-          console.log('📴 Offline e AsyncStorage vazio - nenhuma obra disponível');
-        }
+      if (!data || data.length === 0) {
+        console.log('⚠️ Nenhuma obra encontrada para esta equipe');
+        return;
       }
 
-      // ✅ AUTO-CORREÇÃO: Corrigir obras sincronizadas que faltam campos
+      console.log(`📥 Migrando ${data.length} obra(s) do Supabase para AsyncStorage...`);
+
+      let obrasLocais = await getLocalObras();
+      for (const obra of data) {
+        if (obrasLocais.find(o => o.id === obra.id)) {
+          console.log(`⚠️ Obra ${obra.id} já existe localmente - preservando versão local`);
+          continue;
+        }
+
+        const savedObra: LocalObra = {
+          ...obra,
+          id: obra.id,
+          synced: true,
+          locallyModified: false,
+          serverId: obra.id,
+          origem: 'online',
+          last_modified: obra.updated_at || obra.created_at,
+          created_at: obra.created_at,
+        } as LocalObra;
+
+        obrasLocais.push(savedObra);
+        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasLocais));
+      }
+
+      console.log(`✅ Migração completa: ${obrasLocais.length} obra(s)`);
+    } catch (error) {
+      console.error('Erro ao migrar obras do Supabase:', error);
+    }
+  };
+
+  /**
+   * Corrige automaticamente obras sincronizadas com campos faltando
+   */
+  const autoFixObraFields = async () => {
+    try {
+      let localObras = await getLocalObras();
       console.log(`📊 Debug: Total de obras locais: ${localObras.length}`);
-      localObras.forEach((obra, index) => {
-        console.log(`  Obra ${index + 1}: ${obra.obra} - synced:${obra.synced}, origem:${obra.origem}, status:${obra.status}`);
-      });
 
       const obrasComCamposFaltando = localObras.filter(
         obra => obra.synced && (!obra.origem || !obra.status)
       );
 
-      console.log(`🔍 Obras que precisam correção: ${obrasComCamposFaltando.length}`);
+      if (obrasComCamposFaltando.length === 0) return;
 
-      if (obrasComCamposFaltando.length > 0) {
-        console.log(`🔧 Auto-correção: ${obrasComCamposFaltando.length} obra(s) sincronizada(s) sem origem/status`);
-        obrasComCamposFaltando.forEach(obra => {
-          console.log(`  - Obra ${obra.obra}: origem=${obra.origem}, status=${obra.status}`);
-        });
+      console.log(`🔧 Auto-correção: ${obrasComCamposFaltando.length} obra(s) precisa(m) correção`);
 
-        try {
-          // Importar função de correção dinamicamente
-          const { fixObraOrigemStatus } = await import('../../lib/fix-origem-status');
+      const { fixObraOrigemStatus } = await import('../../lib/fix-origem-status');
+      const resultado = await fixObraOrigemStatus();
 
-          // Executar correção silenciosamente
-          const resultado = await fixObraOrigemStatus();
+      console.log(`📊 Resultado: total=${resultado.total}, corrigidas=${resultado.corrigidas}, erros=${resultado.erros}`);
 
-          console.log(`📊 Resultado da correção: total=${resultado.total}, corrigidas=${resultado.corrigidas}, erros=${resultado.erros}`);
+      if (resultado.corrigidas > 0) {
+        console.log(`✅ ${resultado.corrigidas} obra(s) corrigida(s) automaticamente`);
+      }
+    } catch (error) {
+      console.error('Erro na auto-correção:', error);
+    }
+  };
 
-          if (resultado.corrigidas > 0) {
-            console.log(`✅ Auto-correção: ${resultado.corrigidas} obra(s) corrigida(s) automaticamente`);
-            // Recarregar obras após correção
-            localObras = await getLocalObras();
-          }
-        } catch (error) {
-          console.error('❌ Erro na auto-correção:', error);
-        }
+  /**
+   * Ordena obras por data/timestamp
+   */
+  const sortObrasByDate = (obras: LocalObra[]): LocalObra[] => {
+    return [...obras].sort((a, b) => {
+      const getTimestamp = (obra: LocalObra) => {
+        if (obra.created_at) return new Date(obra.created_at).getTime();
+        if (obra.data) return new Date(obra.data).getTime();
+        return 0;
+      };
+      return getTimestamp(b) - getTimestamp(a);
+    });
+  };
+
+  /**
+   * Carrega todas as obras para a equipe logada
+   */
+  const carregarObras = async () => {
+    try {
+      const equipe = await AsyncStorage.getItem('@equipe_logada');
+      if (!equipe) {
+        console.log('Nenhuma equipe logada, redirecionando para login');
+        router.replace('/login');
+        return;
       }
 
-      // Filtrar apenas obras da equipe logada
-      const obrasEquipe = localObras.filter(obra => obra.equipe === equipe);
+      console.log('📱 Carregando obras do AsyncStorage...');
+      let localObras = await getLocalObras();
 
-      // Ordenar por timestamp de criação (mais recente primeiro)
-      obrasEquipe.sort((a, b) => {
-        // Usar created_at como prioridade (timestamp ISO)
-        // Fallback para data da obra se created_at não existir
-        const getTimestamp = (obra: LocalObra) => {
-          if (obra.created_at) {
-            return new Date(obra.created_at).getTime();
-          }
-          if (obra.data) {
-            return new Date(obra.data).getTime();
-          }
-          return 0;
-        };
+      // Se vazio, tentar migrar do Supabase
+      if (localObras.length === 0) {
+        console.log(`⚠️ AsyncStorage vazio - migrando de Supabase para "${equipe}"...`);
+        await migrateObrasDeSupabase(equipe);
+        localObras = await getLocalObras();
+      }
 
-        const timestampA = getTimestamp(a);
-        const timestampB = getTimestamp(b);
+      // Auto-corrigir campos faltando
+      await autoFixObraFields();
 
-        return timestampB - timestampA; // Decrescente (mais recente primeiro)
-      });
-
-      console.log('🔍 ORDENAÇÃO - Primeiras 3 obras:');
-      obrasEquipe.slice(0, 3).forEach((obra, index) => {
-        console.log(`  ${index + 1}. Obra ${obra.obra} - Data: ${obra.data} - Created: ${obra.created_at || 'N/A'}`);
-      });
-
-      // Converter para formato compatível
+      // Filtrar, ordenar e formatar
+      const obrasEquipe = sortObrasByDate(localObras.filter(obra => obra.equipe === equipe));
       const obrasFormatadas = obrasEquipe.map(obra => ({
         ...obra,
         status: obra.status || 'em_aberto',
       })) as Obra[];
 
       setOnlineObras(obrasFormatadas);
-      console.log(`✅ ${obrasFormatadas.length} obra(s) carregadas (ordenadas por data)`);
+      console.log(`✅ ${obrasFormatadas.length} obra(s) carregadas`);
     } catch (err) {
-      console.error('Erro inesperado ao carregar obras:', err);
+      console.error('Erro ao carregar obras:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -338,39 +319,22 @@ export default function Obras() {
     }
   };
 
+  const reloadAllObras = async () => {
+    await Promise.all([loadPendingObras(), loadCachedObras()]);
+    // ✅ CORREÇÃO: Sempre carregar obras locais, independente do estado online/offline
+    // Rascunhos e obras offline devem aparecer imediatamente
+    await carregarObras();
+  };
+
   useFocusEffect(
     useCallback(() => {
-      loadPendingObras();
-      loadCachedObras();
-
-      if (isOnline) {
-        carregarObras();
-      }
+      reloadAllObras();
     }, [isOnline])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
-    carregarObras();
-  };
-
-  const limparCacheERecarregar = async () => {
-    try {
-      setLoading(true);
-      console.log('🔄 Atualizando lista de obras...');
-
-      // OFFLINE-FIRST: Apenas recarregar do AsyncStorage
-      // NÃO deletar nada, NÃO buscar do Supabase
-      // Simplesmente atualizar a visualização dos dados locais
-      await carregarObras();
-
-      console.log('✅ Lista atualizada com sucesso');
-    } catch (error) {
-      console.error('❌ Erro ao atualizar lista:', error);
-      Alert.alert('Erro', 'Não foi possível atualizar a lista de obras');
-    } finally {
-      setLoading(false);
-    }
+    reloadAllObras().finally(() => setRefreshing(false));
   };
 
   const formatarData = (data: string) => {
@@ -426,6 +390,75 @@ export default function Obras() {
     );
   };
 
+  // ========== HELPERS PARA CONSOLIDAR CÓDIGO REPETITIVO ==========
+
+  /**
+   * Helper para mostrar alertas de sincronização com resultado comum
+   */
+  const showSyncAlert = (result: { success: number; failed: number }, context: 'pending' | 'local') => {
+    if (result.success === 0 && result.failed === 0) {
+      const message = context === 'pending'
+        ? 'Conecte-se à internet para sincronizar as obras pendentes.'
+        : 'Não foi possível conectar ao servidor.';
+      Alert.alert('Sem Conexão', message);
+    } else if (result.failed > 0) {
+      if (context === 'pending') {
+        Alert.alert(
+          'Atenção',
+          `${result.failed} obra(s) ainda aguardam sincronização. Verifique a conexão e tente novamente.`
+        );
+      } else {
+        Alert.alert(
+          'Sincronização Parcial',
+          `✅ ${result.success} obra(s) sincronizada(s)\n❌ ${result.failed} falha(s)\n\nTente novamente para enviar as obras restantes.`
+        );
+      }
+    } else {
+      const message = context === 'pending'
+        ? `${result.success} obra(s) sincronizadas.`
+        : `${result.success} obra(s) enviada(s) para a nuvem com sucesso!`;
+      const title = context === 'pending' ? 'Pronto!' : '✅ Sincronização Completa';
+      Alert.alert(title, message);
+    }
+  };
+
+  /**
+   * Helper para mostrar alertas de erro
+   */
+  const showErrorAlert = (message: string, context?: string) => {
+    Alert.alert('Erro', message);
+    if (context) {
+      console.error(`❌ ${context}:`, message);
+    }
+  };
+
+  /**
+   * Helper para executar operação com loading state
+   */
+  const executeWithLoading = async <T,>(
+    operation: () => Promise<T>,
+    setState: (value: boolean) => void,
+    onSuccess?: (result: T) => Promise<void>
+  ): Promise<T | null> => {
+    setState(true);
+    try {
+      const result = await operation();
+      if (onSuccess) {
+        await onSuccess(result);
+      }
+      return result;
+    } catch (error) {
+      console.error('Erro durante operação:', error);
+      return null;
+    } finally {
+      setState(false);
+    }
+  };
+
+  // ========== HANDLERS ==========
+
+  // ========== HANDLERS ==========
+
   const handleOpenObra = (obra: ObraListItem) => {
     try {
       const payload = encodeURIComponent(JSON.stringify(obra));
@@ -439,124 +472,38 @@ export default function Obras() {
   };
 
   const handleSyncPendingObras = async () => {
-    if (pendingObrasState.length === 0 || syncingPending) {
-      return;
-    }
+    if (pendingObrasState.length === 0 || syncingPending) return;
 
-    setSyncingPending(true);
-    try {
-      const result = await syncAllPendingObras();
-      await loadPendingObras();
-
-      if (result.success > 0) {
-        await carregarObras();
-      }
-
-      if (result.success === 0 && result.failed === 0) {
-        Alert.alert('Sem conexão', 'Conecte-se à internet para sincronizar as obras pendentes.');
-      } else if (result.failed > 0) {
-        Alert.alert('Atenção', `${result.failed} obra(s) ainda aguardam sincronização. Verifique a conexão e tente novamente.`);
-      } else {
-        Alert.alert('Pronto!', `${result.success} obra(s) sincronizadas.`);
-      }
-    } catch (error) {
-      console.error('Erro ao sincronizar pendências:', error);
-      Alert.alert('Erro', 'Não foi possível sincronizar agora. Tente novamente em instantes.');
-    } finally {
-      setSyncingPending(false);
-    }
-  };
-
-  const handleSyncLocalObras = async () => {
-    // Verificar conexão
-    const online = await checkInternetConnection();
-    if (!online) {
-      Alert.alert('Sem Conexão', 'Conecte-se à internet para sincronizar as obras.');
-      return;
-    }
-
-    // Verificar quantas obras não sincronizadas existem
-    const localObras = await getLocalObras();
-    const obrasNaoSincronizadas = localObras.filter(o => !o.synced || o.locallyModified);
-
-    if (obrasNaoSincronizadas.length === 0) {
-      Alert.alert('✅ Tudo Sincronizado', 'Todas as obras já estão sincronizadas com a nuvem.');
-      return;
-    }
-
-    // Confirmar com usuário
-    Alert.alert(
-      '☁️ Sincronizar com Nuvem',
-      `Deseja enviar ${obrasNaoSincronizadas.length} obra(s) para a nuvem?\n\nIsso pode consumir dados móveis.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sincronizar',
-          onPress: async () => {
-            setSyncingLocal(true);
-            try {
-              console.log(`🔄 Iniciando sincronização de ${obrasNaoSincronizadas.length} obra(s)...`);
-              const result = await syncAllLocalObras();
-
-              if (result.success > 0) {
-                // Recarregar lista após sync
-                await carregarObras();
-              }
-
-              if (result.success === 0 && result.failed === 0) {
-                Alert.alert('Sem Conexão', 'Não foi possível conectar ao servidor.');
-              } else if (result.failed > 0) {
-                Alert.alert(
-                  'Sincronização Parcial',
-                  `✅ ${result.success} obra(s) sincronizada(s)\n❌ ${result.failed} falha(s)\n\nTente novamente para enviar as obras restantes.`
-                );
-              } else {
-                Alert.alert(
-                  '✅ Sincronização Completa',
-                  `${result.success} obra(s) enviada(s) para a nuvem com sucesso!`
-                );
-              }
-            } catch (error) {
-              console.error('❌ Erro ao sincronizar obras locais:', error);
-              Alert.alert('Erro', 'Falha na sincronização. Tente novamente mais tarde.');
-            } finally {
-              setSyncingLocal(false);
-            }
-          }
-        }
-      ]
+    await executeWithLoading(
+      async () => {
+        const result = await syncAllPendingObras();
+        await loadPendingObras();
+        if (result.success > 0) await carregarObras();
+        showSyncAlert(result, 'pending');
+        return result;
+      },
+      setSyncingPending
     );
   };
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Sair',
-      'Deseja sair do aplicativo?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
+    Alert.alert('Sair', 'Deseja sair do aplicativo?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        onPress: async () => {
+          try {
+            await AsyncStorage.removeItem('@equipe_logada');
+            await AsyncStorage.removeItem('@equipe_id');
+            await AsyncStorage.removeItem('@login_timestamp');
+            router.replace('/login');
+          } catch (error) {
+            showErrorAlert('Não foi possível sair. Tente novamente.', 'handleLogout');
+          }
         },
-        {
-          text: 'Sair',
-          onPress: async () => {
-            try {
-              // Limpar dados de sessão
-              await AsyncStorage.removeItem('@equipe_logada');
-              await AsyncStorage.removeItem('@equipe_id');
-              await AsyncStorage.removeItem('@login_timestamp');
-
-              // Redirecionar para login
-              router.replace('/login');
-            } catch (error) {
-              console.error('Erro ao fazer logout:', error);
-              Alert.alert('Erro', 'Não foi possível sair. Tente novamente.');
-            }
-          },
-          style: 'destructive',
-        },
-      ]
-    );
+        style: 'destructive',
+      },
+    ]);
   };
 
   return (
@@ -595,32 +542,14 @@ export default function Obras() {
           </View>
         </View>
 
-        {/* Barra de Ações */}
-        <View style={styles.actionsBar}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push('/nova-obra')}
-          >
-            <Text style={styles.actionButtonIcon}>➕</Text>
-            <Text style={styles.actionButtonLabel}>Nova Obra</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              (!isOnline || syncingLocal) && styles.actionButtonDisabled
-            ]}
-            onPress={handleSyncLocalObras}
-            disabled={!isOnline || syncingLocal}
-          >
-            {syncingLocal ? (
-              <ActivityIndicator size="small" color="#3b82f6" />
-            ) : (
-              <Text style={styles.actionButtonIcon}>☁️</Text>
-            )}
-            <Text style={styles.actionButtonLabel}>Sincronizar</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Botão Nova Obra */}
+        <TouchableOpacity
+          style={styles.novaObraButton}
+          onPress={() => router.push('/nova-obra')}
+        >
+          <Text style={styles.novaObraButtonIcon}>➕</Text>
+          <Text style={styles.novaObraButtonLabel}>Nova Obra</Text>
+        </TouchableOpacity>
 
         <View style={styles.searchContainer}>
           <TextInput
@@ -849,42 +778,29 @@ const styles = StyleSheet.create({
   headerTop: {
     marginBottom: 4,
   },
-  actionsBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  actionButton: {
-    flex: 1,
-    backgroundColor: '#fff',
+  novaObraButton: {
+    backgroundColor: '#dc3545',
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    minHeight: 70,
+    marginBottom: 16,
+    shadowColor: '#dc3545',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  actionButtonDisabled: {
-    opacity: 0.5,
+  novaObraButtonIcon: {
+    fontSize: 20,
+    marginRight: 8,
   },
-  actionButtonIcon: {
-    fontSize: 24,
-    marginBottom: 4,
-  },
-  actionButtonLabel: {
-    fontSize: 11,
-    color: '#374151',
-    fontWeight: '600',
-    textAlign: 'center',
+  novaObraButtonLabel: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '700',
   },
   headerButtons: {
     flexDirection: 'row',

@@ -12,8 +12,8 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 
 const UPLOAD_QUEUE_KEY = '@photo_upload_queue';
-const MAX_RETRIES = 5;
-const RETRY_DELAYS = [2000, 5000, 10000, 20000, 30000]; // Exponential backoff
+const MAX_RETRIES = 3; // Reduzido de 5 para 3
+const RETRY_DELAYS = [1000, 3000, 5000]; // Reduzido: 1s, 3s, 5s (total 9s)
 
 export interface UploadQueueItem {
   photoId: string;
@@ -132,7 +132,8 @@ const uploadPhotoToSupabase = async (
     // Verificar se foto existe
     const exists = await photoExists(photoMetadata.id);
     if (!exists) {
-      return { success: false, error: 'Arquivo de foto não encontrado' };
+      console.error(`❌ Foto ${photoMetadata.id} não existe no photo-backup`);
+      return { success: false, error: 'Foto não encontrada no photo-backup', skipRetry: true };
     }
 
     // Usar foto comprimida para upload
@@ -148,13 +149,20 @@ const uploadPhotoToSupabase = async (
     // Verificar se arquivo existe
     const fileInfo = await FileSystem.getInfoAsync(photoUri);
     if (!fileInfo.exists) {
-      return { success: false, error: 'Arquivo não encontrado' };
+      console.error(`❌ Arquivo físico não encontrado: ${photoUri}`);
+      console.error(`   Foto ID: ${photoMetadata.id}`);
+      console.error(`   Tipo: ${photoMetadata.type}`);
+      return { success: false, error: 'Arquivo físico não encontrado', skipRetry: true };
     }
+
+    console.log(`📤 Lendo arquivo (${Math.round((fileInfo.size || 0) / 1024)}KB):`, photoUri);
 
     // Ler arquivo como base64 para upload
     const base64 = await FileSystem.readAsStringAsync(photoUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
+
+    console.log(`📤 Base64 lido, tamanho: ${Math.round(base64.length / 1024)}KB`);
 
     // Decodificar base64 para bytes sem usar atob (não disponível em RN)
     const base64ToBytes = (base64String: string): Uint8Array => {
@@ -185,6 +193,8 @@ const uploadPhotoToSupabase = async (
 
     const fileBytes = base64ToBytes(base64);
 
+    console.log(`📤 Enviando para Supabase: ${filePath}`);
+
     // Upload do arquivo
     const { data, error } = await supabase.storage
       .from('obra-photos')
@@ -194,9 +204,15 @@ const uploadPhotoToSupabase = async (
       });
 
     if (error) {
-      console.error('Erro no upload:', error);
+      console.error(`❌ Erro no upload para ${filePath}:`, {
+        message: error.message,
+        statusCode: (error as any).statusCode,
+        details: (error as any).details
+      });
       return { success: false, error: `Upload falhou: ${error.message}` };
     }
+
+    console.log(`✅ Upload bem-sucedido: ${filePath}`);
 
     // Obter URL pública
     const supabaseUrl = 'https://hiuagpzaelcocyxutgdt.supabase.co';
@@ -226,6 +242,11 @@ const uploadPhotoWithRetry = async (
     // Tentar upload
     const result = await uploadPhotoToSupabase(photoMetadata);
 
+    // Log detalhado do resultado
+    if (!result.success) {
+      console.error(`❌ Upload falhou (tentativa ${retries + 1}/${MAX_RETRIES + 1}):`, result.error);
+    }
+
     if (result.success && result.url) {
       // Sucesso!
       await markPhotoAsUploaded(photoMetadata.id, result.url);
@@ -239,6 +260,26 @@ const uploadPhotoWithRetry = async (
         photoId: photoMetadata.id,
         success: true,
         url: result.url
+      };
+    }
+
+    // ⚠️ Se erro não deve fazer retry (arquivo não encontrado), parar imediatamente
+    if ((result as any).skipRetry) {
+      console.warn(`⚠️ Pulando retry para foto ${photoMetadata.id}: ${result.error}`);
+      await updateQueueItemStatus(
+        photoMetadata.id,
+        'failed',
+        `Arquivo perdido: ${result.error}`
+      );
+
+      // Marcar como "uploaded" com URL vazia para evitar sync loop
+      await markPhotoAsUploaded(photoMetadata.id, '');
+      await removeFromQueue(photoMetadata.id);
+
+      return {
+        photoId: photoMetadata.id,
+        success: false,
+        error: result.error
       };
     }
 

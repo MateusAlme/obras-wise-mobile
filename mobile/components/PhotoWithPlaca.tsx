@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
 import { latLongToUTM, formatUTM } from '../lib/geocoding';
 
@@ -31,14 +31,33 @@ export function PhotoWithPlaca({
   dateTime,
   style,
 }: PhotoWithPlacaProps) {
+  const [imageError, setImageError] = useState(false);
 
   // ✅ VALIDAÇÃO: Verificar se URI é válido
-  if (!uri || !uri.startsWith('file://')) {
+  // Aceitar tanto file:// (local) quanto https:// (Supabase)
+  const isValidUri = uri && (uri.startsWith('file://') || uri.startsWith('http://') || uri.startsWith('https://'));
+
+  if (!isValidUri) {
     console.warn('⚠️ PhotoWithPlaca: URI inválido ou vazio:', uri);
     return (
       <View style={[styles.container, style, styles.errorContainer]}>
         <Text style={styles.errorText}>❌ Foto não disponível</Text>
         <Text style={styles.errorSubtext}>Arquivo pode ter sido removido</Text>
+      </View>
+    );
+  }
+
+  // Se houve erro ao carregar a imagem, mostrar placeholder
+  if (imageError) {
+    console.warn('⚠️ PhotoWithPlaca: Erro ao carregar imagem:', uri);
+    return (
+      <View style={[styles.container, style, styles.errorContainer]}>
+        <Text style={styles.errorText}>❌ Foto não disponível</Text>
+        <Text style={styles.errorSubtext}>
+          {uri.includes('temp_')
+            ? 'Foto não foi sincronizada antes de ser removida'
+            : 'Arquivo pode ter sido removido do dispositivo'}
+        </Text>
       </View>
     );
   }
@@ -69,6 +88,7 @@ export function PhotoWithPlaca({
         resizeMode="cover"
         onError={(error) => {
           console.error('❌ Erro ao carregar imagem:', uri, error.nativeEvent);
+          setImageError(true); // Marcar erro para exibir placeholder
         }}
       />
 

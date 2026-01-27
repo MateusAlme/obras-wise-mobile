@@ -691,6 +691,7 @@ export const saveObraOffline = async (
       id: obraId,
       sync_status: 'pending',
       photos_uploaded: false,
+      created_at: obra.created_at || new Date().toISOString(),
       fotos_antes: photoIds.antes ?? [],
       fotos_durante: photoIds.durante ?? [],
       fotos_depois: photoIds.depois ?? [],
@@ -1010,7 +1011,99 @@ export const updatePendingObraStatus = async (
  */
 const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoMetadata[]> => {
   const allMetadata = await getAllPhotoMetadata();  // Busca TODAS, não só pendentes
-  return allMetadata.filter(p => photoIds.includes(p.id));
+  const found = allMetadata.filter(p => photoIds.includes(p.id));
+
+  // Log para debug se não encontrou todas as fotos
+  if (photoIds.length > 0 && found.length !== photoIds.length) {
+    console.warn(`⚠️ [getPhotoMetadatasByIds] Buscando ${photoIds.length} IDs, encontrou ${found.length}`);
+    const foundIds = found.map(p => p.id);
+    const notFound = photoIds.filter(id => !foundIds.includes(id));
+    if (notFound.length > 0) {
+      console.warn(`   IDs não encontrados: ${JSON.stringify(notFound)}`);
+    }
+  }
+
+  return found;
+};
+
+/**
+ * Obtém metadatas com fallback por tipo
+ * Primeiro tenta pelos IDs, se não encontrar, busca por obraId e tipo
+ * Se ainda não encontrar, tenta extrair o tipo real do ID e buscar por ele
+ */
+const getPhotoMetadatasWithFallback = async (
+  photoIds: string[],
+  obraId: string,
+  type: string
+): Promise<PhotoMetadata[]> => {
+  if (photoIds.length === 0) return [];
+
+  const allMetadata = await getAllPhotoMetadata();
+  const foundMap = new Map<string, PhotoMetadata>();
+
+  // 1. Primeiro, tentar pelos IDs exatos
+  for (const photoId of photoIds) {
+    const photo = allMetadata.find(p => p.id === photoId);
+    if (photo && photo.uploaded && photo.uploadUrl) {
+      foundMap.set(photoId, photo);
+    }
+  }
+
+  // 2. Se não encontrou todas, tentar por obraId + tipo
+  if (foundMap.size < photoIds.length) {
+    const byObraAndType = allMetadata.filter(p =>
+      p.obraId === obraId && p.type === type && p.uploaded && p.uploadUrl
+    );
+    for (const photo of byObraAndType) {
+      if (!foundMap.has(photo.id)) {
+        foundMap.set(photo.id, photo);
+      }
+    }
+    if (byObraAndType.length > 0) {
+      console.log(`🔄 [Fallback obraId+tipo] Encontrou ${byObraAndType.length} foto(s) para ${type}`);
+    }
+  }
+
+  // 3. Se ainda faltam, tentar extrair obraId antigo dos IDs das fotos
+  if (foundMap.size < photoIds.length) {
+    const possibleObraIds = new Set<string>();
+    for (const photoId of photoIds) {
+      // Extrair possível obraId do início do ID da foto (antes do tipo)
+      const match = photoId.match(/^(.+?)_(antes|durante|depois|abertura|fechamento|ditais_|aterramento_|transformador_|medidor_|checklist_|altimetria_|vazamento_|doc_)/);
+      if (match && match[1]) {
+        possibleObraIds.add(match[1]);
+      }
+    }
+
+    for (const possibleObraId of possibleObraIds) {
+      if (possibleObraId !== obraId) {
+        const byPossibleObraId = allMetadata.filter(p =>
+          p.obraId === possibleObraId && p.type === type && p.uploaded && p.uploadUrl
+        );
+        for (const photo of byPossibleObraId) {
+          if (!foundMap.has(photo.id)) {
+            foundMap.set(photo.id, photo);
+            console.log(`🔄 [Fallback obraId antigo] Encontrou foto ${photo.id} com obraId ${possibleObraId}`);
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Fallback final: buscar por tipo apenas (sem uploadUrl obrigatório)
+  if (foundMap.size < photoIds.length) {
+    for (const photoId of photoIds) {
+      if (!foundMap.has(photoId)) {
+        const photo = allMetadata.find(p => p.id === photoId);
+        if (photo) {
+          foundMap.set(photoId, photo);
+          console.log(`🔄 [Fallback ID direto] Encontrou foto ${photoId} (uploaded: ${photo.uploaded})`);
+        }
+      }
+    }
+  }
+
+  return Array.from(foundMap.values());
 };
 
 /**
@@ -1092,9 +1185,21 @@ export const syncObra = async (
     // Log de aviso se houver falhas, mas não bloqueia o sync
     if (uploadResult.failed > 0) {
       const totalPhotos = uploadResult.success + uploadResult.failed;
+      const lostPhotos = uploadResult.results.filter(r => !r.success && r.error?.includes('não encontrado')).length;
+      const networkFailures = uploadResult.failed - lostPhotos;
+
+      if (lostPhotos > 0) {
+        console.warn(
+          `⚠️ ${lostPhotos} foto(s) foram perdidas (arquivos removidos do dispositivo antes da sincronização)`
+        );
+      }
+      if (networkFailures > 0) {
+        console.warn(
+          `⚠️ ${networkFailures} foto(s) falharam no upload (problema de rede ou servidor)`
+        );
+      }
       console.warn(
-        `⚠️ Sync parcial: ${uploadResult.failed} de ${totalPhotos} foto(s) falharam no upload. ` +
-        `Obra será sincronizada com ${uploadResult.success} foto(s).`
+        `✅ Obra será sincronizada com ${uploadResult.success} de ${totalPhotos} foto(s).`
       );
       // Não lança erro - continua com as fotos que subiram com sucesso
     }
@@ -1104,6 +1209,17 @@ export const syncObra = async (
     console.log(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
     console.log(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
     console.log(`   - fotos_depois: ${obra.fotos_depois?.length || 0} IDs`);
+    console.log(`   - doc_apr: ${obra.doc_apr?.length || 0} IDs - ${JSON.stringify(obra.doc_apr || [])}`);
+    console.log(`   - doc_laudo_transformador: ${obra.doc_laudo_transformador?.length || 0} IDs`);
+    console.log(`   - fotos_transformador_tombamento_instalado: ${obra.fotos_transformador_tombamento_instalado?.length || 0} IDs`);
+
+    // Debug: mostrar IDs exatos quando há IDs em campos de transformador ou documentos
+    if (obra.fotos_transformador_tombamento_instalado?.length > 0) {
+      console.log(`   📋 IDs em fotos_transformador_tombamento_instalado: ${JSON.stringify(obra.fotos_transformador_tombamento_instalado)}`);
+    }
+    if (obra.doc_laudo_transformador?.length > 0) {
+      console.log(`   📋 IDs em doc_laudo_transformador: ${JSON.stringify(obra.doc_laudo_transformador)}`);
+    }
 
     const fotosAntesMetadata = await getPhotoMetadatasByIds(obra.fotos_antes || []);
     const fotosDuranteMetadata = await getPhotoMetadatasByIds(obra.fotos_durante || []);
@@ -1119,15 +1235,20 @@ export const syncObra = async (
     const fotosAterramentoHastesMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_hastes || []);
     const fotosAterramentoValaFechadaMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_vala_fechada || []);
     const fotosAterramentoMedicaoMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_medicao || []);
-    const fotosTransformadorLaudoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_laudo || []);
-    const fotosTransformadorComponenteInstaladoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_componente_instalado || []);
-    const fotosTransformadorTombamentoInstaladoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_tombamento_instalado || []);
-    const fotosTransformadorTapeMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_tape || []);
-    const fotosTransformadorPlacaInstaladoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_placa_instalado || []);
-    const fotosTransformadorInstaladoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_instalado || []);
-    const fotosTransformadorAntesRetirarMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_antes_retirar || []);
-    const fotosTransformadorTombamentoRetiradoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_tombamento_retirado || []);
-    const fotosTransformadorPlacaRetiradoMetadata = await getPhotoMetadatasByIds(obra.fotos_transformador_placa_retirado || []);
+    // Transformador - Usar fallback por obraId+tipo para maior robustez
+    const fotosTransformadorLaudoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_laudo || [], obra.id, 'transformador_laudo');
+    const fotosTransformadorComponenteInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_componente_instalado || [], obra.id, 'transformador_componente_instalado');
+    const fotosTransformadorTombamentoInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_instalado || [], obra.id, 'transformador_tombamento_instalado');
+    const fotosTransformadorTapeMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_tape || [], obra.id, 'transformador_tape');
+    const fotosTransformadorPlacaInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_instalado || [], obra.id, 'transformador_placa_instalado');
+    const fotosTransformadorInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_instalado || [], obra.id, 'transformador_instalado');
+    const fotosTransformadorAntesRetirarMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_antes_retirar || [], obra.id, 'transformador_antes_retirar');
+    const fotosTransformadorTombamentoRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_retirado || [], obra.id, 'transformador_tombamento_retirado');
+    const fotosTransformadorPlacaRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_retirado || [], obra.id, 'transformador_placa_retirado');
+    const fotosTransformadorConexoesPrimariasInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_instalado || [], obra.id, 'transformador_conexoes_primarias_instalado');
+    const fotosTransformadorConexoesSecundariasInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_instalado || [], obra.id, 'transformador_conexoes_secundarias_instalado');
+    const fotosTransformadorConexoesPrimariasRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_retirado || [], obra.id, 'transformador_conexoes_primarias_retirado');
+    const fotosTransformadorConexoesSecundariasRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_retirado || [], obra.id, 'transformador_conexoes_secundarias_retirado');
     const fotosMedidorPadraoMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_padrao || []);
     const fotosMedidorLeituraMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_leitura || []);
     const fotosMedidorSeloBornMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_selo_born || []);
@@ -1143,15 +1264,15 @@ export const syncObra = async (
     const fotosChecklistPanoramicaFinalMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_final || []);
     const fotosChecklistPostesMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_postes || []);
     const fotosChecklistSeccionamentosMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_seccionamentos || []);
-    // Documentação (PDFs)
-    const docCadastroMedidorMetadata = await getPhotoMetadatasByIds(obra.doc_cadastro_medidor || []);
-    const docLaudoTransformadorMetadata = await getPhotoMetadatasByIds(obra.doc_laudo_transformador || []);
-    const docLaudoReguladorMetadata = await getPhotoMetadatasByIds(obra.doc_laudo_regulador || []);
-    const docLaudoReligadorMetadata = await getPhotoMetadatasByIds(obra.doc_laudo_religador || []);
-    const docAprMetadata = await getPhotoMetadatasByIds(obra.doc_apr || []);
-    const docFvbtMetadata = await getPhotoMetadatasByIds(obra.doc_fvbt || []);
-    const docTermoDesistenciaLptMetadata = await getPhotoMetadatasByIds(obra.doc_termo_desistencia_lpt || []);
-    const docAutorizacaoPassagemMetadata = await getPhotoMetadatasByIds(obra.doc_autorizacao_passagem || []);
+    // Documentação (PDFs) - Usar fallback por obraId+tipo para maior robustez
+    const docCadastroMedidorMetadata = await getPhotoMetadatasWithFallback(obra.doc_cadastro_medidor || [], obra.id, 'doc_cadastro_medidor');
+    const docLaudoTransformadorMetadata = await getPhotoMetadatasWithFallback(obra.doc_laudo_transformador || [], obra.id, 'doc_laudo_transformador');
+    const docLaudoReguladorMetadata = await getPhotoMetadatasWithFallback(obra.doc_laudo_regulador || [], obra.id, 'doc_laudo_regulador');
+    const docLaudoReligadorMetadata = await getPhotoMetadatasWithFallback(obra.doc_laudo_religador || [], obra.id, 'doc_laudo_religador');
+    const docAprMetadata = await getPhotoMetadatasWithFallback(obra.doc_apr || [], obra.id, 'doc_apr');
+    const docFvbtMetadata = await getPhotoMetadatasWithFallback(obra.doc_fvbt || [], obra.id, 'doc_fvbt');
+    const docTermoDesistenciaLptMetadata = await getPhotoMetadatasWithFallback(obra.doc_termo_desistencia_lpt || [], obra.id, 'doc_termo_desistencia_lpt');
+    const docAutorizacaoPassagemMetadata = await getPhotoMetadatasWithFallback(obra.doc_autorizacao_passagem || [], obra.id, 'doc_autorizacao_passagem');
     // Altimetria
     const fotosAltimetriaLadoFonteMetadata = await getPhotoMetadatasByIds(obra.fotos_altimetria_lado_fonte || []);
     const fotosAltimetriaMedicaoFonteMetadata = await getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_fonte || []);
@@ -1190,6 +1311,10 @@ export const syncObra = async (
     const fotosTransformadorAntesRetirarData = convertPhotosToData(fotosTransformadorAntesRetirarMetadata);
     const fotosTransformadorTombamentoRetiradoData = convertPhotosToData(fotosTransformadorTombamentoRetiradoMetadata);
     const fotosTransformadorPlacaRetiradoData = convertPhotosToData(fotosTransformadorPlacaRetiradoMetadata);
+    const fotosTransformadorConexoesPrimariasInstaladoData = convertPhotosToData(fotosTransformadorConexoesPrimariasInstaladoMetadata);
+    const fotosTransformadorConexoesSecundariasInstaladoData = convertPhotosToData(fotosTransformadorConexoesSecundariasInstaladoMetadata);
+    const fotosTransformadorConexoesPrimariasRetiradoData = convertPhotosToData(fotosTransformadorConexoesPrimariasRetiradoMetadata);
+    const fotosTransformadorConexoesSecundariasRetiradoData = convertPhotosToData(fotosTransformadorConexoesSecundariasRetiradoMetadata);
     const fotosMedidorPadraoData = convertPhotosToData(fotosMedidorPadraoMetadata);
     const fotosMedidorLeituraData = convertPhotosToData(fotosMedidorLeituraMetadata);
     const fotosMedidorSeloBornData = convertPhotosToData(fotosMedidorSeloBornMetadata);
@@ -1284,6 +1409,10 @@ export const syncObra = async (
           fotos_transformador_antes_retirar: replaceOrKeep(fotosTransformadorAntesRetirarData, existingObra.fotos_transformador_antes_retirar),
           fotos_transformador_tombamento_retirado: replaceOrKeep(fotosTransformadorTombamentoRetiradoData, existingObra.fotos_transformador_tombamento_retirado),
           fotos_transformador_placa_retirado: replaceOrKeep(fotosTransformadorPlacaRetiradoData, existingObra.fotos_transformador_placa_retirado),
+          fotos_transformador_conexoes_primarias_instalado: replaceOrKeep(fotosTransformadorConexoesPrimariasInstaladoData, existingObra.fotos_transformador_conexoes_primarias_instalado),
+          fotos_transformador_conexoes_secundarias_instalado: replaceOrKeep(fotosTransformadorConexoesSecundariasInstaladoData, existingObra.fotos_transformador_conexoes_secundarias_instalado),
+          fotos_transformador_conexoes_primarias_retirado: replaceOrKeep(fotosTransformadorConexoesPrimariasRetiradoData, existingObra.fotos_transformador_conexoes_primarias_retirado),
+          fotos_transformador_conexoes_secundarias_retirado: replaceOrKeep(fotosTransformadorConexoesSecundariasRetiradoData, existingObra.fotos_transformador_conexoes_secundarias_retirado),
           fotos_medidor_padrao: replaceOrKeep(fotosMedidorPadraoData, existingObra.fotos_medidor_padrao),
           fotos_medidor_leitura: replaceOrKeep(fotosMedidorLeituraData, existingObra.fotos_medidor_leitura),
           fotos_medidor_selo_born: replaceOrKeep(fotosMedidorSeloBornData, existingObra.fotos_medidor_selo_born),
@@ -1336,7 +1465,7 @@ export const syncObra = async (
         return { success: true, newId: idToUpdate };
       }
     }
-    
+
     // Se não fizemos update e chegamos aqui, inserir nova obra no servidor
     const { data: insertedObra, error } = await supabase
       .from('obras')
@@ -1372,6 +1501,10 @@ export const syncObra = async (
           fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarData,
           fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoData,
           fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoData,
+          fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstaladoData,
+          fotos_transformador_conexoes_secundarias_instalado: fotosTransformadorConexoesSecundariasInstaladoData,
+          fotos_transformador_conexoes_primarias_retirado: fotosTransformadorConexoesPrimariasRetiradoData,
+          fotos_transformador_conexoes_secundarias_retirado: fotosTransformadorConexoesSecundariasRetiradoData,
           fotos_medidor_padrao: fotosMedidorPadraoData,
           fotos_medidor_leitura: fotosMedidorLeituraData,
           fotos_medidor_selo_born: fotosMedidorSeloBornData,
@@ -1406,7 +1539,7 @@ export const syncObra = async (
           fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstaladoData,
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
           // user_id removido - Login por equipe não usa Supabase Auth
-          created_at: obra.created_at,
+          created_at: obra.created_at || new Date().toISOString(),
         },
       ])
       .select('id')
@@ -1548,4 +1681,86 @@ export const startAutoSync = (onSyncComplete?: (result: { success: number; faile
       }, 2000);
     }
   });
+};
+
+/**
+ * Recupera fotos perdidas de obras que sumiram após sincronização
+ * Reconstrói os arrays de photoIds baseado no photo-backup
+ */
+export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: string[] }> => {
+  try {
+    console.log('🔧 Iniciando recuperação de fotos perdidas...');
+
+    // 1. Buscar todas as fotos do backup
+    const allPhotos = await getAllPhotoMetadata();
+    console.log(`📸 Total de fotos no backup: ${allPhotos.length}`);
+
+    // 2. Agrupar fotos por obraId
+    const photosByObra = new Map<string, PhotoMetadata[]>();
+    allPhotos.forEach(photo => {
+      if (!photosByObra.has(photo.obraId)) {
+        photosByObra.set(photo.obraId, []);
+      }
+      photosByObra.get(photo.obraId)!.push(photo);
+    });
+
+    console.log(`🏗️ Obras com fotos no backup: ${photosByObra.size}`);
+
+    // 3. Buscar todas as obras locais
+    const localObras = await getLocalObras();
+    console.log(`📋 Obras locais: ${localObras.length}`);
+
+    let recoveredCount = 0;
+    const recoveredObras: string[] = [];
+
+    // 4. Para cada obra, verificar se tem fotos perdidas
+    for (const obra of localObras) {
+      const photosForObra = photosByObra.get(obra.id) || [];
+
+      if (photosForObra.length === 0) continue;
+
+      // Reconstruir arrays de photoIds por tipo
+      const photoIdsByType: Record<string, string[]> = {};
+
+      photosForObra.forEach(photo => {
+        // Se o tipo já começa com 'doc_', não adicionar 'fotos_'
+        const typeKey = photo.type.startsWith('doc_') ? photo.type : `fotos_${photo.type}`;
+        if (!photoIdsByType[typeKey]) {
+          photoIdsByType[typeKey] = [];
+        }
+        photoIdsByType[typeKey].push(photo.id);
+      });
+
+      // Verificar se algum campo está vazio mas tem fotos no backup
+      let hasLostPhotos = false;
+      const updates: any = {};
+
+      Object.entries(photoIdsByType).forEach(([typeKey, photoIds]) => {
+        const currentValue = (obra as any)[typeKey];
+
+        // Se o campo está vazio ou undefined mas temos fotos no backup
+        if ((!currentValue || currentValue.length === 0) && photoIds.length > 0) {
+          hasLostPhotos = true;
+          updates[typeKey] = photoIds;
+          console.log(`  ✅ Recuperando ${photoIds.length} foto(s) de ${typeKey} para obra ${obra.obra || obra.id}`);
+        }
+      });
+
+      // Se encontrou fotos perdidas, atualizar a obra
+      if (hasLostPhotos) {
+        const updatedObra = { ...obra, ...updates };
+        await saveObraLocal(updatedObra, obra.id);
+        recoveredCount++;
+        recoveredObras.push(obra.obra || obra.id);
+        console.log(`✅ Obra ${obra.obra || obra.id} recuperada com sucesso!`);
+      }
+    }
+
+    console.log(`🎉 Recuperação concluída: ${recoveredCount} obra(s) recuperada(s)`);
+    return { recovered: recoveredCount, obras: recoveredObras };
+
+  } catch (error) {
+    console.error('❌ Erro ao recuperar fotos perdidas:', error);
+    throw error;
+  }
 };

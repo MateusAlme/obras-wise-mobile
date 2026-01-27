@@ -88,7 +88,10 @@
       "Bash(if exist node_modules.cache rmdir /s /q node_modules.cache)",
       "Bash(ls:*)",
       "Bash(git checkout:*)",
-      "Bash(cmd.exe /c \"cd c:\\\\Users\\\\Mateus'' Almeida''\\\\obras-wise-mobile\\\\mobile && if exist .expo rmdir /s /q .expo && if exist node_modules\\\\.cache rmdir /s /q node_modules\\\\.cache\")"
+      "Bash(cmd.exe /c \"cd c:\\\\Users\\\\Mateus'' Almeida''\\\\obras-wise-mobile\\\\mobile && if exist .expo rmdir /s /q .expo && if exist node_modules\\\\.cache rmdir /s /q node_modules\\\\.cache\")",
+      "Bash(git remote set-url:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(cd /c/Users/Mateus Almeida/obras-wise-mobile)"
     ],
     "deny": [],
     "ask": []
