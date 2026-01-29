@@ -93,3 +93,4 @@ O painel web e o app mobile compartilham o mesmo backend (Supabase):
 - Mesmo banco de dados PostgreSQL
 - Mesmo Supabase Storage para fotos
 - Sincronização automática
+# Deploy fix qui, 29 de jan de 2026 15:18:04
