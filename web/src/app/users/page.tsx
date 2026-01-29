@@ -13,6 +13,7 @@ interface AdminUser {
   email: string
   full_name: string | null
   role: 'admin' | 'viewer'
+  avatar_url: string | null
   created_at: string
   updated_at: string
   last_sign_in_at: string | null
