@@ -20,17 +20,6 @@ import { checkInternetConnection } from '../lib/offline-sync';
 import { hashPassword, verifyPassword } from '../lib/crypto-utils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const EQUIPES = [
-  // Perfil Especial
-  'COMP',
-  // CNT - Construção
-  'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
-  // MNT - Manutenção
-  'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
-  // LV - Linha Viva
-  'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
-];
-
 export default function Login() {
   const router = useRouter();
   const [equipe, setEquipe] = useState('');
@@ -38,11 +27,76 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [showEquipeModal, setShowEquipeModal] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [equipes, setEquipes] = useState<string[]>([]);
+  const [loadingEquipes, setLoadingEquipes] = useState(true);
 
-  // Verificar conectividade ao carregar
+  // Carregar equipes do banco de dados
   useEffect(() => {
+    loadEquipes();
     checkInternetConnection().then(setIsOnline);
   }, []);
+
+  async function loadEquipes() {
+    try {
+      const isConnected = await checkInternetConnection();
+
+      if (isConnected) {
+        // Buscar equipes do banco de dados
+        const { data, error } = await supabase
+          .from('equipes')
+          .select('codigo')
+          .eq('ativa', true)
+          .order('codigo');
+
+        if (error) {
+          console.error('Erro ao carregar equipes:', error);
+          // Fallback para lista em cache ou padrão
+          await loadEquipesFromCache();
+        } else {
+          const equipesCarregadas = data.map(e => e.codigo);
+          // Sempre adicionar COMP no início
+          const equipesComComp = ['COMP', ...equipesCarregadas];
+          setEquipes(equipesComComp);
+          // Salvar em cache para uso offline
+          await AsyncStorage.setItem('@equipes_cache', JSON.stringify(equipesComComp));
+        }
+      } else {
+        // Modo offline - carregar do cache
+        await loadEquipesFromCache();
+      }
+    } catch (error) {
+      console.error('Erro ao carregar equipes:', error);
+      await loadEquipesFromCache();
+    } finally {
+      setLoadingEquipes(false);
+    }
+  }
+
+  async function loadEquipesFromCache() {
+    try {
+      const cached = await AsyncStorage.getItem('@equipes_cache');
+      if (cached) {
+        setEquipes(JSON.parse(cached));
+      } else {
+        // Fallback para lista padrão se não houver cache
+        setEquipes([
+          'COMP',
+          'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
+          'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
+          'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
+        ]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar cache de equipes:', error);
+      // Última opção: lista hardcoded
+      setEquipes([
+        'COMP',
+        'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
+        'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
+        'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
+      ]);
+    }
+  }
 
   const handleLogin = async () => {
     if (!equipe || !password) {
@@ -280,12 +334,22 @@ export default function Login() {
               </View>
 
               <ScrollView style={styles.modalList}>
-                {EQUIPES.map((item) => (
-                  <TouchableOpacity
-                    key={item}
-                    style={[
-                      styles.modalItem,
-                      equipe === item && styles.modalItemSelected,
+                {loadingEquipes ? (
+                  <View style={styles.modalLoading}>
+                    <ActivityIndicator size="large" color="#FF0000" />
+                    <Text style={styles.modalLoadingText}>Carregando equipes...</Text>
+                  </View>
+                ) : equipes.length === 0 ? (
+                  <View style={styles.modalEmpty}>
+                    <Text style={styles.modalEmptyText}>Nenhuma equipe disponível</Text>
+                  </View>
+                ) : (
+                  equipes.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.modalItem,
+                        equipe === item && styles.modalItemSelected,
                     ]}
                     onPress={() => {
                       setEquipe(item);
@@ -304,7 +368,8 @@ export default function Login() {
                       <Text style={styles.checkmark}>✓</Text>
                     )}
                   </TouchableOpacity>
-                ))}
+                  ))
+                )}
               </ScrollView>
             </Pressable>
           </View>
@@ -492,6 +557,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  modalLoading: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalLoadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: '#666',
+  },
+  modalEmpty: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  modalEmptyText: {
+    fontSize: 14,
+    color: '#999',
   },
 });
 
