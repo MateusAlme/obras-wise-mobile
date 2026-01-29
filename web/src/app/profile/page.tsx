@@ -52,6 +52,8 @@ export default function ProfilePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!user) return
+
     setSaving(true)
     setError('')
     setSuccess('')
