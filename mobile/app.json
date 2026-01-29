@@ -2,14 +2,14 @@
   "expo": {
     "name": "Obras Teccel",
     "slug": "obras-wise-mobile",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "obraswise",
     "splash": {
       "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#FF0000"
     },
     "ios": {
@@ -28,7 +28,7 @@
         "backgroundColor": "#FF0000"
       },
       "package": "com.obraswise.mobile",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",

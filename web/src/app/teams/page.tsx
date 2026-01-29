@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import Sidebar from '@/components/Sidebar'
+import AppShell from '@/components/AppShell'
 
 interface TeamCredential {
   id: string
@@ -229,15 +229,12 @@ export default function TeamsPage() {
 
   return (
     <ProtectedRoute requireAdmin>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
-        <Sidebar />
-
-        <div className="flex-1 px-6 lg:px-10 py-8">
+      <AppShell>
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
             <div>
-              <h1 className="text-4xl font-bold text-slate-900 mb-2">Gerenciar Equipes</h1>
-              <p className="text-lg text-slate-600">
+              <h1 className="text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight mb-2">Gerenciar Equipes</h1>
+              <p className="text-sm sm:text-base text-slate-600">
                 Criar, editar e gerenciar equipes do sistema
               </p>
             </div>
@@ -471,7 +468,6 @@ export default function TeamsPage() {
               </div>
             )}
           </div>
-        </div>
 
         {/* Modal - Nova Equipe */}
         {showModal && (
@@ -635,7 +631,7 @@ export default function TeamsPage() {
             </div>
           </div>
         )}
-      </div>
+      </AppShell>
     </ProtectedRoute>
   )
 }

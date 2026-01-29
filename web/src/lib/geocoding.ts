@@ -87,6 +87,13 @@ export async function getAddressFromCoords(
 export function latLongToUTM(latitude: number, longitude: number): UTMCoordinates {
   // Determinar zona UTM
   const zoneNumber = Math.floor((longitude + 180) / 6) + 1
+
+  // Determinar banda de latitude (C a X, exceto I e O)
+  // Cada banda tem 8° de altura, começando em -80° (banda C)
+  const latitudeBands = 'CDEFGHJKLMNPQRSTUVWXX'
+  const bandIndex = Math.floor((latitude + 80) / 8)
+  const latitudeBand = latitudeBands[Math.max(0, Math.min(bandIndex, latitudeBands.length - 1))]
+
   const hemisphere: 'N' | 'S' = latitude >= 0 ? 'N' : 'S'
 
   // Constantes do elipsóide WGS84
@@ -143,7 +150,7 @@ export function latLongToUTM(latitude: number, longitude: number): UTMCoordinate
   return {
     x: Math.round(x),
     y: Math.round(y),
-    zone: `${zoneNumber}${hemisphere}`,
+    zone: `${zoneNumber}${latitudeBand}`,
     hemisphere,
   }
 }
@@ -151,12 +158,10 @@ export function latLongToUTM(latitude: number, longitude: number): UTMCoordinate
 /**
  * Formata coordenadas UTM para exibição
  *
- * Exemplo: "24S 555,123E 7,234,567N"
+ * Exemplo: "24M 551837 9237802"
  */
 export function formatUTM(utm: UTMCoordinates): string {
-  const xFormatted = utm.x.toLocaleString('pt-BR')
-  const yFormatted = utm.y.toLocaleString('pt-BR')
-  return `${utm.zone} ${xFormatted}E ${yFormatted}N`
+  return `${utm.zone} ${utm.x} ${utm.y}`
 }
 
 /**

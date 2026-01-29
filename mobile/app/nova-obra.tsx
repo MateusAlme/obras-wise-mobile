@@ -135,6 +135,7 @@ export default function NovaObra() {
   const [fotosTransformadorConexoesPrimariasInstalado, setFotosTransformadorConexoesPrimariasInstalado] = useState<FotoData[]>([]);
   const [fotosTransformadorConexoesSecundariasInstalado, setFotosTransformadorConexoesSecundariasInstalado] = useState<FotoData[]>([]);
   const [fotosTransformadorAntesRetirar, setFotosTransformadorAntesRetirar] = useState<FotoData[]>([]);
+  const [fotosTransformadorLaudoRetirado, setFotosTransformadorLaudoRetirado] = useState<FotoData[]>([]);
   const [fotosTransformadorTombamentoRetirado, setFotosTransformadorTombamentoRetirado] = useState<FotoData[]>([]);
   const [fotosTransformadorPlacaRetirado, setFotosTransformadorPlacaRetirado] = useState<FotoData[]>([]);
   const [fotosTransformadorConexoesPrimariasRetirado, setFotosTransformadorConexoesPrimariasRetirado] = useState<FotoData[]>([]);
@@ -589,6 +590,7 @@ export default function NovaObra() {
             if (obraData.fotos_transformador_conexoes_primarias_instalado?.length) setFotosTransformadorConexoesPrimariasInstalado(mapPhotos(obraData.fotos_transformador_conexoes_primarias_instalado, 'fotos_transformador_conexoes_primarias_instalado'));
             if (obraData.fotos_transformador_conexoes_secundarias_instalado?.length) setFotosTransformadorConexoesSecundariasInstalado(mapPhotos(obraData.fotos_transformador_conexoes_secundarias_instalado, 'fotos_transformador_conexoes_secundarias_instalado'));
             if (obraData.fotos_transformador_antes_retirar?.length) setFotosTransformadorAntesRetirar(mapPhotos(obraData.fotos_transformador_antes_retirar, 'fotos_transformador_antes_retirar'));
+            if (obraData.fotos_transformador_laudo_retirado?.length) setFotosTransformadorLaudoRetirado(mapPhotos(obraData.fotos_transformador_laudo_retirado, 'fotos_transformador_laudo_retirado'));
             if (obraData.fotos_transformador_tombamento_retirado?.length) setFotosTransformadorTombamentoRetirado(mapPhotos(obraData.fotos_transformador_tombamento_retirado, 'fotos_transformador_tombamento_retirado'));
             if (obraData.fotos_transformador_placa_retirado?.length) setFotosTransformadorPlacaRetirado(mapPhotos(obraData.fotos_transformador_placa_retirado, 'fotos_transformador_placa_retirado'));
             if (obraData.fotos_transformador_conexoes_primarias_retirado?.length) setFotosTransformadorConexoesPrimariasRetirado(mapPhotos(obraData.fotos_transformador_conexoes_primarias_retirado, 'fotos_transformador_conexoes_primarias_retirado'));
@@ -982,6 +984,7 @@ export default function NovaObra() {
       else if (tipo === 'transformador_placa_instalado') index = fotosTransformadorPlacaInstalado.length;
       else if (tipo === 'transformador_instalado') index = fotosTransformadorInstalado.length;
       else if (tipo === 'transformador_antes_retirar') index = fotosTransformadorAntesRetirar.length;
+      else if (tipo === 'transformador_laudo_retirado') index = fotosTransformadorLaudoRetirado.length;
       else if (tipo === 'transformador_tombamento_retirado') index = fotosTransformadorTombamentoRetirado.length;
       else if (tipo === 'transformador_placa_retirado') index = fotosTransformadorPlacaRetirado.length;
       else if (tipo === 'medidor_padrao') index = fotosMedidorPadrao.length;
@@ -1100,6 +1103,8 @@ export default function NovaObra() {
         setFotosTransformadorConexoesSecundariasInstalado(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_antes_retirar') {
         setFotosTransformadorAntesRetirar(prev => [...prev, photoData]);
+      } else if (tipo === 'transformador_laudo_retirado') {
+        setFotosTransformadorLaudoRetirado(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_tombamento_retirado') {
         setFotosTransformadorTombamentoRetirado(prev => [...prev, photoData]);
       } else if (tipo === 'transformador_placa_retirado') {
@@ -1344,6 +1349,8 @@ export default function NovaObra() {
       setFotosTransformadorConexoesSecundariasInstalado(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_antes_retirar') {
       setFotosTransformadorAntesRetirar(prev => [...prev, photoData]);
+    } else if (tipo === 'transformador_laudo_retirado') {
+      setFotosTransformadorLaudoRetirado(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_tombamento_retirado') {
       setFotosTransformadorTombamentoRetirado(prev => [...prev, photoData]);
     } else if (tipo === 'transformador_placa_retirado') {
@@ -1669,6 +1676,8 @@ export default function NovaObra() {
       setFotosTransformadorConexoesSecundariasInstalado(fotosTransformadorConexoesSecundariasInstalado.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_antes_retirar') {
       setFotosTransformadorAntesRetirar(fotosTransformadorAntesRetirar.filter((_, i) => i !== index));
+    } else if (tipo === 'transformador_laudo_retirado') {
+      setFotosTransformadorLaudoRetirado(fotosTransformadorLaudoRetirado.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_tombamento_retirado') {
       setFotosTransformadorTombamentoRetirado(fotosTransformadorTombamentoRetirado.filter((_, i) => i !== index));
     } else if (tipo === 'transformador_placa_retirado') {
@@ -1919,16 +1928,6 @@ export default function NovaObra() {
       return;
     }
 
-    // ⚠️ APR - OBRIGATÓRIA EM TODOS OS SERVIÇOS (exceto Documentação)
-    if (!isServicoDocumentacao && docApr.length === 0) {
-      Alert.alert(
-        '⚠️ APR Obrigatória',
-        'A APR (Análise Preliminar de Risco) é obrigatória para finalizar a obra.\n\nPor favor, tire a foto da APR antes de salvar.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     // TRANSFORMADOR - Status e Laudo são obrigatórios
     if (isServicoTransformador) {
       if (!transformadorStatus) {
@@ -2126,8 +2125,8 @@ export default function NovaObra() {
       fotosTransformadorTombamentoInstalado.length + fotosTransformadorTape.length +
       fotosTransformadorPlacaInstalado.length + fotosTransformadorInstalado.length +
       fotosTransformadorConexoesPrimariasInstalado.length + fotosTransformadorConexoesSecundariasInstalado.length +
-      fotosTransformadorAntesRetirar.length + fotosTransformadorTombamentoRetirado.length +
-      fotosTransformadorPlacaRetirado.length +
+      fotosTransformadorAntesRetirar.length + fotosTransformadorLaudoRetirado.length +
+      fotosTransformadorTombamentoRetirado.length + fotosTransformadorPlacaRetirado.length +
       fotosTransformadorConexoesPrimariasRetirado.length + fotosTransformadorConexoesSecundariasRetirado.length +
       fotosMedidorPadrao.length + fotosMedidorLeitura.length + fotosMedidorSeloBorn.length +
       fotosMedidorSeloCaixa.length + fotosMedidorIdentificadorFase.length +
@@ -2206,6 +2205,7 @@ export default function NovaObra() {
         transformador_conexoes_primarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasInstalado) as string[] : [],
         transformador_conexoes_secundarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesSecundariasInstalado) as string[] : [],
         transformador_antes_retirar: isServicoTransformador ? extractPhotoData(fotosTransformadorAntesRetirar) as string[] : [],
+        transformador_laudo_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorLaudoRetirado) as string[] : [],
         transformador_tombamento_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorTombamentoRetirado) as string[] : [],
         transformador_placa_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorPlacaRetirado) as string[] : [],
         transformador_conexoes_primarias_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasRetirado) as string[] : [],
@@ -2249,8 +2249,8 @@ export default function NovaObra() {
         checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => extractPhotoData(sec)) : [],
         // Fotos dinâmicas - aterramentos de cerca
         checklist_aterramento_cerca: isServicoChecklist ? fotosAterramentosCerca.flatMap(aterr => extractPhotoData(aterr)) : [],
-        // Documentação - APR (todos os serviços), Laudo/Cadastro (serviços específicos)
-        doc_apr: extractPhotoData(docApr) as string[], // APR em TODOS os serviços
+        // Documentação - Apenas no book Documentação
+        doc_apr: isServicoDocumentacao ? extractPhotoData(docApr) as string[] : [], // APR apenas em Documentação
         doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[], // Quando Medidor OU Documentação
         doc_laudo_transformador: extractPhotoData(docLaudoTransformador) as string[], // Quando Transformador OU Documentação
         // Documentação exclusiva (só no book Documentação)
@@ -2603,6 +2603,14 @@ export default function NovaObra() {
         longitude: p.longitude
       }));
 
+      const fotosTransformadorLaudoRetiradoUploaded = allPhotos.filter(p =>
+        photoIds.transformador_laudo_retirado.includes(p.id) && p.uploaded
+      ).map(p => ({
+        url: p.uploadUrl!,
+        latitude: p.latitude,
+        longitude: p.longitude
+      }));
+
       const fotosTransformadorTombamentoRetiradoUploaded = allPhotos.filter(p =>
         photoIds.transformador_tombamento_retirado.includes(p.id) && p.uploaded
       ).map(p => ({
@@ -2919,6 +2927,7 @@ export default function NovaObra() {
             fotos_transformador_placa_instalado: mergePhotos(obraAtual.fotos_transformador_placa_instalado, fotosTransformadorPlacaInstaladoUploaded),
             fotos_transformador_instalado: mergePhotos(obraAtual.fotos_transformador_instalado, fotosTransformadorInstaladoUploaded),
             fotos_transformador_antes_retirar: mergePhotos(obraAtual.fotos_transformador_antes_retirar, fotosTransformadorAntesRetirarUploaded),
+            fotos_transformador_laudo_retirado: mergePhotos(obraAtual.fotos_transformador_laudo_retirado, fotosTransformadorLaudoRetiradoUploaded),
             fotos_transformador_tombamento_retirado: mergePhotos(obraAtual.fotos_transformador_tombamento_retirado, fotosTransformadorTombamentoRetiradoUploaded),
             fotos_transformador_placa_retirado: mergePhotos(obraAtual.fotos_transformador_placa_retirado, fotosTransformadorPlacaRetiradoUploaded),
             fotos_medidor_padrao: mergePhotos(obraAtual.fotos_medidor_padrao, fotosMedidorPadraoUploaded),
@@ -2978,6 +2987,7 @@ export default function NovaObra() {
               fotos_transformador_placa_instalado: fotosTransformadorPlacaInstaladoUploaded,
               fotos_transformador_instalado: fotosTransformadorInstaladoUploaded,
               fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarUploaded,
+              fotos_transformador_laudo_retirado: fotosTransformadorLaudoRetiradoUploaded,
               fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoUploaded,
               fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoUploaded,
               fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstaladoUploaded,
@@ -3258,6 +3268,7 @@ export default function NovaObra() {
         fotos_transformador_conexoes_primarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasInstalado) as string[] : [],
         fotos_transformador_conexoes_secundarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesSecundariasInstalado) as string[] : [],
         fotos_transformador_antes_retirar: isServicoTransformador ? extractPhotoData(fotosTransformadorAntesRetirar) as string[] : [],
+        fotos_transformador_laudo_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorLaudoRetirado) as string[] : [],
         fotos_transformador_tombamento_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorTombamentoRetirado) as string[] : [],
         fotos_transformador_placa_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorPlacaRetirado) as string[] : [],
         fotos_transformador_conexoes_primarias_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasRetirado) as string[] : [],
@@ -3294,8 +3305,8 @@ export default function NovaObra() {
           ...poste.menorEsforco.map(f => f.photoId).filter(Boolean) as string[],
         ]) : [],
         fotos_checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]) : [],
-        // Documentação - APR (todos os serviços), Laudo/Cadastro (serviços específicos)
-        doc_apr: extractPhotoData(docApr) as string[], // APR em TODOS os serviços
+        // Documentação - Apenas no book Documentação
+        doc_apr: isServicoDocumentacao ? extractPhotoData(docApr) as string[] : [], // APR apenas em Documentação
         doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[], // Quando Medidor OU Documentação
         doc_laudo_transformador: extractPhotoData(docLaudoTransformador) as string[], // Quando Transformador OU Documentação
         // Documentação exclusiva (só no book Documentação)
@@ -3555,18 +3566,14 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS (exceto Documentação) */}
-          {tipoServico && (
+          {/* APR - Opcional (disponível apenas em Documentação) */}
+          {isServicoDocumentacao && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                📋 APR - Análise Preliminar de Risco {!isServicoDocumentacao && '(OBRIGATÓRIO)'}
-                {isServicoDocumentacao && '(Opcional)'}
+                📋 APR - Análise Preliminar de Risco (Opcional)
               </Text>
               <Text style={styles.hint}>
-                {!isServicoDocumentacao
-                  ? 'É obrigatório anexar a APR para finalizar a obra. Use o modo scanner para melhor qualidade.'
-                  : 'Você pode anexar a APR aqui. Use o modo scanner para melhor qualidade.'
-                }
+                Você pode anexar a APR aqui. Use o modo scanner para melhor qualidade.
               </Text>
 
               <View style={styles.docSection}>
@@ -4851,6 +4858,50 @@ export default function NovaObra() {
                             <TouchableOpacity
                               style={styles.photoRemoveButton}
                               onPress={() => removePhoto('transformador_antes_retirar', index)}
+                            >
+                              <Text style={styles.photoRemoveText}>×</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Laudo Transformador Retirado */}
+                    <Text style={styles.photoSectionLabel}>⚡ Laudo do Transformador Retirado ({fotosTransformadorLaudoRetirado.length})</Text>
+                    <Text style={styles.photoHint}>Laudo do transformador retirado</Text>
+                    <TouchableOpacity
+                      style={styles.photoButton}
+                      onPress={() => takePicture('transformador_laudo_retirado')}
+                      disabled={loading || uploadingPhoto}
+                    >
+                      <View style={styles.photoButtonContent}>
+                        <Text style={styles.photoButtonIcon}>{uploadingPhoto ? '⏳' : '+'}</Text>
+                        <Text style={styles.photoButtonText}>
+                          {uploadingPhoto ? 'Processando...' : 'Adicionar Laudo do Retirado'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    {fotosTransformadorLaudoRetirado.length > 0 && (
+                      <View style={styles.photoGrid}>
+                        {fotosTransformadorLaudoRetirado.map((foto, index) => (
+                          <View key={index} style={styles.photoCard}>
+                            <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.photoRemoveButton}
+                              onPress={() => removePhoto('transformador_laudo_retirado', index)}
                             >
                               <Text style={styles.photoRemoveText}>×</Text>
                             </TouchableOpacity>

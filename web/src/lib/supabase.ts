@@ -48,6 +48,7 @@ export interface Obra {
   fotos_transformador_placa_instalado?: FotoInfo[]
   fotos_transformador_instalado?: FotoInfo[]
   fotos_transformador_antes_retirar?: FotoInfo[]
+  fotos_transformador_laudo_retirado?: FotoInfo[]
   fotos_transformador_tombamento_retirado?: FotoInfo[]
   fotos_transformador_placa_retirado?: FotoInfo[]
   // MEDIDOR - 5 fotos

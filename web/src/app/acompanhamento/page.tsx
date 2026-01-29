@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase, type Obra, getObraStatus } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import Sidebar from '@/components/Sidebar'
+import AppShell from '@/components/AppShell'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { differenceInDays } from 'date-fns'
@@ -234,14 +234,11 @@ export default function AcompanhamentoPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex">
-        <Sidebar />
-
-        <div className="flex-1 px-6 lg:px-10 py-8">
+      <AppShell>
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold text-slate-900 mb-2">Acompanhamento de Obras</h1>
-            <p className="text-lg text-slate-600">
+            <h1 className="text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight mb-2">Acompanhamento de Obras</h1>
+            <p className="text-sm sm:text-base text-slate-600">
               Controle de status para cobrança e gestão de obras
             </p>
           </div>
@@ -312,7 +309,7 @@ export default function AcompanhamentoPage() {
               <h3 className="text-base font-semibold text-slate-800">Filtros</h3>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Buscar Nº Obra */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Buscar Nº Obra</label>
@@ -543,7 +540,6 @@ export default function AcompanhamentoPage() {
               </div>
             )}
           </div>
-        </div>
 
         {/* Modal/Drawer do Book */}
         {selectedObraForBook && (
@@ -951,7 +947,7 @@ export default function AcompanhamentoPage() {
             </div>
           </div>
         )}
-      </div>
+      </AppShell>
     </ProtectedRoute>
   )
 }

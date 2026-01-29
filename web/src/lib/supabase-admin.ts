@@ -20,6 +20,7 @@ export interface AdminUser {
   email: string
   full_name: string | null
   role: 'admin' | 'viewer'
+  avatar_url: string | null
   created_at: string
   updated_at: string
   last_sign_in_at: string | null
@@ -74,23 +75,47 @@ export async function createAdminUser(email: string, password: string, fullName?
     throw authError
   }
 
-  // Criar profile
-  const { error: profileError } = await supabaseAdmin
+  // Verificar se o profile já existe (pode ter sido criado por trigger)
+  const { data: existingProfile } = await supabaseAdmin
     .from('profiles')
-    .insert({
-      id: authData.user.id,
-      email,
-      full_name: fullName || email,
-      role,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
+    .select('id')
+    .eq('id', authData.user.id)
+    .single()
 
-  if (profileError) {
-    // Se falhar ao criar profile, deletar usuário criado
-    await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-    console.error('Erro ao criar profile:', profileError)
-    throw profileError
+  if (!existingProfile) {
+    // Criar profile apenas se não existir
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .insert({
+        id: authData.user.id,
+        email,
+        full_name: fullName || email,
+        role,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+
+    if (profileError) {
+      // Se falhar ao criar profile, deletar usuário criado
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+      console.error('Erro ao criar profile:', profileError)
+      throw profileError
+    }
+  } else {
+    // Profile já existe (criado por trigger), apenas atualizar com role e full_name
+    const { error: updateError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        full_name: fullName || email,
+        role,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', authData.user.id)
+
+    if (updateError) {
+      console.error('Erro ao atualizar profile:', updateError)
+      throw updateError
+    }
   }
 
   return authData.user

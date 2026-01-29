@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import Sidebar from '@/components/Sidebar'
+import AppShell from '@/components/AppShell'
 import { useAuth } from '@/contexts/AuthContext'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import Image from 'next/image'
 
 interface AdminUser {
   id: string
@@ -216,15 +217,12 @@ export default function UsersPage() {
 
   return (
     <ProtectedRoute requireAdmin>
-      <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar />
-
-        <div className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
+      <AppShell>
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Usuários do Sistema</h1>
-              <p className="text-gray-600 mt-1">
+              <h1 className="text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">Usuários do Sistema</h1>
+              <p className="text-sm sm:text-base text-slate-600 mt-1">
                 {isSuperAdmin
                   ? 'Gerenciar administradores e usuários com acesso ao sistema web'
                   : 'Visualizar usuários do sistema (somente Super Admins podem criar/editar)'
@@ -366,8 +364,20 @@ export default function UsersPage() {
                     <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                          <div className={`flex-shrink-0 h-10 w-10 ${user.role === 'admin' ? 'bg-purple-600' : 'bg-blue-600'} text-white rounded-full flex items-center justify-center font-semibold`}>
-                            {(user.full_name || user.email).substring(0, 2).toUpperCase()}
+                          <div className="relative flex-shrink-0 h-10 w-10 rounded-full overflow-hidden">
+                            {user.avatar_url ? (
+                              <Image
+                                src={user.avatar_url}
+                                alt={user.full_name || user.email}
+                                fill
+                                className="object-cover"
+                                unoptimized
+                              />
+                            ) : (
+                              <div className={`w-full h-full ${user.role === 'admin' ? 'bg-purple-600' : 'bg-blue-600'} text-white flex items-center justify-center font-semibold`}>
+                                {(user.full_name || user.email).substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-gray-900">
@@ -442,7 +452,6 @@ export default function UsersPage() {
               </div>
             )}
           </div>
-        </div>
 
         {/* Modal de Criar/Editar */}
         {showModal && (
@@ -585,7 +594,7 @@ export default function UsersPage() {
             </div>
           </div>
         )}
-      </div>
+      </AppShell>
     </ProtectedRoute>
   )
 }

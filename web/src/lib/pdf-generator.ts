@@ -1,17 +1,16 @@
 import jsPDF from 'jspdf'
 import type { Obra, FotoInfo } from './supabase'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { latLongToUTM, formatUTM } from './geocoding'
 
 /**
- * Renderiza uma foto com placa de informações usando Canvas
- * Retorna a imagem como data URL para ser adicionada ao PDF
+ * Carrega uma foto e retorna a imagem como data URL junto com suas dimensões originais
+ * NÃO adiciona placa na imagem - a placa será renderizada separadamente no PDF
  */
-async function renderPhotoWithPlaca(
-  photo: FotoInfo,
-  obra: Obra
-): Promise<string> {
+async function loadPhotoWithDimensions(
+  photo: FotoInfo
+): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise(async (resolve, reject) => {
     try {
       // Buscar imagem
@@ -22,110 +21,21 @@ async function renderPhotoWithPlaca(
       img.crossOrigin = 'anonymous'
 
       img.onload = () => {
-        // Criar canvas
+        // Criar canvas para converter para data URL
         const canvas = document.createElement('canvas')
         canvas.width = img.width
         canvas.height = img.height
         const ctx = canvas.getContext('2d')!
 
-        // Desenhar imagem
+        // Desenhar imagem sem placa
         ctx.drawImage(img, 0, 0)
 
-        // Preparar dados da placa
-        const obraNumero = photo.placaData?.obraNumero || obra.obra
-        const tipoServico = photo.placaData?.tipoServico || obra.tipo_servico
-        const equipe = photo.placaData?.equipe || obra.equipe
-        const dataHora = photo.placaData?.dataHora || format(new Date(obra.data), "dd/MM/yyyy HH:mm")
-
-        // Calcular UTM se tiver GPS
-        let utmDisplay = ''
-        if (photo.latitude && photo.longitude) {
-          const utm = latLongToUTM(photo.latitude, photo.longitude)
-          utmDisplay = formatUTM(utm)
-        }
-
-        // Configurar estilo da placa - AUMENTADO PROPORCIONALMENTE para melhor visualização no PDF
-        // Escala baseada no tamanho da imagem
-        const scale = Math.min(canvas.width / 1200, 2.5) // Fator de escala dinâmico
-
-        const placaWidth = Math.min(canvas.width * 0.65, 800)
-        const placaPadding = Math.floor(20 * scale)
-        const lineHeight = Math.floor(40 * scale) // Aumentado para melhor espaçamento vertical
-        const fontSize = Math.floor(28 * scale) // Aumentado para melhor legibilidade
-
-        // Calcular altura da placa baseado no conteúdo
-        let lines = 4 // Mínimo: Obra, Data, Serviço, Equipe
-        if (utmDisplay) lines++
-        const placaHeight = placaPadding * 2 + lines * lineHeight + Math.floor(20 * scale)
-
-        // Posição da placa (canto inferior esquerdo)
-        const placaX = Math.floor(25 * scale)
-        const placaY = canvas.height - placaHeight - Math.floor(25 * scale)
-
-        // Desenhar fundo da placa (preto semi-transparente)
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.88)'
-        ctx.fillRect(placaX, placaY, placaWidth, placaHeight)
-
-        // Desenhar borda azul
-        ctx.strokeStyle = 'rgba(37, 99, 235, 0.7)'
-        ctx.lineWidth = Math.floor(4 * scale)
-        ctx.strokeRect(placaX, placaY, placaWidth, placaHeight)
-
-        // Desenhar textos
-        ctx.font = `bold ${fontSize}px Arial`
-        ctx.textAlign = 'left'
-
-        let textY = placaY + placaPadding + fontSize
-
-        // Linha 1: Obra
-        ctx.fillStyle = '#9ca3af'
-        ctx.font = `${Math.floor(fontSize * 0.9)}px Arial`
-        ctx.fillText('Obra:', placaX + placaPadding, textY)
-        ctx.fillStyle = '#ffffff'
-        ctx.font = `bold ${fontSize}px Arial`
-        ctx.fillText(obraNumero, placaX + placaPadding + Math.floor(95 * scale), textY)
-        textY += lineHeight
-
-        // Linha 2: Data/Hora
-        ctx.fillStyle = '#9ca3af'
-        ctx.font = `${Math.floor(fontSize * 0.9)}px Arial`
-        ctx.fillText('Data/Hora:', placaX + placaPadding, textY)
-        ctx.fillStyle = '#ffffff'
-        ctx.font = `${Math.floor(fontSize * 0.9)}px Arial`
-        ctx.fillText(dataHora, placaX + placaPadding + Math.floor(145 * scale), textY)
-        textY += lineHeight
-
-        // Linha 3: Serviço (truncar se muito longo)
-        ctx.fillStyle = '#9ca3af'
-        ctx.font = `${Math.floor(fontSize * 0.9)}px Arial`
-        ctx.fillText('Serviço:', placaX + placaPadding, textY)
-        ctx.fillStyle = '#ffffff'
-        ctx.font = `${Math.floor(fontSize * 0.9)}px Arial`
-        const servicoTruncado = tipoServico.length > 25 ? tipoServico.substring(0, 25) + '...' : tipoServico
-        ctx.fillText(servicoTruncado, placaX + placaPadding + Math.floor(115 * scale), textY)
-        textY += lineHeight
-
-        // Linha 4: Equipe
-        ctx.fillStyle = '#9ca3af'
-        ctx.font = `${Math.floor(fontSize * 0.9)}px Arial`
-        ctx.fillText('Equipe:', placaX + placaPadding, textY)
-        ctx.fillStyle = '#ffffff'
-        ctx.font = `bold ${fontSize}px Arial`
-        ctx.fillText(equipe, placaX + placaPadding + Math.floor(115 * scale), textY)
-        textY += lineHeight
-
-        // Linha 5: UTM (se disponível)
-        if (utmDisplay) {
-          ctx.fillStyle = '#9ca3af'
-          ctx.font = `${Math.floor(fontSize * 0.85)}px Arial`
-          ctx.fillText('UTM:', placaX + placaPadding, textY)
-          ctx.fillStyle = '#34d399'
-          ctx.font = `${Math.floor(fontSize * 0.85)}px monospace`
-          ctx.fillText(utmDisplay, placaX + placaPadding + Math.floor(70 * scale), textY)
-        }
-
-        // Converter canvas para data URL
-        resolve(canvas.toDataURL('image/jpeg', 0.85))
+        // Retornar imagem e dimensões
+        resolve({
+          dataUrl: canvas.toDataURL('image/jpeg', 0.90),
+          width: img.width,
+          height: img.height
+        })
       }
 
       img.onerror = () => {
@@ -144,23 +54,113 @@ async function renderPhotoWithPlaca(
   })
 }
 
+/**
+ * Renderiza a placa de informações abaixo da imagem no PDF
+ */
+function renderPlacaBelowImage(
+  pdf: jsPDF,
+  photo: FotoInfo,
+  obra: Obra,
+  xPos: number,
+  yPos: number,
+  placaWidth: number
+): number {
+  // Preparar dados da placa
+  const obraNumero = photo.placaData?.obraNumero || obra.obra
+  const tipoServico = photo.placaData?.tipoServico || obra.tipo_servico
+  const equipe = photo.placaData?.equipe || obra.equipe
+  const dataHora = photo.placaData?.dataHora || format(parseISO(obra.data), "dd/MM/yyyy")
+
+  // Calcular UTM se tiver GPS
+  let utmDisplay = ''
+  if (photo.latitude && photo.longitude) {
+    const utm = latLongToUTM(photo.latitude, photo.longitude)
+    utmDisplay = formatUTM(utm)
+  }
+
+  // Altura da placa
+  const placaHeight = utmDisplay ? 18 : 14
+
+  // Sombra da placa
+  pdf.setFillColor(220, 220, 220)
+  pdf.roundedRect(xPos + 0.5, yPos + 0.5, placaWidth, placaHeight, 1, 1, 'F')
+
+  // Fundo da placa (branco com borda)
+  pdf.setFillColor(255, 255, 255)
+  pdf.roundedRect(xPos, yPos, placaWidth, placaHeight, 1, 1, 'F')
+
+  // Borda cinza sutil
+  pdf.setDrawColor(200, 200, 200)
+  pdf.setLineWidth(0.4)
+  pdf.roundedRect(xPos, yPos, placaWidth, placaHeight, 1, 1, 'S')
+
+  // Configurar texto
+  pdf.setFontSize(7)
+  let textY = yPos + 4
+
+  // Linha 1: Obra | Data | Serviço
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('Obra:', xPos + 3, textY)
+  pdf.setTextColor(30, 30, 30)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(obraNumero, xPos + 14, textY)
+
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('Data:', xPos + 45, textY)
+  pdf.setTextColor(30, 30, 30)
+  pdf.text(dataHora, xPos + 56, textY)
+
+  pdf.setTextColor(120, 120, 120)
+  pdf.text('Serviço:', xPos + 98, textY)
+  pdf.setTextColor(30, 30, 30)
+  const servicoTruncado = tipoServico.length > 20 ? tipoServico.substring(0, 20) + '...' : tipoServico
+  pdf.text(servicoTruncado, xPos + 114, textY)
+
+  textY += 5
+
+  // Linha 2: Equipe | UTM (se disponível)
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('Equipe:', xPos + 3, textY)
+  pdf.setTextColor(0, 102, 204) // Azul corporativo
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(equipe, xPos + 18, textY)
+
+  if (utmDisplay) {
+    textY += 5
+    pdf.setTextColor(120, 120, 120)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('UTM:', xPos + 3, textY)
+    pdf.setTextColor(80, 80, 80)
+    pdf.setFont('courier', 'normal')
+    pdf.text(utmDisplay, xPos + 15, textY)
+  }
+
+  // Reset cores
+  pdf.setTextColor(0, 0, 0)
+  pdf.setDrawColor(0, 0, 0)
+
+  return placaHeight
+}
+
 export async function generatePDF(obra: Obra) {
   const pdf = new jsPDF()
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 15
   let yPos = 15
-  const columns = 1 // 1 FOTO POR PÁGINA
   const gap = 8
   const availableWidth = pageWidth - margin * 2
-  const imageWidth = availableWidth // Largura total da página (exceto margens)
-  const imageHeight = imageWidth * 0.75 // Mantém proporção 4:3
+  const imageWidth = availableWidth
+  const maxImageHeight = pageHeight - margin * 2 - 35 // Espaço para título da seção + placa
 
   // Carregar logo da Energisa com dimensões
-  let logoData: { dataUrl: string; width: number; height: number } | null = null
+  let logoEnergisaData: { dataUrl: string; width: number; height: number } | null = null
 
   try {
-    logoData = await new Promise<{ dataUrl: string; width: number; height: number }>((resolve, reject) => {
+    logoEnergisaData = await new Promise<{ dataUrl: string; width: number; height: number }>((resolve, reject) => {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
@@ -176,7 +176,7 @@ export async function generatePDF(obra: Obra) {
             height: img.height
           })
         } catch (err) {
-          console.error('Erro ao processar logo:', err)
+          console.error('Erro ao processar logo Energisa:', err)
           reject(err)
         }
       }
@@ -188,192 +188,358 @@ export async function generatePDF(obra: Obra) {
     })
   } catch (error) {
     console.error('Falha ao carregar logo da Energisa:', error)
-    logoData = null
+    logoEnergisaData = null
   }
 
-  const logoEnergisa = logoData?.dataUrl
+  // Carregar logo da Teccel
+  let logoTeccelData: { dataUrl: string; width: number; height: number } | null = null
 
-  // ========== CABEÇALHO ENERGISA (COMPACTO) ==========
-
-  const headerWidth = pageWidth - 2 * margin
-  const headerTitleHeight = 8 // REDUZIDO de 10 para 8
-  const headerBodyHeight = 20 // REDUZIDO de 35 para 20
-  const headerHeight = headerTitleHeight + headerBodyHeight
-
-  // Borda do cabeçalho
-  pdf.setDrawColor(0, 0, 0)
-  pdf.setLineWidth(0.5)
-  pdf.rect(margin, yPos, headerWidth, headerHeight)
-
-  // Linha horizontal entre título e corpo
-  pdf.line(margin, yPos + headerTitleHeight, margin + headerWidth, yPos + headerTitleHeight)
-
-  // Título centralizado (fonte menor)
-  pdf.setFontSize(10) // REDUZIDO de 12 para 10
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('RELATÓRIO DE ATIPICIDADE', margin + headerWidth / 2, yPos + 6, { align: 'center' }) // AJUSTADO de 7 para 6
-
-  // Divisão vertical entre infos e logo (apenas no corpo)
-  const logoWidth = headerWidth * 0.32
-  const infoWidth = headerWidth - logoWidth
-  pdf.line(margin + infoWidth, yPos + headerTitleHeight, margin + infoWidth, yPos + headerHeight)
-
-  // Divisão vertical entre DATA e OBRA (apenas no corpo)
-  const dataSectionWidth = infoWidth * 0.35
-  pdf.line(margin + dataSectionWidth, yPos + headerTitleHeight, margin + dataSectionWidth, yPos + headerHeight)
-
-  const bodyTextY = yPos + headerTitleHeight + headerBodyHeight / 2 + 2 // AJUSTADO de +4 para +2
-
-  // DATA
-  pdf.setFontSize(9) // REDUZIDO de 11 para 9
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('DATA:', margin + 2, bodyTextY)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text(format(new Date(obra.data), 'dd/MM/yyyy'), margin + 18, bodyTextY) // AJUSTADO de 22 para 18
-
-  // OBRA
-  pdf.setFont('helvetica', 'bold')
-  pdf.text('OBRA:', margin + dataSectionWidth + 2, bodyTextY)
-  pdf.setFont('helvetica', 'normal')
-  pdf.text(obra.obra || '-', margin + dataSectionWidth + 18, bodyTextY) // AJUSTADO de 22 para 18
-
-  // Logo Energisa (imagem centralizada e ajustada mantendo proporção - COMPACTA)
-  if (logoData && logoEnergisa) {
-    try {
-      const logoMaxWidth = logoWidth - 4 // REDUZIDO de 6 para 4
-      const logoMaxHeight = headerBodyHeight - 4 // REDUZIDO de 6 para 4
-
-      // Calcular proporção da logo usando as dimensões já carregadas
-      const logoAspectRatio = logoData.width / logoData.height
-      let finalWidth = logoMaxWidth
-      let finalHeight = logoMaxWidth / logoAspectRatio
-
-      // Se altura calculada for maior que o máximo, ajustar pela altura
-      if (finalHeight > logoMaxHeight) {
-        finalHeight = logoMaxHeight
-        finalWidth = logoMaxHeight * logoAspectRatio
+  try {
+    logoTeccelData = await new Promise<{ dataUrl: string; width: number; height: number }>((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(img, 0, 0)
+          resolve({
+            dataUrl: canvas.toDataURL('image/png'),
+            width: img.width,
+            height: img.height
+          })
+        } catch (err) {
+          console.error('Erro ao processar logo Teccel:', err)
+          reject(err)
+        }
       }
-
-      // Centralizar a logo no espaço disponível
-      const logoX = margin + infoWidth + (logoWidth - finalWidth) / 2
-      const logoY = yPos + headerTitleHeight + (headerBodyHeight - finalHeight) / 2
-
-      // Adicionar logo com proporção correta
-      pdf.addImage(logoEnergisa, 'PNG', logoX, logoY, finalWidth, finalHeight, undefined, 'FAST')
-    } catch (error) {
-      // Fallback para texto se erro ao adicionar
-      console.error('Erro ao adicionar logo ao PDF:', error)
-      pdf.setFontSize(14) // REDUZIDO de 18 para 14
-      pdf.setFont('helvetica', 'bold')
-      pdf.setTextColor(0, 122, 204)
-      pdf.text('energisa', margin + infoWidth + logoWidth / 2, yPos + headerTitleHeight + 11, { align: 'center' }) // AJUSTADO de 14 para 11
-      pdf.setTextColor(0, 0, 0)
-    }
-  } else {
-    // Fallback para texto se logo não carregou
-    console.warn('Logo Energisa não carregada, usando texto')
-    pdf.setFontSize(14) // REDUZIDO de 18 para 14
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(0, 122, 204)
-    pdf.text('energisa', margin + infoWidth + logoWidth / 2, yPos + headerTitleHeight + 11, { align: 'center' }) // AJUSTADO de 14 para 11
-    pdf.setTextColor(0, 0, 0)
+      img.onerror = (err) => {
+        console.error('Erro ao carregar logo Teccel:', err)
+        reject(new Error('Erro ao carregar logo Teccel'))
+      }
+      img.src = '/logo_teccel.png'
+    })
+  } catch (error) {
+    console.error('Falha ao carregar logo da Teccel:', error)
+    logoTeccelData = null
   }
 
-  yPos += headerHeight
+  // ========== PÁGINA DE CAPA / RESUMO ==========
 
-  // ========== SEÇÃO DE ATIPICIDADES ==========
+  const tipoServicoUpper = (obra.tipo_servico || 'OBRA').toUpperCase()
 
-  // Header da seção
-  const atipicidadeHeaderHeight = 10
-  pdf.setFillColor(240, 240, 240)
-  pdf.rect(margin, yPos, pageWidth - 2 * margin, atipicidadeHeaderHeight, 'F')
-  pdf.rect(margin, yPos, pageWidth - 2 * margin, atipicidadeHeaderHeight)
+  // ===== CABEÇALHO CORPORATIVO COMPACTO =====
+  // Fundo do cabeçalho
+  pdf.setFillColor(250, 250, 250)
+  pdf.rect(0, 0, pageWidth, 30, 'F')
 
-  pdf.setFontSize(10)
+  // Linha inferior do cabeçalho
+  pdf.setDrawColor(220, 220, 220)
+  pdf.setLineWidth(0.5)
+  pdf.line(0, 30, pageWidth, 30)
+
+  const headerCenterY = 15 // Centro vertical do cabeçalho
+
+  // Largura padrão para ambas as logos (mesmo tamanho visual)
+  const logoWidth = 30
+
+  // Logo Teccel à esquerda
+  if (logoTeccelData) {
+    try {
+      const logoAspectRatio = logoTeccelData.width / logoTeccelData.height
+      const finalWidth = logoWidth
+      const finalHeight = logoWidth / logoAspectRatio
+      const logoY = headerCenterY - (finalHeight / 2) // Centralizar verticalmente
+      pdf.addImage(logoTeccelData.dataUrl, 'PNG', margin + 2, logoY, finalWidth, finalHeight, undefined, 'FAST')
+    } catch (error) {
+      console.error('Erro ao adicionar logo Teccel:', error)
+    }
+  }
+
+  // Título centralizado (duas linhas compactas)
+  pdf.setFontSize(11)
   pdf.setFont('helvetica', 'bold')
-  pdf.text('DESCRIÇÃO DA ATIPICIDADE', margin + 2, yPos + 7)
+  pdf.setTextColor(40, 40, 40)
+  pdf.text('BOOK DE OBRA', pageWidth / 2, headerCenterY - 2, { align: 'center' })
 
-  yPos += atipicidadeHeaderHeight
+  pdf.setFontSize(8)
+  pdf.setTextColor(100, 100, 100)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text(tipoServicoUpper, pageWidth / 2, headerCenterY + 5, { align: 'center' })
 
-  // Buscar array de atipicidades reais (importar do arquivo principal)
+  // Logo Energisa à direita
+  if (logoEnergisaData) {
+    try {
+      const logoAspectRatio = logoEnergisaData.width / logoEnergisaData.height
+      const finalWidth = logoWidth
+      const finalHeight = logoWidth / logoAspectRatio
+      const logoY = headerCenterY - (finalHeight / 2) // Centralizar verticalmente
+      pdf.addImage(logoEnergisaData.dataUrl, 'PNG', pageWidth - margin - finalWidth - 2, logoY, finalWidth, finalHeight, undefined, 'FAST')
+    } catch (error) {
+      console.error('Erro ao adicionar logo Energisa:', error)
+    }
+  }
+
+  yPos = 40
+
+  // Card de informações principais - Design profissional
+  const cardHeight = 60
+
+  // Sombra sutil do card
+  pdf.setFillColor(230, 230, 230)
+  pdf.roundedRect(margin + 1, yPos + 1, availableWidth, cardHeight, 2, 2, 'F')
+
+  // Card principal
+  pdf.setFillColor(255, 255, 255)
+  pdf.roundedRect(margin, yPos, availableWidth, cardHeight, 2, 2, 'F')
+  pdf.setDrawColor(220, 220, 220)
+  pdf.setLineWidth(0.3)
+  pdf.roundedRect(margin, yPos, availableWidth, cardHeight, 2, 2, 'S')
+
+  // Grid de informações 2x2 com divisórias
+  const colWidth = availableWidth / 2
+  const rowHeight = cardHeight / 2
+
+  // Linhas divisórias internas
+  pdf.setDrawColor(240, 240, 240)
+  pdf.line(margin + colWidth, yPos, margin + colWidth, yPos + cardHeight) // Vertical
+  pdf.line(margin, yPos + rowHeight, margin + availableWidth, yPos + rowHeight) // Horizontal
+
+  // Linha 1: Obra | Data
+  pdf.setFontSize(8)
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('OBRA', margin + 8, yPos + 10)
+  pdf.setFontSize(13)
+  pdf.setTextColor(30, 30, 30)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(obra.obra || '-', margin + 8, yPos + 22)
+
+  pdf.setFontSize(8)
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('DATA', margin + colWidth + 8, yPos + 10)
+  pdf.setFontSize(13)
+  pdf.setTextColor(30, 30, 30)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(format(parseISO(obra.data), 'dd/MM/yyyy'), margin + colWidth + 8, yPos + 22)
+
+  // Linha 2: Equipe | Responsável
+  pdf.setFontSize(8)
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('EQUIPE', margin + 8, yPos + rowHeight + 10)
+  pdf.setFontSize(13)
+  pdf.setTextColor(0, 102, 204) // Azul corporativo
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(obra.equipe || '-', margin + 8, yPos + rowHeight + 22)
+
+  pdf.setFontSize(8)
+  pdf.setTextColor(120, 120, 120)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('RESPONSÁVEL', margin + colWidth + 8, yPos + rowHeight + 10)
+  pdf.setFontSize(11)
+  pdf.setTextColor(30, 30, 30)
+  pdf.setFont('helvetica', 'bold')
+  const responsavelText = obra.responsavel || '-'
+  const responsavelTrunc = responsavelText.length > 25 ? responsavelText.substring(0, 25) + '...' : responsavelText
+  pdf.text(responsavelTrunc, margin + colWidth + 8, yPos + rowHeight + 22)
+
+  yPos += cardHeight + 12
+
+  // ========== SEÇÃO DE ATIPICIDADES (SÓ SE HOUVER) ==========
+
   const ATIPICIDADES = [
-    { id: 3, titulo: 'Obra em locais sem acesso que necessitam de transporte especial de equipamento (guindaste, trator, carroça) ou BANDOLAGEA', descricao: 'Existem obras que precisam de um transporte especial como guindaste, trator ou até mesmo bandolagem (que significa deslocar postes e transformadores sem auxílio de guindaste), devido às características do terreno tornando os necessário o transporte não usual dos equipamentos necessários para os atendimentos.' },
-    { id: 4, titulo: 'Obra em ilhas, terrenos alagados, arenosos, montanhosos, rochosos ou anexos , com CONCRETAGEM da base do poste ou obra essencial.', descricao: 'A região apresenta terrenos rochosos, havendo a necessidade de em alguns obras de requipe fazer uso de compressor para perfuração do solo, e, posteriormente a corretagem do poste ou a utilização de concreto na base dos postes.' },
-    { id: 5, titulo: 'Obra com travessia de condutores sobre linhas energizadas.', descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha-viva para realizar a travessia dos condutores da rede de distribuição em relação a rede de transmissão de energia.' },
-    { id: 6, titulo: 'Obra de expansão e construção de rede e linhas de distribuição com abertura de faixa de passagem.', descricao: 'Faz-se necessário em algumas obras, a supressão da vegetação com auxílio de ferramentas ou máquinas agrícolas.' },
-    { id: 8, titulo: 'Obra com participação de linha viva', descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha viva em alguns casos visando a não interrupção do fornecimento de energia elétrica para não impactar no DEC e FEC da concessionária.' },
-    { id: 9, titulo: 'Obra com participação de linha viva com atendimento alternativo de caraias (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)', descricao: 'São consideradas atípicas pelo fato de utilizarmos equipes de linha viva e atendimento alternativo de cargas em alguns casos visando a não interrupção do fornecimento de energia elétrica para não impactar no DEC e FEC da concessionária.' },
-    { id: 10, titulo: 'Obra com atendimento alternativo de caraias (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)', descricao: 'Utilizamos em alguns casos os referidos equipamentos visando a não interrupção do fornecimento de energia para grandes clientes.' },
-    { id: 11, titulo: 'Obra de conversão de Rede convencional para REDE COMPACTA.', descricao: 'A atipicidade ocorre pelo fato da substituição em campo de rede convencional de cabo CA4/CAA2 por cabo protegido de rede compacta em grandes proporções.' },
-    { id: 12, titulo: 'Obra exclusiva de recondutoramento de redes/linhas.', descricao: 'Ocorre quando há substituição de estruturas de média tensão tipo T por estruturas compactas tipo CE, substituição de rede de MT aérea de cabo CAA4 AWG, CAA2 AWG, e CA 4 AWG por rede compacta com cabo protegido multiplex.' },
-    { id: 13, titulo: 'Obra MISTA com RECONDUTORAMENTO PARCIAL de redes / linhas.', descricao: 'São consideradas atípicas devido a necessidade do recondutoramento parcial da rede existente da distribuidora, seja em redes de baixa/média tensão substituindo a rede de MT aérea de cabo CAA4 AWG, CAA2 AWG, e CA 4 AWG por rede compacta com condutores de alumínio protegidos ou cabos multiplex.' },
-    { id: 17, titulo: 'Outros (EMENDAS DE CONDUTOR PARTIDO, ESPAÇADOR, e outras não previstas nos itens de 1 a 16).', descricao: 'São necessárias a realização de emendas sejam nos cabos de média tensão ou baixa tensão, instalação de espaçadores longitudinares na rede épica, entre outros, visando não impactar nos indicadores de DEC e FEC.' },
+    { id: 3, titulo: 'Obra em locais sem acesso que necessitam de transporte especial de equipamento (guindaste, trator, carroça) ou BANDOLAGEA', descricao: '' },
+    { id: 4, titulo: 'Obra em ilhas, terrenos alagados, arenosos, montanhosos, rochosos ou anexos, com CONCRETAGEM da base do poste ou obra essencial.', descricao: '' },
+    { id: 5, titulo: 'Obra com travessia de condutores sobre linhas energizadas.', descricao: '' },
+    { id: 6, titulo: 'Obra de expansão e construção de rede e linhas de distribuição com abertura de faixa de passagem.', descricao: '' },
+    { id: 8, titulo: 'Obra com participação de linha viva', descricao: '' },
+    { id: 9, titulo: 'Obra com participação de linha viva com atendimento alternativo de cargas (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)', descricao: '' },
+    { id: 10, titulo: 'Obra com atendimento alternativo de cargas (SE / Barramento móvel, estruturas temporárias/provisórias, gerador, Mega Jump)', descricao: '' },
+    { id: 11, titulo: 'Obra de conversão de Rede convencional para REDE COMPACTA.', descricao: '' },
+    { id: 12, titulo: 'Obra exclusiva de recondutoramento de redes/linhas.', descricao: '' },
+    { id: 13, titulo: 'Obra MISTA com RECONDUTORAMENTO PARCIAL de redes/linhas.', descricao: '' },
+    { id: 17, titulo: 'Outros (EMENDAS DE CONDUTOR PARTIDO, ESPAÇADOR, e outras não previstas nos itens de 1 a 16).', descricao: '' },
   ]
 
-  // Obter atipicidades selecionadas
   const atipicidadesDetalhadas = (obra.atipicidades || [])
     .map(id => ATIPICIDADES.find(a => a.id === id))
     .filter(Boolean) as typeof ATIPICIDADES
 
-  // Calcular altura necessária baseada no número de atipicidades
-  const lineHeight = 18 // Altura por linha de atipicidade
-  const numAtipicidades = atipicidadesDetalhadas.length
-  const atipBoxHeight = Math.max(numAtipicidades * lineHeight + 10, 30)
+  if (atipicidadesDetalhadas.length > 0) {
+    // Header da seção - estilo profissional
+    pdf.setFillColor(245, 245, 245)
+    pdf.roundedRect(margin, yPos, availableWidth, 10, 2, 2, 'F')
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.3)
+    pdf.roundedRect(margin, yPos, availableWidth, 10, 2, 2, 'S')
 
-  // Desenhar borda geral
-  pdf.rect(margin, yPos, pageWidth - 2 * margin, atipBoxHeight)
-
-  // Layout em 3 colunas: Nº | Atipicidade | Descrição
-  const numColWidth = 10 // Largura da coluna de número
-  const atipColWidth = 60 // Largura da coluna de atipicidade
-  const descColWidth = (pageWidth - 2 * margin) - numColWidth - atipColWidth - 2 // Restante para descrição
-
-  // Divisões verticais entre colunas
-  pdf.line(margin + numColWidth, yPos, margin + numColWidth, yPos + atipBoxHeight)
-  pdf.line(margin + numColWidth + atipColWidth, yPos, margin + numColWidth + atipColWidth, yPos + atipBoxHeight)
-
-  // Desenhar cada atipicidade em uma linha
-  let currentY = yPos + 6
-  pdf.setFontSize(7)
-
-  atipicidadesDetalhadas.forEach((atip, index) => {
-    // Linha horizontal entre atipicidades (exceto a primeira)
-    if (index > 0) {
-      pdf.line(margin, currentY - 3, pageWidth - margin, currentY - 3)
-    }
-
-    // Coluna 1: Número
+    pdf.setFontSize(9)
     pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(220, 53, 69) // Vermelho
-    pdf.text(`${atip.id}.`, margin + 3, currentY + 4, { align: 'left' })
-
-    // Coluna 2: Título da Atipicidade
-    pdf.setTextColor(0, 0, 0)
-    pdf.setFont('helvetica', 'bold')
-    const titulo = pdf.splitTextToSize(atip.titulo, atipColWidth - 4)
-    pdf.text(titulo, margin + numColWidth + 2, currentY + 4)
-
-    // Coluna 3: Descrição
-    pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(60, 60, 60)
-    const descricao = pdf.splitTextToSize(atip.descricao, descColWidth - 4)
-    pdf.text(descricao, margin + numColWidth + atipColWidth + 2, currentY + 4)
+    pdf.text('ATIPICIDADES', margin + 6, yPos + 7)
 
-    currentY += lineHeight
-  })
+    yPos += 12
 
-  // Reset
-  pdf.setTextColor(0, 0, 0)
-  yPos += atipBoxHeight
+    // Calcular altura para atipicidades
+    const lineHeight = 12
+    const atipBoxHeight = Math.max(atipicidadesDetalhadas.length * lineHeight + 8, 20)
 
-  // Fotos
-  yPos += 10
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(14)
-  pdf.text('Fotos da Obra', margin, yPos)
-  yPos += 10
+    // Sombra do box
+    pdf.setFillColor(230, 230, 230)
+    pdf.roundedRect(margin + 1, yPos + 1, availableWidth, atipBoxHeight, 2, 2, 'F')
 
-  // Função para adicionar fotos com placa - 1 FOTO POR PÁGINA
+    // Box de atipicidades
+    pdf.setFillColor(255, 255, 255)
+    pdf.roundedRect(margin, yPos, availableWidth, atipBoxHeight, 2, 2, 'F')
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.3)
+    pdf.roundedRect(margin, yPos, availableWidth, atipBoxHeight, 2, 2, 'S')
+
+    let currentY = yPos + 6
+    pdf.setFontSize(7)
+
+    atipicidadesDetalhadas.forEach((atip, index) => {
+      if (index > 0) {
+        // Linha divisória sutil
+        pdf.setDrawColor(245, 245, 245)
+        pdf.line(margin + 6, currentY - 2, pageWidth - margin - 6, currentY - 2)
+      }
+
+      // Número em badge
+      pdf.setFillColor(0, 102, 204) // Azul corporativo
+      pdf.circle(margin + 9, currentY + 1, 2.5, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(6)
+      pdf.text(`${atip.id}`, margin + 9, currentY + 2.5, { align: 'center' })
+
+      // Título
+      pdf.setTextColor(50, 50, 50)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(7)
+      const tituloWidth = availableWidth - 24
+      const titulo = pdf.splitTextToSize(atip.titulo, tituloWidth)
+      pdf.text(titulo[0] + (titulo.length > 1 ? '...' : ''), margin + 16, currentY + 3)
+      currentY += lineHeight
+    })
+
+    pdf.setTextColor(0, 0, 0)
+    yPos += atipBoxHeight + 10
+  }
+
+  // Observações (só mostrar se houver)
+  if (obra.observacoes && obra.observacoes.trim()) {
+    // Sombra
+    pdf.setFillColor(230, 230, 230)
+    pdf.roundedRect(margin + 1, yPos + 1, availableWidth, 22, 2, 2, 'F')
+
+    // Box de observações
+    pdf.setFillColor(255, 252, 240)
+    pdf.roundedRect(margin, yPos, availableWidth, 22, 2, 2, 'F')
+    pdf.setDrawColor(240, 200, 100)
+    pdf.setLineWidth(0.5)
+    pdf.roundedRect(margin, yPos, availableWidth, 22, 2, 2, 'S')
+
+    // Ícone de alerta
+    pdf.setFillColor(255, 193, 7)
+    pdf.circle(margin + 7, yPos + 8, 2, 'F')
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(7)
+    pdf.text('!', margin + 7, yPos + 9.5, { align: 'center' })
+
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(100, 80, 0)
+    pdf.text('OBSERVAÇÕES:', margin + 12, yPos + 9)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(70, 70, 70)
+    pdf.setFontSize(7)
+    const obsText = obra.observacoes.length > 150 ? obra.observacoes.substring(0, 150) + '...' : obra.observacoes
+    const obsLines = pdf.splitTextToSize(obsText, availableWidth - 16)
+    pdf.text(obsLines[0], margin + 12, yPos + 15)
+    if (obsLines[1]) pdf.text(obsLines[1], margin + 12, yPos + 20)
+
+    yPos += 27
+  }
+
+  // Contagem de fotos por seção (resumo visual)
+  const photoFields: { key: keyof Pick<Obra, 'fotos_antes' | 'fotos_durante' | 'fotos_depois' | 'fotos_abertura' | 'fotos_fechamento'>; label: string }[] = [
+    { key: 'fotos_antes', label: 'Antes' },
+    { key: 'fotos_durante', label: 'Durante' },
+    { key: 'fotos_depois', label: 'Depois' },
+    { key: 'fotos_abertura', label: 'Abertura' },
+    { key: 'fotos_fechamento', label: 'Fechamento' },
+  ]
+
+  const photoCounts = photoFields.map(f => ({
+    label: f.label,
+    count: obra[f.key]?.length || 0
+  })).filter(p => p.count > 0)
+
+  if (photoCounts.length > 0) {
+    yPos += 3
+
+    // Sombra
+    pdf.setFillColor(230, 230, 230)
+    pdf.roundedRect(margin + 1, yPos + 1, availableWidth, 28, 2, 2, 'F')
+
+    // Box de resumo
+    pdf.setFillColor(248, 250, 252)
+    pdf.roundedRect(margin, yPos, availableWidth, 28, 2, 2, 'F')
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.3)
+    pdf.roundedRect(margin, yPos, availableWidth, 28, 2, 2, 'S')
+
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(80, 80, 80)
+    pdf.text('RESUMO DE FOTOS', margin + 6, yPos + 8)
+
+    let xOffset = margin + 6
+    pdf.setFontSize(8)
+    yPos += 14
+
+    photoCounts.forEach((p, idx) => {
+      if (xOffset > pageWidth - margin - 50) {
+        xOffset = margin + 6
+        yPos += 10
+      }
+
+      // Badge azul corporativo
+      pdf.setFillColor(0, 102, 204)
+      pdf.circle(xOffset + 3.5, yPos + 2, 3.5, 'F')
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFont('helvetica', 'bold')
+      pdf.setFontSize(7)
+      pdf.text(`${p.count}`, xOffset + 3.5, yPos + 3.5, { align: 'center' })
+
+      pdf.setTextColor(60, 60, 60)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.text(p.label, xOffset + 9, yPos + 4)
+
+      xOffset += 42
+    })
+
+    yPos += 18
+  }
+
+  // Rodapé da página de capa
+  pdf.setDrawColor(220, 220, 220)
+  pdf.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20)
+  pdf.setFontSize(7)
+  pdf.setTextColor(140, 140, 140)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text(`Documento gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, pageWidth / 2, pageHeight - 12, { align: 'center' })
+
+  // ========== PÁGINAS DE FOTOS ==========
+  // Cada foto em uma página dedicada
+
   const addPhotosSection = async (photos: FotoInfo[] | undefined, title: string) => {
     if (!photos || photos.length === 0) return
 
@@ -381,39 +547,65 @@ export async function generatePDF(obra: Obra) {
       const photo = photos[i]
 
       try {
-        // Nova página para cada foto (exceto a primeira foto se ainda couber na página atual)
-        if (i > 0 || yPos > pageHeight - imageHeight - 40) {
-          pdf.addPage()
-          yPos = margin
+        // Nova página para cada foto
+        pdf.addPage()
+        yPos = margin
+
+        // Mini header da página - estilo profissional
+        pdf.setFillColor(245, 245, 245)
+        pdf.rect(margin, yPos, availableWidth, 12, 'F')
+        pdf.setDrawColor(220, 220, 220)
+        pdf.setLineWidth(0.3)
+        pdf.rect(margin, yPos, availableWidth, 12, 'S')
+
+        pdf.setFontSize(9)
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(60, 60, 60)
+        pdf.text(`${title} (${i + 1}/${photos.length})`, margin + 4, yPos + 8)
+
+        // Info da obra no header
+        pdf.setFontSize(7)
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(120, 120, 120)
+        pdf.text(`Obra: ${obra.obra} | Equipe: ${obra.equipe}`, pageWidth - margin - 4, yPos + 8, { align: 'right' })
+
+        pdf.setTextColor(0, 0, 0)
+        yPos += 15
+
+        // Carregar foto e obter dimensões reais
+        const photoData = await loadPhotoWithDimensions(photo)
+
+        // Calcular altura mantendo proporção real da imagem
+        const aspectRatio = photoData.height / photoData.width
+        let finalImageWidth = imageWidth
+        let finalImageHeight = imageWidth * aspectRatio
+
+        // Se a imagem ficar muito alta, limitar pela altura máxima
+        if (finalImageHeight > maxImageHeight) {
+          finalImageHeight = maxImageHeight
+          finalImageWidth = finalImageHeight / aspectRatio
         }
 
-        // Cabeçalho da seção com contador de fotos
-        pdf.setFontSize(11)
-        pdf.setFont('helvetica', 'bold')
-        pdf.text(`${title} (${i + 1}/${photos.length})`, margin, yPos)
-        yPos += 10
+        // Centralizar imagem
+        const imageX = margin + (imageWidth - finalImageWidth) / 2
 
-        // Renderizar foto com placa
-        const photoWithPlaca = await renderPhotoWithPlaca(photo, obra)
+        // Adicionar foto
+        pdf.addImage(photoData.dataUrl, 'JPEG', imageX, yPos, finalImageWidth, finalImageHeight)
 
-        // Adicionar foto ocupando toda a largura disponível
-        pdf.addImage(photoWithPlaca, 'JPEG', margin, yPos, imageWidth, imageHeight)
+        yPos += finalImageHeight + 2
 
-        // Resetar posição para próxima seção (será sobrescrito por addPage)
-        yPos += imageHeight + gap
+        // Renderizar placa ABAIXO da imagem
+        renderPlacaBelowImage(pdf, photo, obra, imageX, yPos, finalImageWidth)
 
       } catch (error) {
         console.error('Erro ao adicionar foto:', error)
-
-        if (i > 0 || yPos > pageHeight - 40) {
-          pdf.addPage()
-          yPos = margin
-        }
-
+        pdf.addPage()
+        yPos = margin
         pdf.setFont('helvetica', 'normal')
         pdf.setFontSize(10)
-        pdf.text(`${title} - Foto ${i + 1}: (Erro ao carregar imagem)`, margin, yPos)
-        yPos += 15
+        pdf.setTextColor(200, 0, 0)
+        pdf.text(`${title} - Foto ${i + 1}: Erro ao carregar imagem`, margin, yPos)
+        pdf.setTextColor(0, 0, 0)
       }
     }
   }
@@ -439,15 +631,6 @@ export async function generatePDF(obra: Obra) {
   await addPhotosSection(obra.fotos_aterramento_medicao, 'Aterramento - Medição Terrômetro')
 
   // Transformador
-  if (obra.transformador_status) {
-    pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(0, 122, 255) // Blue
-    pdf.text(`Transformador - Status: ${obra.transformador_status}`, margin, yPos)
-    pdf.setTextColor(0, 0, 0)
-    yPos += 10
-  }
-
   await addPhotosSection(obra.fotos_transformador_laudo, 'Transformador - Laudo')
   await addPhotosSection(obra.fotos_transformador_componente_instalado, 'Transformador - Componente Instalado')
   await addPhotosSection(obra.fotos_transformador_tombamento_instalado, 'Transformador - Tombamento (Instalado)')
@@ -455,6 +638,7 @@ export async function generatePDF(obra: Obra) {
   await addPhotosSection(obra.fotos_transformador_placa_instalado, 'Transformador - Placa (Instalado)')
   await addPhotosSection(obra.fotos_transformador_instalado, 'Transformador - Instalado')
   await addPhotosSection(obra.fotos_transformador_antes_retirar, 'Transformador - Antes de Retirar')
+  await addPhotosSection(obra.fotos_transformador_laudo_retirado, 'Transformador - Laudo (Retirado)')
   await addPhotosSection(obra.fotos_transformador_tombamento_retirado, 'Transformador - Tombamento (Retirado)')
   await addPhotosSection(obra.fotos_transformador_placa_retirado, 'Transformador - Placa (Retirado)')
 
@@ -500,30 +684,36 @@ export async function generatePDF(obra: Obra) {
   await addPhotosSection(obra.doc_fvbt, 'Documentação - FVBT (Formulário de Vistoria de Baixa Tensão)')
   await addPhotosSection(obra.doc_termo_desistencia_lpt, 'Documentação - Termo de Desistência LPT')
 
-  // Footer
+  // Footer profissional para todas as páginas
   const totalPages = pdf.internal.pages.length - 1 // -1 porque a primeira página é null
   for (let i = 1; i <= totalPages; i++) {
     pdf.setPage(i)
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'normal')
-    pdf.setTextColor(128, 128, 128)
 
-    // Linha da esquerda: Data de geração
+    // Linha divisória no rodapé
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.3)
+    pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15)
+
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(140, 140, 140)
+
+    // Esquerda: Data de geração
     pdf.text(
       `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`,
       margin,
-      pageHeight - 10
+      pageHeight - 8
     )
 
-    // Linha do centro: Equipe (destacado)
+    // Centro: Equipe (destacado)
     pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(220, 53, 69) // Vermelho
-    pdf.text(`Equipe: ${obra.equipe}`, pageWidth / 2, pageHeight - 10, { align: 'center' })
+    pdf.setTextColor(0, 102, 204) // Azul corporativo
+    pdf.text(`Equipe: ${obra.equipe}`, pageWidth / 2, pageHeight - 8, { align: 'center' })
 
-    // Linha da direita: Número da página
+    // Direita: Número da página
     pdf.setFont('helvetica', 'normal')
-    pdf.setTextColor(128, 128, 128)
-    pdf.text(`Página ${i} de ${totalPages}`, pageWidth - margin - 30, pageHeight - 10)
+    pdf.setTextColor(140, 140, 140)
+    pdf.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' })
   }
 
   // Salvar PDF com nome incluindo equipe

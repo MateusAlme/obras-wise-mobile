@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase, type Obra, type FotoInfo } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
-import Sidebar from '@/components/Sidebar'
+import AppShell from '@/components/AppShell'
 import PhotoGallery from '@/components/PhotoGallery'
 import { generatePDF } from '@/lib/pdf-generator'
 import { format } from 'date-fns'
@@ -616,10 +616,7 @@ export default function ObraDetailPage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar />
-
-        <div className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
+      <AppShell>
           {/* Header */}
           <div className="mb-6 space-y-4">
             <button
@@ -634,7 +631,7 @@ export default function ObraDetailPage() {
 
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900">{obra.obra}</h1>
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">{obra.obra}</h1>
                 <div className="flex items-center gap-2 mt-2">
                   <span className="px-3 py-1 bg-red-600 text-white text-sm font-semibold rounded-full">
                     {obra.equipe}
@@ -831,8 +828,7 @@ export default function ObraDetailPage() {
 
             {/* Outras seções podem ser adicionadas aqui */}
           </div>
-        </div>
-      </div>
+      </AppShell>
     </ProtectedRoute>
   )
 }

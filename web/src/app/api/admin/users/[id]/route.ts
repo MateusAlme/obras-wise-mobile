@@ -4,12 +4,12 @@ import { updateAdminUser, changeAdminUserPassword, deleteAdminUser } from '@/lib
 // PUT: Atualizar usuário admin
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json()
     const { full_name, role, password } = body
-    const userId = params.id
+    const { id: userId } = await params
 
     // Atualizar dados do usuário
     if (full_name !== undefined || role !== undefined) {
@@ -37,10 +37,10 @@ export async function PUT(
 // DELETE: Excluir usuário admin
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const userId = params.id
+    const { id: userId } = await params
     await deleteAdminUser(userId)
 
     return NextResponse.json({

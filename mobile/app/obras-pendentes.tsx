@@ -313,42 +313,46 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     marginBottom: 20,
+    flexWrap: 'nowrap',
   },
   statCard: {
     flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e0e0e0',
+    minWidth: 0, // Permite que os cards encolham proporcionalmente
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#ff9800',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   statValueError: {
     color: '#dc3545',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
+    textAlign: 'center',
   },
   syncAllButton: {
     backgroundColor: '#dc3545',
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     alignItems: 'center',
     marginBottom: 20,
   },
   syncAllButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    textAlign: 'center',
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -386,38 +390,48 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
+    flexWrap: 'nowrap',
   },
   obraInfo: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 8,
+    minWidth: 0, // Permite que o flex funcione corretamente
   },
   obraTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#1a1a1a',
     marginBottom: 4,
+    flexShrink: 1,
   },
   obraDate: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
+    flexShrink: 1,
   },
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    flexShrink: 0, // Impede que o badge encolha
+    alignSelf: 'flex-start',
+    minWidth: 85, // Garante largura mínima
   },
   statusBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#fff',
     fontWeight: '600',
+    textAlign: 'center',
   },
   obraDetails: {
-    gap: 8,
+    gap: 6,
     marginBottom: 12,
   },
   obraDetail: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   obraDetailBold: {
     fontWeight: '600',
@@ -443,5 +457,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+    textAlign: 'center',
+    flexShrink: 1,
   },
 });
