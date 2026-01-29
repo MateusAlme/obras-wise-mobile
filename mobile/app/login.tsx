@@ -37,7 +37,11 @@ export default function Login() {
     checkInternetConnection().then(setIsOnline);
   }, []);
 
-  async function loadEquipes() {
+  async function loadEquipes(showLoading = true) {
+    if (showLoading) {
+      setLoadingEquipes(true);
+    }
+
     try {
       const isConnected = await checkInternetConnection();
 
@@ -277,7 +281,10 @@ export default function Login() {
               <Text style={styles.label}>Equipe</Text>
               <TouchableOpacity
                 style={styles.dropdownButton}
-                onPress={() => setShowEquipeModal(true)}
+                onPress={() => {
+                  loadEquipes(false); // Recarregar equipes sem mostrar loading
+                  setShowEquipeModal(true);
+                }}
                 disabled={loading}
               >
                 <Text style={[styles.dropdownButtonText, !equipe && styles.placeholder]}>
