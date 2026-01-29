@@ -50,14 +50,19 @@ export default function Login() {
           .order('codigo');
 
         if (error) {
-          console.error('Erro ao carregar equipes:', error);
+          console.error('❌ Erro ao carregar equipes do banco:', error);
           // Fallback para lista em cache ou padrão
           await loadEquipesFromCache();
+        } else if (!data || data.length === 0) {
+          console.warn('⚠️ Nenhuma equipe encontrada no banco, usando lista padrão');
+          await loadEquipesFromCache();
         } else {
+          console.log(`✅ ${data.length} equipes carregadas do banco`);
           const equipesCarregadas = data.map(e => e.codigo);
           // Sempre adicionar COMP no início
           const equipesComComp = ['COMP', ...equipesCarregadas];
           setEquipes(equipesComComp);
+          console.log('📋 Equipes disponíveis:', equipesComComp.slice(0, 5).join(', '), '...');
           // Salvar em cache para uso offline
           await AsyncStorage.setItem('@equipes_cache', JSON.stringify(equipesComComp));
         }
