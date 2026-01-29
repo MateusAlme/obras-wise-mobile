@@ -54,6 +54,8 @@ export default function ProfilePage() {
     e.preventDefault()
     if (!user) return
 
+    const userId = user.id
+
     setSaving(true)
     setError('')
     setSuccess('')
@@ -65,7 +67,7 @@ export default function ProfilePage() {
           full_name: formData.full_name,
           updated_at: new Date().toISOString()
         })
-        .eq('id', user.id)
+        .eq('id', userId)
 
       if (updateError) throw updateError
 
