@@ -4101,7 +4101,20 @@ export default function NovaObra() {
                                 <View style={styles.photoGridSmall}>
                                   {poste.fotosAntes.map((foto, fotoIndex) => (
                                     <View key={fotoIndex} style={styles.photoCardSmall}>
-                                      <Image source={{ uri: foto.uri }} style={styles.photoThumbnailSmall} />
+                                      <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                        <PhotoWithPlaca
+                                          uri={foto.uri}
+                                          obraNumero={obra}
+                                          tipoServico={tipoServico}
+                                          equipe={isCompUser ? equipeExecutora : equipe}
+                                          latitude={foto.latitude}
+                                          longitude={foto.longitude}
+                                          utmX={foto.utmX}
+                                          utmY={foto.utmY}
+                                          utmZone={foto.utmZone}
+                                          style={styles.photoThumbnailSmall}
+                                        />
+                                      </TouchableOpacity>
                                       <TouchableOpacity
                                         style={styles.photoRemoveButtonSmall}
                                         onPress={() => removeFotoPoste(poste.id, 'fotosAntes', fotoIndex)}
@@ -4131,7 +4144,20 @@ export default function NovaObra() {
                                 <View style={styles.photoGridSmall}>
                                   {poste.fotosDurante.map((foto, fotoIndex) => (
                                     <View key={fotoIndex} style={styles.photoCardSmall}>
-                                      <Image source={{ uri: foto.uri }} style={styles.photoThumbnailSmall} />
+                                      <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                        <PhotoWithPlaca
+                                          uri={foto.uri}
+                                          obraNumero={obra}
+                                          tipoServico={tipoServico}
+                                          equipe={isCompUser ? equipeExecutora : equipe}
+                                          latitude={foto.latitude}
+                                          longitude={foto.longitude}
+                                          utmX={foto.utmX}
+                                          utmY={foto.utmY}
+                                          utmZone={foto.utmZone}
+                                          style={styles.photoThumbnailSmall}
+                                        />
+                                      </TouchableOpacity>
                                       <TouchableOpacity
                                         style={styles.photoRemoveButtonSmall}
                                         onPress={() => removeFotoPoste(poste.id, 'fotosDurante', fotoIndex)}
@@ -4161,7 +4187,20 @@ export default function NovaObra() {
                                 <View style={styles.photoGridSmall}>
                                   {poste.fotosDepois.map((foto, fotoIndex) => (
                                     <View key={fotoIndex} style={styles.photoCardSmall}>
-                                      <Image source={{ uri: foto.uri }} style={styles.photoThumbnailSmall} />
+                                      <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                        <PhotoWithPlaca
+                                          uri={foto.uri}
+                                          obraNumero={obra}
+                                          tipoServico={tipoServico}
+                                          equipe={isCompUser ? equipeExecutora : equipe}
+                                          latitude={foto.latitude}
+                                          longitude={foto.longitude}
+                                          utmX={foto.utmX}
+                                          utmY={foto.utmY}
+                                          utmZone={foto.utmZone}
+                                          style={styles.photoThumbnailSmall}
+                                        />
+                                      </TouchableOpacity>
                                       <TouchableOpacity
                                         style={styles.photoRemoveButtonSmall}
                                         onPress={() => removeFotoPoste(poste.id, 'fotosDepois', fotoIndex)}
