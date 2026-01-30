@@ -55,7 +55,8 @@
 - ✅ Rascunhos locais no histórico COMP
 - ✅ Campo `creator_role` para identificação permanente
 - ✅ Logs de debug para diagnóstico
-- ✅ **NOVO:** Tela de detalhes não exibia fotos de postes
+- ✅ Tela de detalhes não exibia fotos de postes
+- ✅ **NOVO:** postes_data não era salvo ao pausar obra como rascunho
 
 ### Commits Realizados
 1. `feat: Implementar sistema de múltiplos postes para Cava em Rocha`
@@ -63,7 +64,8 @@
 3. `fix: Padronizar visualização de fotos no checklist de postes`
 4. `fix: Exibir rascunhos locais no histórico do COMP`
 5. `fix: Adicionar creator_role e logs de debug para COMP`
-6. **NOVO:** `fix: Adicionar suporte para checklist de postes na tela de detalhes`
+6. `fix: Adicionar suporte para checklist de postes na tela de detalhes`
+7. **NOVO:** `fix: Salvar postes_data ao pausar obra como rascunho`
 
 ---
 
