@@ -3536,6 +3536,18 @@ export default function NovaObra() {
         doc_fvbt: isServicoDocumentacao ? extractPhotoData(docFvbt) as string[] : [],
         doc_termo_desistencia_lpt: isServicoDocumentacao ? extractPhotoData(docTermoDesistenciaLpt) as string[] : [],
         doc_autorizacao_passagem: isServicoDocumentacao ? extractPhotoData(docAutorizacaoPassagem) as string[] : [],
+        // Cava em Rocha - Dados dos postes
+        ...(isServicoCavaRocha && {
+          postes_data: postesData.map(poste => ({
+            id: poste.id,
+            numero: poste.numero,
+            fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
+            fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
+            fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
+            observacao: poste.observacao,
+          })),
+          observacoes: observacaoGeralCavaRocha,
+        }),
       };
 
       // Montar dados da obra (ZERO validações - aceita qualquer estado)
