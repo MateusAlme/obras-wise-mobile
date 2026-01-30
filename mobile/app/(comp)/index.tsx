@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
-import { getPendingObras, PendingObra, syncAllPendingObras, startAutoSync } from '../../lib/offline-sync';
+import { getPendingObras, PendingObra, syncAllPendingObras, startAutoSync, getLocalObras } from '../../lib/offline-sync';
 import { checkInternetConnection } from '../../lib/offline-sync';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -145,7 +145,7 @@ export default function CompIndex() {
         }
       }
 
-      // Carregar obras pendentes (offline)
+      // Carregar obras pendentes (offline - sincronização)
       try {
         const pendentes = await getPendingObras();
         // Filtrar apenas obras de Cava em Rocha criadas pelo COMP
@@ -168,10 +168,38 @@ export default function CompIndex() {
         console.error('Erro ao carregar obras pendentes:', error);
       }
 
-      // Combinar obras: pendentes primeiro, depois online
-      const todasObras = [...obrasPendentes, ...obrasOnline];
+      // Carregar obras locais (rascunhos e não sincronizadas)
+      let obrasLocais: Obra[] = [];
+      try {
+        const locais = await getLocalObras();
+        // Filtrar apenas obras de Cava em Rocha criadas pelo COMP
+        const locaisCOMP = locais.filter(
+          l => l.tipo_servico === 'Cava em Rocha' && (l.responsavel === 'COMP' || l.equipe === 'COMP')
+        );
+
+        obrasLocais = locaisCOMP.map(l => ({
+          id: l.id,
+          data: l.data,
+          obra: l.obra,
+          responsavel: l.responsavel || 'COMP',
+          equipe: l.equipe,
+          status: (l.status || 'em_aberto') as 'em_aberto' | 'finalizada',
+          created_at: l.created_at,
+          sync_status: l.synced ? undefined : 'pending',
+          origem: 'offline' as const,
+        }));
+      } catch (error) {
+        console.error('Erro ao carregar obras locais:', error);
+      }
+
+      // Combinar obras: pendentes primeiro, depois locais, depois online
+      // Remover duplicatas (obras que estão tanto em pendentes quanto em locais)
+      const localIds = new Set(obrasLocais.map(o => o.id));
+      const obrasLocaisUnicas = obrasLocais.filter(l => !obrasPendentes.some(p => p.id === l.id));
+
+      const todasObras = [...obrasPendentes, ...obrasLocaisUnicas, ...obrasOnline];
       setObras(todasObras);
-      setPendingCount(obrasPendentes.length);
+      setPendingCount(obrasPendentes.length + obrasLocaisUnicas.length);
     } catch (error) {
       console.error('Erro ao carregar obras:', error);
     } finally {
