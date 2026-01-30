@@ -871,42 +871,48 @@ export default function NovaObra() {
 
   // Funções para gerenciar postes (Cava em Rocha)
   const adicionarPoste = () => {
-    const novoPoste: Poste = {
-      id: `P${proximoNumeroPoste}`,
-      numero: proximoNumeroPoste,
-      fotosAntes: [],
-      fotosDurante: [],
-      fotosDepois: [],
-      observacao: '',
-      expandido: true,
-    };
-    setPostesData([...postesData, novoPoste]);
-    setProximoNumeroPoste(proximoNumeroPoste + 1);
+    setProximoNumeroPoste(prev => {
+      const novoNumero = prev;
+      const novoPoste: Poste = {
+        id: `P${novoNumero}`,
+        numero: novoNumero,
+        fotosAntes: [],
+        fotosDurante: [],
+        fotosDepois: [],
+        observacao: '',
+        expandido: true,
+      };
+      setPostesData(prevPostes => [...prevPostes, novoPoste]);
+      return prev + 1;
+    });
   };
 
   const removerPoste = (posteId: string) => {
-    if (postesData.length === 1) {
-      Alert.alert('Atenção', 'É necessário manter pelo menos 1 poste.');
-      return;
-    }
-    Alert.alert(
-      'Confirmar Remoção',
-      `Deseja remover o poste ${posteId}? Todas as fotos dele serão perdidas.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover',
-          style: 'destructive',
-          onPress: () => {
-            setPostesData(postesData.filter(p => p.id !== posteId));
+    setPostesData(prevPostes => {
+      if (prevPostes.length === 1) {
+        Alert.alert('Atenção', 'É necessário manter pelo menos 1 poste.');
+        return prevPostes;
+      }
+      Alert.alert(
+        'Confirmar Remoção',
+        `Deseja remover o poste ${posteId}? Todas as fotos dele serão perdidas.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Remover',
+            style: 'destructive',
+            onPress: () => {
+              setPostesData(prev => prev.filter(p => p.id !== posteId));
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+      return prevPostes;
+    });
   };
 
   const toggleExpandirPoste = (posteId: string) => {
-    setPostesData(postesData.map(p =>
+    setPostesData(prevPostes => prevPostes.map(p =>
       p.id === posteId ? { ...p, expandido: !p.expandido } : p
     ));
   };
@@ -983,8 +989,8 @@ export default function NovaObra() {
         photoId: photoMetadata?.id || `temp_${Date.now()}`,
       };
 
-      // Atualizar o poste específico
-      setPostesData(postesData.map(p => {
+      // Atualizar o poste específico (usar forma funcional para evitar problemas de estado)
+      setPostesData(prevPostes => prevPostes.map(p => {
         if (p.id === posteId) {
           return {
             ...p,
@@ -995,15 +1001,16 @@ export default function NovaObra() {
       }));
 
       setUploadingPhoto(false);
+      console.log(`✅ Foto adicionada ao ${posteId} - ${secao}`);
     } catch (error) {
-      console.error('Erro ao tirar foto:', error);
+      console.error('❌ Erro ao tirar foto do poste:', error);
       Alert.alert('Erro', 'Não foi possível tirar a foto. Tente novamente.');
       setUploadingPhoto(false);
     }
   };
 
   const removeFotoPoste = (posteId: string, secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois', fotoIndex: number) => {
-    setPostesData(postesData.map(p => {
+    setPostesData(prevPostes => prevPostes.map(p => {
       if (p.id === posteId) {
         return {
           ...p,
@@ -4173,7 +4180,7 @@ export default function NovaObra() {
                               placeholder={`Observações do ${poste.id}...`}
                               value={poste.observacao}
                               onChangeText={(text) => {
-                                setPostesData(postesData.map(p =>
+                                setPostesData(prevPostes => prevPostes.map(p =>
                                   p.id === poste.id ? { ...p, observacao: text } : p
                                 ));
                               }}

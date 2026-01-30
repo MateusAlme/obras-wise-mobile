@@ -16,6 +16,7 @@ export interface PlacaData {
   dataHora: string
   latitude?: number
   longitude?: number
+  posteId?: string  // ID do poste para Cava em Rocha (P1, P2, P3...)
 }
 
 /**
