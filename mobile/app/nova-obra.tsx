@@ -976,8 +976,27 @@ export default function NovaObra() {
         console.warn('Erro ao adicionar placa, continuando com foto original:', error);
       }
 
+      // Mapear seção para tipo de foto do backup
+      const tipoFotoMap: Record<typeof secao, 'antes' | 'durante' | 'depois'> = {
+        'fotosAntes': 'antes',
+        'fotosDurante': 'durante',
+        'fotosDepois': 'depois',
+      };
+      const tipoFoto = tipoFotoMap[secao];
+
+      // Obter índice atual de fotos nesta seção para este poste
+      const posteAtual = postesData.find(p => p.id === posteId);
+      const indexFoto = posteAtual ? posteAtual[secao].length : 0;
+
       // Fazer backup da foto
-      const photoMetadata = await backupPhoto(finalPhotoUri, backupObraId, location.latitude, location.longitude);
+      const photoMetadata = await backupPhoto(
+        finalPhotoUri,
+        backupObraId,
+        tipoFoto,
+        indexFoto,
+        location.latitude,
+        location.longitude
+      );
 
       const fotoData: FotoData = {
         uri: finalPhotoUri,
