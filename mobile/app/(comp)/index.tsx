@@ -172,10 +172,28 @@ export default function CompIndex() {
       let obrasLocais: Obra[] = [];
       try {
         const locais = await getLocalObras();
+        console.log('📊 [COMP] Total de obras locais:', locais.length);
+
         // Filtrar apenas obras de Cava em Rocha criadas pelo COMP
-        const locaisCOMP = locais.filter(
-          l => l.tipo_servico === 'Cava em Rocha' && (l.responsavel === 'COMP' || l.equipe === 'COMP')
-        );
+        // Aceitar obras onde: tipo_servico = 'Cava em Rocha' E (responsavel = 'COMP' OU creator_role = 'compressor')
+        const locaisCOMP = locais.filter(l => {
+          const isCavaRocha = l.tipo_servico === 'Cava em Rocha';
+          const isCOMP = l.responsavel === 'COMP' || (l as any).creator_role === 'compressor';
+
+          if (isCavaRocha && !isCOMP) {
+            console.log('🔍 [COMP] Obra filtrada:', {
+              id: l.id,
+              obra: l.obra,
+              tipo_servico: l.tipo_servico,
+              responsavel: l.responsavel,
+              creator_role: (l as any).creator_role,
+            });
+          }
+
+          return isCavaRocha && isCOMP;
+        });
+
+        console.log('✅ [COMP] Obras locais do COMP:', locaisCOMP.length);
 
         obrasLocais = locaisCOMP.map(l => ({
           id: l.id,

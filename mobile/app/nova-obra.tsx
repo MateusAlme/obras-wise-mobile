@@ -3554,6 +3554,7 @@ export default function NovaObra() {
         status: 'rascunho' as const,
         origem: 'offline' as const,
         created_at: new Date().toISOString(), // ✅ Campo obrigatório para sincronização
+        creator_role: isCompUser ? 'compressor' : 'equipe', // ✅ Identificador permanente do criador
         transformador_status: transformadorStatus,
         num_postes: numPostes,
         num_seccionamentos: numSeccionamentos,
