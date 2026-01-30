@@ -212,6 +212,31 @@ export default function NovaObra() {
   const [docMateriaisPrevisto, setDocMateriaisPrevisto] = useState<FotoData[]>([]);
   const [docMateriaisRealizado, setDocMateriaisRealizado] = useState<FotoData[]>([]);
 
+  // Estados para CAVA EM ROCHA - Sistema de Múltiplos Postes
+  type Poste = {
+    id: string;
+    numero: number;
+    fotosAntes: FotoData[];
+    fotosDurante: FotoData[];
+    fotosDepois: FotoData[];
+    observacao: string;
+    expandido: boolean;
+  };
+
+  const [postesData, setPostesData] = useState<Poste[]>([
+    {
+      id: 'P1',
+      numero: 1,
+      fotosAntes: [],
+      fotosDurante: [],
+      fotosDepois: [],
+      observacao: '',
+      expandido: true,
+    },
+  ]);
+  const [proximoNumeroPoste, setProximoNumeroPoste] = useState(2);
+  const [observacaoGeralCavaRocha, setObservacaoGeralCavaRocha] = useState('');
+
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [tempObraId, setTempObraId] = useState<string>(`temp_${Date.now()}`);
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
@@ -340,7 +365,8 @@ export default function NovaObra() {
   const isServicoDocumentacao = tipoServico === 'Documentação';
   const isServicoAltimetria = tipoServico === 'Altimetria';
   const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
-  const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento;
+  const isServicoCavaRocha = tipoServico === 'Cava em Rocha';
+  const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoCavaRocha;
 
   // Carregar equipe da sessão automaticamente
   useEffect(() => {
@@ -843,6 +869,150 @@ export default function NovaObra() {
     }
   };
 
+  // Funções para gerenciar postes (Cava em Rocha)
+  const adicionarPoste = () => {
+    const novoPoste: Poste = {
+      id: `P${proximoNumeroPoste}`,
+      numero: proximoNumeroPoste,
+      fotosAntes: [],
+      fotosDurante: [],
+      fotosDepois: [],
+      observacao: '',
+      expandido: true,
+    };
+    setPostesData([...postesData, novoPoste]);
+    setProximoNumeroPoste(proximoNumeroPoste + 1);
+  };
+
+  const removerPoste = (posteId: string) => {
+    if (postesData.length === 1) {
+      Alert.alert('Atenção', 'É necessário manter pelo menos 1 poste.');
+      return;
+    }
+    Alert.alert(
+      'Confirmar Remoção',
+      `Deseja remover o poste ${posteId}? Todas as fotos dele serão perdidas.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            setPostesData(postesData.filter(p => p.id !== posteId));
+          },
+        },
+      ]
+    );
+  };
+
+  const toggleExpandirPoste = (posteId: string) => {
+    setPostesData(postesData.map(p =>
+      p.id === posteId ? { ...p, expandido: !p.expandido } : p
+    ));
+  };
+
+  const getPosteStatus = (poste: Poste): 'completo' | 'parcial' | 'pendente' => {
+    const temAntes = poste.fotosAntes.length > 0;
+    const temDurante = poste.fotosDurante.length > 0;
+    const temDepois = poste.fotosDepois.length > 0;
+
+    if (temAntes && temDurante && temDepois) return 'completo';
+    if (temAntes || temDurante || temDepois) return 'parcial';
+    return 'pendente';
+  };
+
+  const takePicturePoste = async (
+    posteId: string,
+    secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois'
+  ) => {
+    const hasPermission = await requestPermissions();
+    if (!hasPermission) return;
+
+    setUploadingPhoto(true);
+
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.4,
+        allowsEditing: false,
+        aspect: [4, 3] as [number, number],
+        exif: false,
+      });
+
+      if (result.canceled) {
+        setUploadingPhoto(false);
+        return;
+      }
+
+      const photoUri = result.assets[0].uri;
+      const location = await getCurrentLocation();
+
+      const placaData = {
+        obraNumero: obra || tempObraId.substring(0, 8),
+        tipoServico: 'Cava em Rocha',
+        equipe: isCompUser ? equipeExecutora : equipe,
+        dataHora: new Date().toLocaleString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        latitude: location.latitude,
+        longitude: location.longitude,
+        posteId: posteId, // Adicionar ID do poste na placa
+      };
+
+      let finalPhotoUri = photoUri;
+      try {
+        finalPhotoUri = await renderPhotoWithPlacaBurnedIn(photoUri, placaData);
+      } catch (error) {
+        console.warn('Erro ao adicionar placa, continuando com foto original:', error);
+      }
+
+      // Fazer backup da foto
+      const photoMetadata = await backupPhoto(finalPhotoUri, backupObraId, location.latitude, location.longitude);
+
+      const fotoData: FotoData = {
+        uri: finalPhotoUri,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        utmX: photoMetadata?.utmX || null,
+        utmY: photoMetadata?.utmY || null,
+        utmZone: photoMetadata?.utmZone || null,
+        photoId: photoMetadata?.id || `temp_${Date.now()}`,
+      };
+
+      // Atualizar o poste específico
+      setPostesData(postesData.map(p => {
+        if (p.id === posteId) {
+          return {
+            ...p,
+            [secao]: [...p[secao], fotoData],
+          };
+        }
+        return p;
+      }));
+
+      setUploadingPhoto(false);
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      Alert.alert('Erro', 'Não foi possível tirar a foto. Tente novamente.');
+      setUploadingPhoto(false);
+    }
+  };
+
+  const removeFotoPoste = (posteId: string, secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois', fotoIndex: number) => {
+    setPostesData(postesData.map(p => {
+      if (p.id === posteId) {
+        return {
+          ...p,
+          [secao]: p[secao].filter((_, i) => i !== fotoIndex),
+        };
+      }
+      return p;
+    }));
+  };
 
   const takePicture = async (
     tipo: 'antes' | 'durante' | 'depois' | 'abertura' | 'fechamento' |
@@ -2275,6 +2445,18 @@ export default function NovaObra() {
         created_at: createdAt,
         data_abertura: createdAt, // Data de início do serviço
         data_fechamento: null, // NULL = Em aberto, será preenchido quando finalizar
+        // Cava em Rocha - Dados dos postes
+        ...(isServicoCavaRocha && {
+          postes_data: postesData.map(poste => ({
+            id: poste.id,
+            numero: poste.numero,
+            fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
+            fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
+            fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
+            observacao: poste.observacao,
+          })),
+          observacoes: observacaoGeralCavaRocha,
+        }),
       };
 
       // Adicionar campos created_by e creator_role apenas se as colunas existirem no banco
@@ -2455,6 +2637,34 @@ export default function NovaObra() {
         latitude: p.latitude,
         longitude: p.longitude
       }));
+
+      // Processar fotos dos postes (Cava em Rocha)
+      const postesDataUploaded = isServicoCavaRocha ? postesData.map(poste => {
+        const fotosAntesIds = poste.fotosAntes.map(f => f.photoId).filter(Boolean);
+        const fotosDuranteIds = poste.fotosDurante.map(f => f.photoId).filter(Boolean);
+        const fotosDepoisIds = poste.fotosDepois.map(f => f.photoId).filter(Boolean);
+
+        return {
+          id: poste.id,
+          numero: poste.numero,
+          fotos_antes: allPhotos.filter(p => fotosAntesIds.includes(p.id) && p.uploaded).map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude
+          })),
+          fotos_durante: allPhotos.filter(p => fotosDuranteIds.includes(p.id) && p.uploaded).map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude
+          })),
+          fotos_depois: allPhotos.filter(p => fotosDepoisIds.includes(p.id) && p.uploaded).map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude
+          })),
+          observacao: poste.observacao,
+        };
+      }) : null;
 
       const fotosAberturaUploaded = allPhotos.filter(p =>
         photoIds.abertura.includes(p.id) && p.uploaded
@@ -2966,6 +3176,10 @@ export default function NovaObra() {
           .insert([
             {
               ...obraData,
+              ...(isServicoCavaRocha && postesDataUploaded && {
+                postes_data: postesDataUploaded,
+                observacoes: observacaoGeralCavaRocha,
+              }),
               fotos_antes: fotosAntesUploaded,
               fotos_durante: fotosDuranteUploaded,
               fotos_depois: fotosDepoisUploaded,
@@ -3819,6 +4033,187 @@ export default function NovaObra() {
                 ) : null;
               })()}
 
+              {/* CAVA EM ROCHA - Sistema de Múltiplos Postes */}
+              {isServicoCavaRocha && (
+                <>
+                  <Text style={styles.sectionTitle}>📋 Checklist de Postes</Text>
+
+                  {postesData.map((poste, index) => {
+                    const status = getPosteStatus(poste);
+                    const statusColor = status === 'completo' ? '#28a745' : status === 'parcial' ? '#ffc107' : '#999';
+                    const statusIcon = status === 'completo' ? '✓' : status === 'parcial' ? '◐' : '○';
+
+                    return (
+                      <View key={poste.id} style={styles.posteCard}>
+                        {/* Header do Poste */}
+                        <TouchableOpacity
+                          style={styles.posteHeader}
+                          onPress={() => toggleExpandirPoste(poste.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.posteHeaderLeft}>
+                            <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}>
+                              <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
+                            </View>
+                            <Text style={styles.posteTitle}>{poste.id}</Text>
+                          </View>
+                          <View style={styles.posteHeaderRight}>
+                            <Text style={[styles.posteStatusText, { color: statusColor }]}>
+                              {status === 'completo' ? 'Completo' : status === 'parcial' ? 'Parcial' : 'Pendente'}
+                            </Text>
+                            <Text style={styles.posteExpandIcon}>{poste.expandido ? '▼' : '▶'}</Text>
+                          </View>
+                        </TouchableOpacity>
+
+                        {/* Resumo quando colapsado */}
+                        {!poste.expandido && (
+                          <View style={styles.posteResumo}>
+                            <Text style={styles.posteResumoText}>
+                              Antes: {poste.fotosAntes.length} | Durante: {poste.fotosDurante.length} | Depois: {poste.fotosDepois.length}
+                            </Text>
+                          </View>
+                        )}
+
+                        {/* Conteúdo expandido */}
+                        {poste.expandido && (
+                          <View style={styles.posteContent}>
+                            {/* Fotos Antes */}
+                            <View style={styles.fotoSecaoPoste}>
+                              <Text style={styles.photoSectionLabel}>
+                                📷 Antes ({poste.fotosAntes.length})
+                                {poste.fotosAntes.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️</Text>}
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.photoButtonSmall}
+                                onPress={() => takePicturePoste(poste.id, 'fotosAntes')}
+                                disabled={uploadingPhoto}
+                              >
+                                <Text style={styles.photoButtonTextSmall}>+ Foto</Text>
+                              </TouchableOpacity>
+                              {poste.fotosAntes.length > 0 && (
+                                <View style={styles.photoGridSmall}>
+                                  {poste.fotosAntes.map((foto, fotoIndex) => (
+                                    <View key={fotoIndex} style={styles.photoCardSmall}>
+                                      <Image source={{ uri: foto.uri }} style={styles.photoThumbnailSmall} />
+                                      <TouchableOpacity
+                                        style={styles.photoRemoveButtonSmall}
+                                        onPress={() => removeFotoPoste(poste.id, 'fotosAntes', fotoIndex)}
+                                      >
+                                        <Text style={styles.photoRemoveText}>×</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                            </View>
+
+                            {/* Fotos Durante */}
+                            <View style={styles.fotoSecaoPoste}>
+                              <Text style={styles.photoSectionLabel}>
+                                📷 Durante ({poste.fotosDurante.length})
+                                {poste.fotosDurante.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️</Text>}
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.photoButtonSmall}
+                                onPress={() => takePicturePoste(poste.id, 'fotosDurante')}
+                                disabled={uploadingPhoto}
+                              >
+                                <Text style={styles.photoButtonTextSmall}>+ Foto</Text>
+                              </TouchableOpacity>
+                              {poste.fotosDurante.length > 0 && (
+                                <View style={styles.photoGridSmall}>
+                                  {poste.fotosDurante.map((foto, fotoIndex) => (
+                                    <View key={fotoIndex} style={styles.photoCardSmall}>
+                                      <Image source={{ uri: foto.uri }} style={styles.photoThumbnailSmall} />
+                                      <TouchableOpacity
+                                        style={styles.photoRemoveButtonSmall}
+                                        onPress={() => removeFotoPoste(poste.id, 'fotosDurante', fotoIndex)}
+                                      >
+                                        <Text style={styles.photoRemoveText}>×</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                            </View>
+
+                            {/* Fotos Depois */}
+                            <View style={styles.fotoSecaoPoste}>
+                              <Text style={styles.photoSectionLabel}>
+                                📷 Depois ({poste.fotosDepois.length})
+                                {poste.fotosDepois.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️</Text>}
+                              </Text>
+                              <TouchableOpacity
+                                style={styles.photoButtonSmall}
+                                onPress={() => takePicturePoste(poste.id, 'fotosDepois')}
+                                disabled={uploadingPhoto}
+                              >
+                                <Text style={styles.photoButtonTextSmall}>+ Foto</Text>
+                              </TouchableOpacity>
+                              {poste.fotosDepois.length > 0 && (
+                                <View style={styles.photoGridSmall}>
+                                  {poste.fotosDepois.map((foto, fotoIndex) => (
+                                    <View key={fotoIndex} style={styles.photoCardSmall}>
+                                      <Image source={{ uri: foto.uri }} style={styles.photoThumbnailSmall} />
+                                      <TouchableOpacity
+                                        style={styles.photoRemoveButtonSmall}
+                                        onPress={() => removeFotoPoste(poste.id, 'fotosDepois', fotoIndex)}
+                                      >
+                                        <Text style={styles.photoRemoveText}>×</Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                            </View>
+
+                            {/* Observação do Poste */}
+                            <TextInput
+                              style={styles.observacaoInput}
+                              placeholder={`Observações do ${poste.id}...`}
+                              value={poste.observacao}
+                              onChangeText={(text) => {
+                                setPostesData(postesData.map(p =>
+                                  p.id === poste.id ? { ...p, observacao: text } : p
+                                ));
+                              }}
+                              multiline
+                            />
+
+                            {/* Botão Remover */}
+                            {postesData.length > 1 && (
+                              <TouchableOpacity
+                                style={styles.removePosteButton}
+                                onPress={() => removerPoste(poste.id)}
+                              >
+                                <Text style={styles.removePosteButtonText}>🗑️ Remover {poste.id}</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+
+                  {/* Botão Adicionar Poste */}
+                  <TouchableOpacity style={styles.addPosteButton} onPress={adicionarPoste}>
+                    <Text style={styles.addPosteButtonText}>+ Adicionar Poste</Text>
+                  </TouchableOpacity>
+
+                  {/* Observação Geral */}
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Observações Gerais</Text>
+                    <TextInput
+                      style={[styles.input, styles.textArea]}
+                      placeholder="Observações gerais da obra..."
+                      value={observacaoGeralCavaRocha}
+                      onChangeText={setObservacaoGeralCavaRocha}
+                      multiline
+                      numberOfLines={4}
+                    />
+                  </View>
+                </>
+              )}
 
               {isServicoPadrao && (
               <>
@@ -8648,5 +9043,160 @@ const styles = StyleSheet.create({
     color: '#d1d5db',
     fontSize: 12,
     marginTop: 4,
+  },
+  // Estilos para Cava em Rocha - Sistema de Múltiplos Postes
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  posteCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  posteHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f9fafb',
+  },
+  posteHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  posteStatusIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  posteStatusIconText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  posteTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  posteHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  posteStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  posteExpandIcon: {
+    fontSize: 14,
+    color: '#666',
+  },
+  posteResumo: {
+    padding: 12,
+    paddingTop: 0,
+    paddingBottom: 16,
+  },
+  posteResumoText: {
+    fontSize: 13,
+    color: '#666',
+  },
+  posteContent: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  fotoSecaoPoste: {
+    marginBottom: 16,
+  },
+  photoButtonSmall: {
+    backgroundColor: '#dc3545',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  photoButtonTextSmall: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  photoGridSmall: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  photoCardSmall: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  photoThumbnailSmall: {
+    width: '100%',
+    height: '100%',
+  },
+  photoRemoveButtonSmall: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#ef4444',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  observacaoInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    minHeight: 60,
+    textAlignVertical: 'top',
+    marginTop: 8,
+  },
+  removePosteButton: {
+    backgroundColor: '#fee',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  removePosteButtonText: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  addPosteButton: {
+    backgroundColor: '#28a745',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  addPosteButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });
