@@ -35,6 +35,16 @@ type FotoData = {
   photoId?: string;
 };
 
+type Poste = {
+  id: string;
+  numero: number;
+  fotosAntes: FotoData[];
+  fotosDurante: FotoData[];
+  fotosDepois: FotoData[];
+  observacao: string;
+  expandido: boolean;
+};
+
 export default function CavaRocha() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -44,18 +54,19 @@ export default function CavaRocha() {
   const [obra, setObra] = useState('');
   const [equipeExecutora, setEquipeExecutora] = useState('');
   const [responsavel, setResponsavel] = useState('');
-  const [observacao, setObservacao] = useState('');
+  const [observacaoGeral, setObservacaoGeral] = useState('');
 
-  // Fotos
-  const [fotosAntes, setFotosAntes] = useState<FotoData[]>([]);
-  const [fotosDepois, setFotosDepois] = useState<FotoData[]>([]);
+  // Postes
+  const [postes, setPostes] = useState<Poste[]>([]);
+  const [proximoNumero, setProximoNumero] = useState(1);
 
   // Modal
   const [showEquipeModal, setShowEquipeModal] = useState(false);
 
   useEffect(() => {
-    // Verificar se é COMP logado
     checkCompLogin();
+    // Adicionar primeiro poste automaticamente
+    adicionarPoste();
   }, []);
 
   const checkCompLogin = async () => {
@@ -66,7 +77,49 @@ export default function CavaRocha() {
     }
   };
 
-  const tirarFoto = async (tipo: 'antes' | 'depois') => {
+  const adicionarPoste = () => {
+    const novoPoste: Poste = {
+      id: `P${proximoNumero}`,
+      numero: proximoNumero,
+      fotosAntes: [],
+      fotosDurante: [],
+      fotosDepois: [],
+      observacao: '',
+      expandido: true,
+    };
+    setPostes([...postes, novoPoste]);
+    setProximoNumero(proximoNumero + 1);
+  };
+
+  const removerPoste = (posteId: string) => {
+    if (postes.length === 1) {
+      Alert.alert('Atenção', 'É necessário ter pelo menos um poste no checklist.');
+      return;
+    }
+
+    Alert.alert(
+      'Remover Poste',
+      `Deseja realmente remover o poste ${posteId}?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            setPostes(postes.filter(p => p.id !== posteId));
+          },
+        },
+      ]
+    );
+  };
+
+  const togglePosteExpandido = (posteId: string) => {
+    setPostes(postes.map(p =>
+      p.id === posteId ? { ...p, expandido: !p.expandido } : p
+    ));
+  };
+
+  const tirarFoto = async (posteId: string, tipo: 'antes' | 'durante' | 'depois') => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -110,11 +163,19 @@ export default function CavaRocha() {
           photoId,
         };
 
-        if (tipo === 'antes') {
-          setFotosAntes([...fotosAntes, fotoData]);
-        } else {
-          setFotosDepois([...fotosDepois, fotoData]);
-        }
+        // Adicionar foto ao poste específico
+        setPostes(postes.map(p => {
+          if (p.id === posteId) {
+            if (tipo === 'antes') {
+              return { ...p, fotosAntes: [...p.fotosAntes, fotoData] };
+            } else if (tipo === 'durante') {
+              return { ...p, fotosDurante: [...p.fotosDurante, fotoData] };
+            } else {
+              return { ...p, fotosDepois: [...p.fotosDepois, fotoData] };
+            }
+          }
+          return p;
+        }));
       }
     } catch (error) {
       console.error('Erro ao tirar foto:', error);
@@ -122,10 +183,32 @@ export default function CavaRocha() {
     }
   };
 
+  const getPosteStatus = (poste: Poste) => {
+    const temAntes = poste.fotosAntes.length > 0;
+    const temDurante = poste.fotosDurante.length > 0;
+    const temDepois = poste.fotosDepois.length > 0;
+
+    if (temAntes && temDurante && temDepois) return 'completo';
+    if (temAntes || temDurante || temDepois) return 'parcial';
+    return 'pendente';
+  };
+
+  const getStatusIcon = (status: string) => {
+    if (status === 'completo') return '✓';
+    if (status === 'parcial') return '◐';
+    return '○';
+  };
+
+  const getStatusColor = (status: string) => {
+    if (status === 'completo') return '#28a745';
+    if (status === 'parcial') return '#ffc107';
+    return '#6c757d';
+  };
+
   const handleSalvar = async () => {
     // Validações
     if (!data || !obra || !equipeExecutora || !responsavel) {
-      Alert.alert('Erro', 'Preencha todos os campos obrigatórios');
+      Alert.alert('Erro', 'Preencha todos os campos obrigatórios (Data, Obra, Equipe e Encarregado)');
       return;
     }
 
@@ -137,7 +220,24 @@ export default function CavaRocha() {
       return;
     }
 
-    // Fotos são opcionais - pode salvar sem fotos
+    if (postes.length === 0) {
+      Alert.alert('Erro', 'Adicione pelo menos um poste ao checklist');
+      return;
+    }
+
+    // Verificar se todos os postes têm pelo menos uma foto em cada seção
+    const postesIncompletos = postes.filter(p =>
+      p.fotosAntes.length === 0 || p.fotosDurante.length === 0 || p.fotosDepois.length === 0
+    );
+
+    if (postesIncompletos.length > 0) {
+      const ids = postesIncompletos.map(p => p.id).join(', ');
+      Alert.alert(
+        'Checklist Incompleto',
+        `Os seguintes postes precisam de fotos ANTES, DURANTE e DEPOIS: ${ids}\n\nCada poste deve ter pelo menos 1 foto em cada seção.`
+      );
+      return;
+    }
 
     setLoading(true);
 
@@ -145,14 +245,19 @@ export default function CavaRocha() {
       const createdBy = await AsyncStorage.getItem('@user_logado') || 'COMP';
       const obraId = `comp_${Date.now()}`;
 
-      // Obter IDs das fotos
-      const photoIds = {
-        antes: fotosAntes.map(f => f.photoId).filter(Boolean) as string[],
-        depois: fotosDepois.map(f => f.photoId).filter(Boolean) as string[],
-      };
+      // Coletar todos os IDs de fotos
+      const allPhotoIds: string[] = [];
+      postes.forEach(poste => {
+        const ids = [
+          ...poste.fotosAntes.map(f => f.photoId),
+          ...poste.fotosDurante.map(f => f.photoId),
+          ...poste.fotosDepois.map(f => f.photoId),
+        ].filter(Boolean) as string[];
+        allPhotoIds.push(...ids);
+      });
 
       // Adicionar à fila de upload
-      for (const photoId of [...photoIds.antes, ...photoIds.depois]) {
+      for (const photoId of allPhotoIds) {
         await addToUploadQueue(photoId, obraId);
       }
 
@@ -172,21 +277,33 @@ export default function CavaRocha() {
       const { getAllPhotoMetadata } = await import('../lib/photo-backup');
       const allPhotos = await getAllPhotoMetadata();
 
-      const fotosAntesUploaded = allPhotos
-        .filter(p => photoIds.antes.includes(p.id) && p.uploaded)
-        .map(p => ({
-          url: p.uploadUrl!,
-          latitude: p.latitude,
-          longitude: p.longitude,
-        }));
-
-      const fotosDepoisUploaded = allPhotos
-        .filter(p => photoIds.depois.includes(p.id) && p.uploaded)
-        .map(p => ({
-          url: p.uploadUrl!,
-          latitude: p.latitude,
-          longitude: p.longitude,
-        }));
+      // Montar estrutura de postes para salvar
+      const postesData = postes.map(poste => ({
+        id: poste.id,
+        numero: poste.numero,
+        fotos_antes: allPhotos
+          .filter(p => poste.fotosAntes.map(f => f.photoId).includes(p.id) && p.uploaded)
+          .map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude,
+          })),
+        fotos_durante: allPhotos
+          .filter(p => poste.fotosDurante.map(f => f.photoId).includes(p.id) && p.uploaded)
+          .map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude,
+          })),
+        fotos_depois: allPhotos
+          .filter(p => poste.fotosDepois.map(f => f.photoId).includes(p.id) && p.uploaded)
+          .map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude,
+          })),
+        observacao: poste.observacao,
+      }));
 
       // Salvar no banco
       const { error } = await supabase.from('obras').insert([
@@ -196,8 +313,8 @@ export default function CavaRocha() {
           responsavel,
           equipe: equipeExecutora,
           tipo_servico: 'Cava em Rocha',
-          fotos_antes: fotosAntesUploaded,
-          fotos_depois: fotosDepoisUploaded,
+          postes_data: postesData,
+          observacoes: observacaoGeral,
           created_by: createdBy,
           creator_role: 'compressor',
           created_at: new Date().toISOString(),
@@ -214,7 +331,7 @@ export default function CavaRocha() {
 
       Alert.alert(
         'Sucesso!',
-        `Cava em Rocha registrada para a equipe ${equipeExecutora}`,
+        `Book de Cava em Rocha registrado para a equipe ${equipeExecutora}\n\n${postes.length} poste(s) salvos com sucesso!`,
         [
           {
             text: 'OK',
@@ -223,9 +340,10 @@ export default function CavaRocha() {
               setObra('');
               setEquipeExecutora('');
               setResponsavel('');
-              setObservacao('');
-              setFotosAntes([]);
-              setFotosDepois([]);
+              setObservacaoGeral('');
+              setPostes([]);
+              setProximoNumero(1);
+              adicionarPoste(); // Adicionar um poste novo
             },
           },
         ]
@@ -262,8 +380,8 @@ export default function CavaRocha() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>Cava em Rocha</Text>
-            <Text style={styles.headerSubtitle}>Perfil: COMP (Compressor)</Text>
+            <Text style={styles.headerTitle}>📋 Book de Cava em Rocha</Text>
+            <Text style={styles.headerSubtitle}>Checklist de Fiscalização - Perfil COMP</Text>
           </View>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Ionicons name="log-out-outline" size={24} color="#dc3545" />
@@ -271,105 +389,221 @@ export default function CavaRocha() {
         </View>
 
         <View style={styles.content}>
-          {/* Data */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Data *</Text>
-            <TextInput
-              style={styles.input}
-              value={data}
-              onChangeText={setData}
-              editable={false}
-            />
-          </View>
+          {/* Dados Gerais */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>📝 Dados Gerais</Text>
 
-          {/* Obra */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Número da Obra *</Text>
-            <TextInput
-              style={styles.input}
-              value={obra}
-              onChangeText={(text) => {
-                const numericText = text.replace(/[^0-9]/g, '').slice(0, 10);
-                setObra(numericText);
-              }}
-              placeholder="Ex: 0032401637"
-              keyboardType="numeric"
-              maxLength={10}
-              editable={!loading}
-            />
-            <Text style={styles.hint}>
-              {obra.length > 0 ? `${obra.length}/10 dígitos` : 'Digite entre 8 e 10 dígitos'}
-            </Text>
-          </View>
+            {/* Data */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Data *</Text>
+              <TextInput
+                style={styles.input}
+                value={data}
+                onChangeText={setData}
+                editable={false}
+              />
+            </View>
 
-          {/* Equipe Executora */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Equipe Executora *</Text>
-            <TouchableOpacity
-              style={styles.dropdownButton}
-              onPress={() => setShowEquipeModal(true)}
-              disabled={loading}
-            >
-              <Text style={[styles.dropdownButtonText, !equipeExecutora && styles.placeholder]}>
-                {equipeExecutora || 'Selecione a equipe'}
+            {/* Obra */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Número da Obra *</Text>
+              <TextInput
+                style={styles.input}
+                value={obra}
+                onChangeText={(text) => {
+                  const numericText = text.replace(/[^0-9]/g, '').slice(0, 10);
+                  setObra(numericText);
+                }}
+                placeholder="Ex: 0032401637"
+                keyboardType="numeric"
+                maxLength={10}
+                editable={!loading}
+              />
+              <Text style={styles.hint}>
+                {obra.length > 0 ? `${obra.length}/10 dígitos` : 'Digite entre 8 e 10 dígitos'}
               </Text>
-              <Text style={styles.dropdownIcon}>▼</Text>
-            </TouchableOpacity>
-            <Text style={styles.hint}>Selecione a equipe que está executando o serviço</Text>
+            </View>
+
+            {/* Equipe Executora */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Equipe Executora *</Text>
+              <TouchableOpacity
+                style={styles.dropdownButton}
+                onPress={() => setShowEquipeModal(true)}
+                disabled={loading}
+              >
+                <Text style={[styles.dropdownButtonText, !equipeExecutora && styles.placeholder]}>
+                  {equipeExecutora || 'Selecione a equipe'}
+                </Text>
+                <Text style={styles.dropdownIcon}>▼</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Encarregado */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Encarregado *</Text>
+              <TextInput
+                style={styles.input}
+                value={responsavel}
+                onChangeText={setResponsavel}
+                placeholder="Nome do encarregado"
+                editable={!loading}
+              />
+            </View>
+
+            {/* Observação Geral */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Observações Gerais</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                value={observacaoGeral}
+                onChangeText={setObservacaoGeral}
+                placeholder="Observações sobre a obra (opcional)"
+                multiline
+                numberOfLines={3}
+                editable={!loading}
+              />
+            </View>
           </View>
 
-          {/* Encarregado */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Encarregado *</Text>
-            <TextInput
-              style={styles.input}
-              value={responsavel}
-              onChangeText={setResponsavel}
-              placeholder="Nome do encarregado"
-              editable={!loading}
-            />
-          </View>
+          {/* Checklist de Postes */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>⚡ Checklist de Postes</Text>
+              <Text style={styles.sectionSubtitle}>
+                {postes.length} poste(s) • {postes.filter(p => getPosteStatus(p) === 'completo').length} completo(s)
+              </Text>
+            </View>
 
-          {/* Observação */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Observação</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={observacao}
-              onChangeText={setObservacao}
-              placeholder="Observações sobre o serviço (opcional)"
-              multiline
-              numberOfLines={4}
-              editable={!loading}
-            />
-          </View>
+            {postes.map((poste, index) => {
+              const status = getPosteStatus(poste);
+              const statusIcon = getStatusIcon(status);
+              const statusColor = getStatusColor(status);
 
-          {/* Fotos Antes */}
-          <View style={styles.photoSection}>
-            <Text style={styles.photoSectionTitle}>Fotos ANTES</Text>
+              return (
+                <View key={poste.id} style={styles.posteCard}>
+                  {/* Header do Poste */}
+                  <TouchableOpacity
+                    style={styles.posteHeader}
+                    onPress={() => togglePosteExpandido(poste.id)}
+                  >
+                    <View style={styles.posteHeaderLeft}>
+                      <View style={[styles.posteStatusBadge, { backgroundColor: statusColor }]}>
+                        <Text style={styles.posteStatusIcon}>{statusIcon}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.posteId}>{poste.id}</Text>
+                        <Text style={styles.posteStatus}>
+                          {status === 'completo' ? 'Completo' : status === 'parcial' ? 'Em andamento' : 'Pendente'}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.posteHeaderRight}>
+                      {postes.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => removerPoste(poste.id)}
+                          style={styles.removeButton}
+                        >
+                          <Ionicons name="trash-outline" size={20} color="#dc3545" />
+                        </TouchableOpacity>
+                      )}
+                      <Ionicons
+                        name={poste.expandido ? 'chevron-up' : 'chevron-down'}
+                        size={24}
+                        color="#666"
+                      />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Conteúdo Expandido */}
+                  {poste.expandido && (
+                    <View style={styles.posteContent}>
+                      {/* Fotos ANTES */}
+                      <View style={styles.photoSection}>
+                        <View style={styles.photoHeader}>
+                          <Text style={styles.photoLabel}>📷 Fotos ANTES</Text>
+                          <Text style={[styles.photoCount, poste.fotosAntes.length === 0 && styles.photoCountRequired]}>
+                            {poste.fotosAntes.length} {poste.fotosAntes.length === 0 && '(Obrigatório)'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.addPhotoButton}
+                          onPress={() => tirarFoto(poste.id, 'antes')}
+                          disabled={loading}
+                        >
+                          <Ionicons name="camera" size={20} color="#007bff" />
+                          <Text style={styles.addPhotoText}>Adicionar Foto</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Fotos DURANTE */}
+                      <View style={styles.photoSection}>
+                        <View style={styles.photoHeader}>
+                          <Text style={styles.photoLabel}>📷 Fotos DURANTE</Text>
+                          <Text style={[styles.photoCount, poste.fotosDurante.length === 0 && styles.photoCountRequired]}>
+                            {poste.fotosDurante.length} {poste.fotosDurante.length === 0 && '(Obrigatório)'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.addPhotoButton}
+                          onPress={() => tirarFoto(poste.id, 'durante')}
+                          disabled={loading}
+                        >
+                          <Ionicons name="camera" size={20} color="#ffc107" />
+                          <Text style={styles.addPhotoText}>Adicionar Foto</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Fotos DEPOIS */}
+                      <View style={styles.photoSection}>
+                        <View style={styles.photoHeader}>
+                          <Text style={styles.photoLabel}>📷 Fotos DEPOIS</Text>
+                          <Text style={[styles.photoCount, poste.fotosDepois.length === 0 && styles.photoCountRequired]}>
+                            {poste.fotosDepois.length} {poste.fotosDepois.length === 0 && '(Obrigatório)'}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.addPhotoButton}
+                          onPress={() => tirarFoto(poste.id, 'depois')}
+                          disabled={loading}
+                        >
+                          <Ionicons name="camera" size={20} color="#28a745" />
+                          <Text style={styles.addPhotoText}>Adicionar Foto</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      {/* Observação do Poste */}
+                      <View style={styles.inputGroup}>
+                        <Text style={styles.label}>Observações</Text>
+                        <TextInput
+                          style={[styles.input, styles.textAreaSmall]}
+                          value={poste.observacao}
+                          onChangeText={(text) => {
+                            setPostes(postes.map(p =>
+                              p.id === poste.id ? { ...p, observacao: text } : p
+                            ));
+                          }}
+                          placeholder="Observações sobre este poste (opcional)"
+                          multiline
+                          numberOfLines={2}
+                          editable={!loading}
+                        />
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+
+            {/* Botão Adicionar Poste */}
             <TouchableOpacity
-              style={styles.addPhotoButton}
-              onPress={() => tirarFoto('antes')}
+              style={styles.addPosteButton}
+              onPress={adicionarPoste}
               disabled={loading}
             >
-              <Ionicons name="camera" size={24} color="#007bff" />
-              <Text style={styles.addPhotoText}>Tirar Foto ANTES</Text>
+              <Ionicons name="add-circle" size={24} color="#007bff" />
+              <Text style={styles.addPosteText}>Adicionar Poste (P{proximoNumero})</Text>
             </TouchableOpacity>
-            <Text style={styles.photoCount}>{fotosAntes.length} foto(s)</Text>
-          </View>
-
-          {/* Fotos Depois */}
-          <View style={styles.photoSection}>
-            <Text style={styles.photoSectionTitle}>Fotos DEPOIS</Text>
-            <TouchableOpacity
-              style={styles.addPhotoButton}
-              onPress={() => tirarFoto('depois')}
-              disabled={loading}
-            >
-              <Ionicons name="camera" size={24} color="#28a745" />
-              <Text style={styles.addPhotoText}>Tirar Foto DEPOIS</Text>
-            </TouchableOpacity>
-            <Text style={styles.photoCount}>{fotosDepois.length} foto(s)</Text>
           </View>
 
           {/* Botão Salvar */}
@@ -383,7 +617,7 @@ export default function CavaRocha() {
             ) : (
               <>
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.saveButtonText}>Salvar Registro</Text>
+                <Text style={styles.saveButtonText}>Finalizar e Salvar Book</Text>
               </>
             )}
           </TouchableOpacity>
@@ -451,13 +685,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: 16,
+    paddingBottom: 32,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 16,
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 12,
@@ -467,12 +702,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: '#1a1a1a',
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
     marginTop: 4,
   },
@@ -480,19 +715,35 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   content: {
+    gap: 16,
+  },
+  section: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 20,
+    padding: 16,
     shadowColor: '#000',
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
+  sectionHeader: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#666',
+  },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
     marginBottom: 8,
@@ -501,13 +752,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 15,
     color: '#1a1a1a',
   },
   textArea: {
-    minHeight: 100,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  textAreaSmall: {
+    minHeight: 60,
     textAlignVertical: 'top',
   },
   hint: {
@@ -519,14 +774,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: '#ddd',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 8,
+    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
   dropdownButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#1a1a1a',
   },
   placeholder: {
@@ -536,42 +791,121 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
   },
-  photoSection: {
-    marginBottom: 20,
-    padding: 16,
+  posteCard: {
     backgroundColor: '#f9fafb',
     borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  posteHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+  },
+  posteHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  posteHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  posteStatusBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  posteStatusIcon: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  posteId: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  posteStatus: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  removeButton: {
+    padding: 4,
+  },
+  posteContent: {
+    padding: 16,
+    paddingTop: 8,
+    gap: 12,
+  },
+  photoSection: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
   },
-  photoSectionTitle: {
-    fontSize: 16,
+  photoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  photoLabel: {
+    fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: 12,
+  },
+  photoCount: {
+    fontSize: 13,
+    color: '#666',
+  },
+  photoCountRequired: {
+    color: '#dc3545',
+    fontWeight: '600',
   },
   addPhotoButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: '#ddd',
   },
   addPhotoText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#1a1a1a',
   },
-  photoCount: {
-    fontSize: 14,
-    color: '#666',
+  addPosteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#e3f2fd',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: '#007bff',
     marginTop: 8,
-    textAlign: 'center',
+  },
+  addPosteText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#007bff',
   },
   saveButton: {
     flexDirection: 'row',
@@ -581,7 +915,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc3545',
     paddingVertical: 16,
     borderRadius: 12,
-    marginTop: 12,
+    marginTop: 8,
   },
   saveButtonDisabled: {
     backgroundColor: '#f5a3aa',
