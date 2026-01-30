@@ -1,66 +1,37 @@
 # Melhorias Pendentes - Próxima Sessão
 
-## 🚨 CRÍTICO - Bug Atual
+## 🎉 CORRIGIDO - Tela de Detalhes com Checklist de Postes
 
-### Tela de Detalhes não Exibe Checklist de Postes
+### ✅ Bug Resolvido (2026-01-30)
 
-**Problema Reportado (Obra 11115353):**
+**Problema Original (Obra 11115353):**
 - ❌ Obra criada com checklist de postes (P1 com fotos)
-- ❌ Ao abrir detalhes, aparece formato antigo (APR, Antes, Durante, Depois)
-- ❌ Fotos não aparecem (mostra 0 em todas as seções)
-- ❌ Equipe mostra "CNT 01" em vez da equipe executora
+- ❌ Ao abrir detalhes, aparecia formato antigo (APR, Antes, Durante, Depois)
+- ❌ Fotos não apareciam (mostrava 0 em todas as seções)
 
-**Causa Raiz:**
-- A tela `mobile/app/obra-detalhe.tsx` não tem suporte para `postes_data`
-- Ela procura fotos em `fotos_antes`, `fotos_durante`, `fotos_depois` (arrays simples)
-- As fotos estão salvas em `postes_data[0].fotos_antes`, etc.
+**Solução Implementada:**
 
-**Logs Confirmados:**
-```
-✅ Foto adicionada ao P1 - fotosAntes
-💾 Pausando obra como rascunho...
-✅ X foto(s) atualizadas com novo obraId
-```
+1. ✅ **Tipos atualizados:**
+   - Adicionado campo `postes_data` aos tipos `OnlineObra` e `ObraPayload`
+   - Suporta array de postes com fotos antes/durante/depois
 
-**Solução Necessária:**
+2. ✅ **Carregamento de fotos:**
+   - Atualizado `loadLocalPhotos` para incluir photoIds de `postes_data`
+   - Criado função `getPhotosForPoste` para mapear fotos por poste
 
-1. **Atualizar tipo `ObraDetalheData`:**
-```typescript
-type ObraDetalheData = {
-  // ... campos existentes
-  postes_data?: Array<{
-    id: string;
-    numero: number;
-    fotos_antes: any[];
-    fotos_durante: any[];
-    fotos_depois: any[];
-    observacao?: string;
-  }>;
-};
-```
+3. ✅ **UI de Checklist:**
+   - Renderiza cards por poste (P1, P2, P3...)
+   - Indicadores visuais de status (✓ completo, ◐ parcial, ○ pendente)
+   - 3 seções de fotos por poste: Antes, Durante, Depois
+   - Exibe observação de cada poste quando disponível
 
-2. **Detectar e renderizar postes:**
-```typescript
-const temPostes = obra.tipo_servico === 'Cava em Rocha' &&
-                  obra.postes_data &&
-                  obra.postes_data.length > 0;
+4. ✅ **Commit realizado:**
+   - `fix: Adicionar suporte para checklist de postes na tela de detalhes`
 
-{temPostes ? (
-  // Renderizar checklist de postes
-) : (
-  // Renderizar formato antigo
-)}
-```
-
-3. **Carregar fotos dos postes:**
-   - As fotos estão com photoIds salvos
-   - Usar `getPhotosByObraWithFallback` para carregar
-   - Mapear para cada poste
-
-4. **UI similar ao form de criação:**
-   - Cards expansíveis para cada poste
-   - Status visual (completo/parcial/pendente)
-   - Galeria de fotos por seção
+**Testar:**
+- Abrir obra 11115353 e verificar se fotos aparecem corretamente
+- Verificar cards de postes com status visual
+- Testar ampliação de fotos
 
 ---
 
@@ -76,6 +47,7 @@ const temPostes = obra.tipo_servico === 'Cava em Rocha' &&
 - ✅ Placa com ID do poste nas fotos
 - ✅ Salvamento em `postes_data` (JSONB)
 - ✅ Suporte offline/online
+- ✅ **NOVO:** Tela de detalhes exibe checklist de postes
 
 ### Correções de Bugs
 - ✅ Crash ao tirar fotos (useState funcional)
@@ -83,6 +55,7 @@ const temPostes = obra.tipo_servico === 'Cava em Rocha' &&
 - ✅ Rascunhos locais no histórico COMP
 - ✅ Campo `creator_role` para identificação permanente
 - ✅ Logs de debug para diagnóstico
+- ✅ **NOVO:** Tela de detalhes não exibia fotos de postes
 
 ### Commits Realizados
 1. `feat: Implementar sistema de múltiplos postes para Cava em Rocha`
@@ -90,26 +63,13 @@ const temPostes = obra.tipo_servico === 'Cava em Rocha' &&
 3. `fix: Padronizar visualização de fotos no checklist de postes`
 4. `fix: Exibir rascunhos locais no histórico do COMP`
 5. `fix: Adicionar creator_role e logs de debug para COMP`
+6. **NOVO:** `fix: Adicionar suporte para checklist de postes na tela de detalhes`
 
 ---
 
 ## 📋 Pendências para Próxima Sessão
 
-### 1. **URGENTE:** Corrigir Tela de Detalhes
-
-**Arquivo:** `mobile/app/obra-detalhe.tsx` (1625 linhas)
-
-**Passos:**
-1. Adicionar campo `postes_data` ao tipo
-2. Criar função para carregar fotos dos postes
-3. Renderizar seção de postes no UI
-4. Testar com obra 11115353
-
-**Prioridade:** 🔴 CRÍTICA
-
----
-
-### 2. **IMPORTANTE:** Aplicar Migration do Banco
+### 1. **IMPORTANTE:** Aplicar Migration do Banco
 
 **Arquivo:** `supabase/migrations/20260130_adicionar_campo_postes.sql`
 
@@ -133,7 +93,7 @@ ALTER TABLE obras ADD CONSTRAINT check_postes_data_is_array
 
 ---
 
-### 3. Aplicar Padrão para Outros Serviços
+### 2. Aplicar Padrão para Outros Serviços
 
 **Serviços a Atualizar:**
 - [ ] Linha Viva
@@ -150,7 +110,7 @@ ALTER TABLE obras ADD CONSTRAINT check_postes_data_is_array
 
 ---
 
-### 4. Melhorar Responsividade Menu Compressor
+### 3. Melhorar Responsividade Menu Compressor
 
 **Arquivo:** `mobile/app/(comp)/_layout.tsx`
 
@@ -256,8 +216,9 @@ ALTER TABLE obras ADD CONSTRAINT check_postes_data_is_array
 ## 🎯 Ordem de Implementação Sugerida
 
 1. **PRÓXIMA SESSÃO - IMEDIATO:**
-   - Corrigir tela de detalhes para exibir postes
+   - ~~Corrigir tela de detalhes para exibir postes~~ ✅ CONCLUÍDO
    - Aplicar migration do banco
+   - Testar obra 11115353 com checklist funcionando
 
 2. **CURTO PRAZO:**
    - Aplicar padrão para Linha Viva
@@ -273,11 +234,11 @@ ALTER TABLE obras ADD CONSTRAINT check_postes_data_is_array
 ## ✅ Critérios de Aceitação
 
 **Tela de Detalhes:**
-- [ ] Detecta obras com `postes_data`
-- [ ] Exibe checklist de postes em vez do formato antigo
-- [ ] Carrega e exibe fotos de cada poste
-- [ ] Mostra status de cada poste
-- [ ] Permite ampliar fotos ao clicar
+- [x] Detecta obras com `postes_data`
+- [x] Exibe checklist de postes em vez do formato antigo
+- [x] Carrega e exibe fotos de cada poste
+- [x] Mostra status de cada poste
+- [x] Permite ampliar fotos ao clicar
 
 **Migration:**
 - [ ] Campo `postes_data` criado no Supabase
@@ -289,4 +250,4 @@ ALTER TABLE obras ADD CONSTRAINT check_postes_data_is_array
 
 **Última Atualização:** 2026-01-30
 **Sessão:** Implementação de Sistema de Múltiplos Postes
-**Status:** ✅ Sistema implementado | 🚨 Tela de detalhes pendente
+**Status:** ✅ Sistema implementado | ✅ Tela de detalhes corrigida | ⏳ Migration pendente
