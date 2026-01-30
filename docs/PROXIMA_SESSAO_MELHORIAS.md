@@ -1,296 +1,292 @@
 # Melhorias Pendentes - Próxima Sessão
 
-## Resumo da Sessão Atual
+## 🚨 CRÍTICO - Bug Atual
 
-Nesta sessão foram implementadas as seguintes melhorias:
+### Tela de Detalhes não Exibe Checklist de Postes
 
-### ✅ Concluído
-1. **Sistema de Equipes Dinâmicas**
-   - App mobile agora carrega equipes do banco de dados
-   - Implementado cache local para funcionar offline
-   - Recarregamento automático ao abrir dropdown
-   - Corrigida função `criar_equipe_com_senha` para criar em ambas tabelas
+**Problema Reportado (Obra 11115353):**
+- ❌ Obra criada com checklist de postes (P1 com fotos)
+- ❌ Ao abrir detalhes, aparece formato antigo (APR, Antes, Durante, Depois)
+- ❌ Fotos não aparecem (mostra 0 em todas as seções)
+- ❌ Equipe mostra "CNT 01" em vez da equipe executora
 
-2. **Políticas RLS**
-   - Permitida leitura pública de equipes ativas
-   - Sincronização de equipes existentes
+**Causa Raiz:**
+- A tela `mobile/app/obra-detalhe.tsx` não tem suporte para `postes_data`
+- Ela procura fotos em `fotos_antes`, `fotos_durante`, `fotos_depois` (arrays simples)
+- As fotos estão salvas em `postes_data[0].fotos_antes`, etc.
 
-3. **Sistema Web**
-   - Fotos de perfil para usuários
-   - Melhorias na splash screen do app mobile
-   - Campo adicional de Laudo para transformadores retirados
-   - Correções de compatibilidade com Next.js 15
+**Logs Confirmados:**
+```
+✅ Foto adicionada ao P1 - fotosAntes
+💾 Pausando obra como rascunho...
+✅ X foto(s) atualizadas com novo obraId
+```
+
+**Solução Necessária:**
+
+1. **Atualizar tipo `ObraDetalheData`:**
+```typescript
+type ObraDetalheData = {
+  // ... campos existentes
+  postes_data?: Array<{
+    id: string;
+    numero: number;
+    fotos_antes: any[];
+    fotos_durante: any[];
+    fotos_depois: any[];
+    observacao?: string;
+  }>;
+};
+```
+
+2. **Detectar e renderizar postes:**
+```typescript
+const temPostes = obra.tipo_servico === 'Cava em Rocha' &&
+                  obra.postes_data &&
+                  obra.postes_data.length > 0;
+
+{temPostes ? (
+  // Renderizar checklist de postes
+) : (
+  // Renderizar formato antigo
+)}
+```
+
+3. **Carregar fotos dos postes:**
+   - As fotos estão com photoIds salvos
+   - Usar `getPhotosByObraWithFallback` para carregar
+   - Mapear para cada poste
+
+4. **UI similar ao form de criação:**
+   - Cards expansíveis para cada poste
+   - Status visual (completo/parcial/pendente)
+   - Galeria de fotos por seção
+
+---
+
+## ✅ Concluído nesta Sessão
+
+### Sistema de Múltiplos Postes Implementado
+- ✅ Estrutura completa em `mobile/app/nova-obra.tsx`
+- ✅ UI de checklist com cards expansíveis
+- ✅ Gerenciamento de postes (adicionar/remover)
+- ✅ 3 seções de fotos por poste (Antes/Durante/Depois)
+- ✅ Status visual (verde/amarelo/cinza)
+- ✅ Campo observação por poste + observação geral
+- ✅ Placa com ID do poste nas fotos
+- ✅ Salvamento em `postes_data` (JSONB)
+- ✅ Suporte offline/online
+
+### Correções de Bugs
+- ✅ Crash ao tirar fotos (useState funcional)
+- ✅ Padronização de fotos (PhotoWithPlaca + ampliar)
+- ✅ Rascunhos locais no histórico COMP
+- ✅ Campo `creator_role` para identificação permanente
+- ✅ Logs de debug para diagnóstico
+
+### Commits Realizados
+1. `feat: Implementar sistema de múltiplos postes para Cava em Rocha`
+2. `fix: Corrigir crash ao tirar foto de postes`
+3. `fix: Padronizar visualização de fotos no checklist de postes`
+4. `fix: Exibir rascunhos locais no histórico do COMP`
+5. `fix: Adicionar creator_role e logs de debug para COMP`
 
 ---
 
 ## 📋 Pendências para Próxima Sessão
 
-### 1. Ajustes no Perfil do Compressor
+### 1. **URGENTE:** Corrigir Tela de Detalhes
+
+**Arquivo:** `mobile/app/obra-detalhe.tsx` (1625 linhas)
+
+**Passos:**
+1. Adicionar campo `postes_data` ao tipo
+2. Criar função para carregar fotos dos postes
+3. Renderizar seção de postes no UI
+4. Testar com obra 11115353
+
+**Prioridade:** 🔴 CRÍTICA
+
+---
+
+### 2. **IMPORTANTE:** Aplicar Migration do Banco
+
+**Arquivo:** `supabase/migrations/20260130_adicionar_campo_postes.sql`
+
+**Status:** ⏳ Migration criada mas não aplicada
+
+**Como aplicar:**
+1. Acessar https://supabase.com/dashboard
+2. Projeto: obras-wise-mobile
+3. SQL Editor → Colar migration → Run
+
+**Migration:**
+```sql
+ALTER TABLE obras ADD COLUMN IF NOT EXISTS postes_data JSONB DEFAULT '[]';
+CREATE INDEX IF NOT EXISTS idx_obras_postes_data ON obras USING gin (postes_data);
+COMMENT ON COLUMN obras.postes_data IS '...';
+ALTER TABLE obras ADD CONSTRAINT check_postes_data_is_array
+  CHECK (jsonb_typeof(postes_data) = 'array' OR postes_data IS NULL);
+```
+
+**Prioridade:** 🟡 ALTA (necessário para sincronizar obras)
+
+---
+
+### 3. Aplicar Padrão para Outros Serviços
+
+**Serviços a Atualizar:**
+- [ ] Linha Viva
+- [ ] Aterramento
+- [ ] Fundação Especial
+
+**Padrão a Aplicar:**
+- Mesmo sistema de múltiplos postes
+- Checklist expansível
+- 3 seções de fotos por poste
+- Campo `postes_data` no banco
+
+**Prioridade:** 🟢 MÉDIA
+
+---
+
+### 4. Melhorar Responsividade Menu Compressor
 
 **Arquivo:** `mobile/app/(comp)/_layout.tsx`
 
 **Objetivos:**
-- [ ] Revisar e corrigir menu inferior para ser mais responsivo
-- [ ] Ajustar layout para padrão profissional consistente
-- [ ] Garantir boa adaptação para diferentes tamanhos de tela (mobile e tablet)
-- [ ] Melhorar espaçamento e visual dos ícones do menu
+- Revisar menu inferior
+- Melhorar adaptação a diferentes telas
+- Otimizar performance
 
-**Observações:**
-- O menu atual está funcional mas precisa de melhorias de responsividade
-- Manter consistência visual com outros perfis do sistema
+**Prioridade:** 🟢 BAIXA
 
 ---
 
-### 2. Reestruturação do Book de Cava em Rocha
+## 📊 Estrutura de Dados
 
-**Arquivo:** `mobile/app/cava-rocha.tsx`
-
-**Estrutura de Dados Necessária:**
-
-```typescript
-type Poste = {
-  id: string;
-  numero: number; // Gerado automaticamente (P1, P2, P3...)
-  fotosAntes: FotoData[];
-  fotosDurante: FotoData[];
-  fotosDepois: FotoData[];
-  observacao?: string;
-};
-
-type BookCavaRocha = {
-  data: string;
-  obra: string;
-  equipeExecutora: string;
-  responsavel: string;
-  observacaoGeral?: string;
-  postes: Poste[]; // Array de postes
-};
+### `postes_data` (Offline - PhotoIDs)
+```json
+[
+  {
+    "id": "P1",
+    "numero": 1,
+    "fotos_antes": ["photo_id_1", "photo_id_2"],
+    "fotos_durante": ["photo_id_3"],
+    "fotos_depois": [],
+    "observacao": "Texto livre"
+  }
+]
 ```
 
-**Funcionalidades a Implementar:**
-
-- [ ] **Checklist de Fiscalização**
-  - Converter interface para formato de checklist
-  - Cada poste é um item do checklist
-  - Status: pendente / em andamento / concluído
-
-- [ ] **Gestão de Múltiplos Postes**
-  - Botão "Adicionar Poste"
-  - Geração automática de ID: P1, P2, P3...
-  - Possibilidade de remover postes
-  - Reordenar postes
-  - Expandir/colapsar seções de cada poste
-
-- [ ] **Fotos por Poste**
-  - Seção "Antes" (obrigatória)
-  - Seção "Durante" (obrigatória)
-  - Seção "Depois" (obrigatória)
-  - Contador de fotos por seção
-  - Visualização prévia das fotos
-
-**UI/UX:**
-```
-┌─────────────────────────────────────┐
-│ BOOK DE CAVA EM ROCHA              │
-├─────────────────────────────────────┤
-│ [Dados Gerais: Obra, Data, etc]    │
-├─────────────────────────────────────┤
-│ CHECKLIST DE POSTES                │
-│                                     │
-│ ┌─ P1 ─────────────────────┐      │
-│ │ ✓ Fotos Antes: 3         │      │
-│ │ ✓ Fotos Durante: 2       │      │
-│ │ ⊗ Fotos Depois: 0        │      │
-│ │ [Expandir] [Remover]     │      │
-│ └──────────────────────────┘      │
-│                                     │
-│ ┌─ P2 ─────────────────────┐      │
-│ │ ⊗ Pendente               │      │
-│ │ [Expandir] [Remover]     │      │
-│ └──────────────────────────┘      │
-│                                     │
-│ [+ Adicionar Poste]                │
-└─────────────────────────────────────┘
+### `postes_data` (Online - URLs)
+```json
+[
+  {
+    "id": "P1",
+    "numero": 1,
+    "fotos_antes": [
+      {
+        "url": "https://...",
+        "latitude": -23.55,
+        "longitude": -46.63
+      }
+    ],
+    "fotos_durante": [...],
+    "fotos_depois": [...],
+    "observacao": "..."
+  }
+]
 ```
 
 ---
 
-### 3. Campo Padronizado de Identificação de Postes
+## 🔍 Diagnóstico da Obra 11115353
 
-**Aplicar em:**
-- [ ] Cava em rocha (`mobile/app/cava-rocha.tsx`)
-- [ ] Linha viva (localizar arquivo)
-- [ ] Aterramento (localizar arquivo)
-- [ ] Fundação especial (localizar arquivo)
+**Dados da Obra:**
+- ID: `local_1769784046152_aijsaudvh`
+- Número: 11115353
+- Responsável: COMP
+- Equipe Executora: CNT 01
+- Tipo de Serviço: Cava em Rocha
+- Status: Rascunho
+- Creator Role: compressor
+- Postes: P1 com fotos nas seções Antes e Durante
 
-**Implementação:**
+**Problema Atual:**
+1. Obra salva corretamente no AsyncStorage
+2. Fotos salvas no photo-backup com photoIds
+3. Obra aparece no histórico do COMP
+4. MAS ao abrir detalhes:
+   - ❌ Mostra formato antigo (APR, Antes, Durante, Depois)
+   - ❌ Fotos não carregam (0 em todas as seções)
+   - ❌ Não reconhece `postes_data`
 
-```typescript
-// Componente de Input de Poste
-<View style={styles.posteIdContainer}>
-  <Text style={styles.posteIdPrefix}>P</Text>
-  <TextInput
-    style={styles.posteIdInput}
-    value={posteNumero}
-    onChangeText={(text) => {
-      // Aceita apenas números
-      const numero = text.replace(/[^0-9]/g, '');
-      setPosteNumero(numero);
-    }}
-    placeholder="1"
-    keyboardType="numeric"
-    maxLength={3}
-  />
-</View>
-
-// Display: P1, P2, P3...
-const posteId = `P${posteNumero}`;
-```
-
-**Validações:**
-- Não permitir poste sem número
-- Não permitir números duplicados no mesmo book
-- Validar que o número é válido (1-999)
-
-**Benefícios:**
-- Padronização automática
-- Redução de erros de digitação
-- Interface mais intuitiva
-- Facilita busca e organização
+**Solução:**
+- Atualizar `obra-detalhe.tsx` para suportar `postes_data`
 
 ---
 
-### 4. Atualização do Banco de Dados
+## 📝 Notas Técnicas
 
-**Tabela:** `obras`
+### Arquivos Modificados nesta Sessão
 
-**Novos Campos Necessários:**
+1. **`mobile/app/nova-obra.tsx`**
+   - Adicionado tipo `Poste`
+   - Estado `postesData` para múltiplos postes
+   - Funções de gerenciamento (adicionar/remover/expandir)
+   - `takePicturePoste` para fotos específicas de postes
+   - UI de checklist de postes
+   - Lógica de salvamento com `postes_data`
 
-```sql
-ALTER TABLE obras ADD COLUMN IF NOT EXISTS postes_data JSONB;
+2. **`mobile/app/(comp)/index.tsx`**
+   - Importado `getLocalObras`
+   - Carregamento de obras locais/rascunhos
+   - Filtro por `creator_role='compressor'`
+   - Logs de debug
 
--- Estrutura do JSONB:
--- [
---   {
---     "id": "P1",
---     "numero": 1,
---     "fotos_antes": [...],
---     "fotos_durante": [...],
---     "fotos_depois": [...],
---     "observacao": "..."
---   }
--- ]
-```
+3. **`mobile/lib/photo-with-placa.ts`**
+   - Adicionado campo `posteId` à interface `PlacaData`
 
-**Migration a Criar:**
-```sql
--- supabase/migrations/20260130_adicionar_campo_postes.sql
-
--- Adicionar campo para armazenar dados dos postes
-ALTER TABLE obras ADD COLUMN IF NOT EXISTS postes_data JSONB DEFAULT '[]';
-
--- Índice para busca por postes
-CREATE INDEX IF NOT EXISTS idx_obras_postes_data ON obras USING gin (postes_data);
-
--- Comentário
-COMMENT ON COLUMN obras.postes_data IS
-'Armazena array de postes com fotos antes/durante/depois e identificação padronizada (P1, P2, P3...)';
-```
-
----
-
-### 5. Considerações de Implementação
-
-**Manter Compatibilidade:**
-- Obras antigas (sem campo postes_data) devem continuar funcionando
-- Migração gradual para novo formato
-- Considerar fallback para formato antigo
-
-**Performance:**
-- Carregar fotos de forma lazy (sob demanda)
-- Comprimir imagens antes do upload
-- Cache local de thumbnails
-
-**Validações:**
-- Mínimo 1 poste por book
-- Pelo menos 1 foto em cada seção (antes/durante/depois)
-- ID de poste único dentro do mesmo book
-- Número da obra válido (8-10 dígitos)
-
-**Offline First:**
-- Salvar dados localmente primeiro
-- Sincronizar quando houver conexão
-- Indicador visual de status de sync
-- Retry automático em caso de falha
-
----
-
-## 📁 Arquivos a Localizar
-
-Precisa-se encontrar os arquivos dos seguintes tipos de serviço:
-
-```bash
-# Comandos para buscar:
-find mobile/app -name "*linha*viva*" -o -name "*aterramento*" -o -name "*fundacao*"
-grep -r "Linha Viva\|Aterramento\|Fundação Especial" mobile/app/
-```
+4. **`supabase/migrations/20260130_adicionar_campo_postes.sql`**
+   - Migration criada para campo `postes_data`
 
 ---
 
 ## 🎯 Ordem de Implementação Sugerida
 
-1. **Primeiro:** Reestruturar Book de Cava em Rocha (arquivo único, mais complexo)
-2. **Segundo:** Implementar campo padronizado de ID de poste
-3. **Terceiro:** Aplicar mesma estrutura em Linha Viva
-4. **Quarto:** Aplicar em Aterramento
-5. **Quinto:** Aplicar em Fundação Especial
-6. **Sexto:** Ajustar responsividade do perfil Compressor
-7. **Sétimo:** Testes completos em diferentes dispositivos
+1. **PRÓXIMA SESSÃO - IMEDIATO:**
+   - Corrigir tela de detalhes para exibir postes
+   - Aplicar migration do banco
 
----
+2. **CURTO PRAZO:**
+   - Aplicar padrão para Linha Viva
+   - Aplicar padrão para Aterramento
+   - Aplicar padrão para Fundação Especial
 
-## 📝 Notas Importantes
-
-- **Backup:** Fazer backup do código atual antes de grandes mudanças
-- **Testes:** Testar cada tipo de serviço após implementação
-- **Usuários:** Comunicar mudanças aos usuários finais
-- **Documentação:** Atualizar documentação de uso do app
-- **Performance:** Monitorar uso de memória com múltiplas fotos
-
----
-
-## 🔗 Referências
-
-- Código atual: `mobile/app/cava-rocha.tsx`
-- Layout Compressor: `mobile/app/(comp)/_layout.tsx`
-- Tipos de serviço: buscar em `mobile/app/nova-obra.tsx`
+3. **MÉDIO PRAZO:**
+   - Melhorar responsividade do menu COMP
+   - Otimizações de performance
 
 ---
 
 ## ✅ Critérios de Aceitação
 
-**Book de Cava em Rocha:**
-- [ ] Permite adicionar múltiplos postes
-- [ ] ID automático com prefixo "P"
-- [ ] 3 seções de fotos por poste (antes/durante/depois)
-- [ ] Interface de checklist intuitiva
-- [ ] Funciona offline
-- [ ] Sincroniza corretamente
+**Tela de Detalhes:**
+- [ ] Detecta obras com `postes_data`
+- [ ] Exibe checklist de postes em vez do formato antigo
+- [ ] Carrega e exibe fotos de cada poste
+- [ ] Mostra status de cada poste
+- [ ] Permite ampliar fotos ao clicar
 
-**Campo de ID de Poste:**
-- [ ] Prefixo "P" automático
-- [ ] Aceita apenas números
-- [ ] Não permite duplicados
-- [ ] Visual profissional e claro
-
-**Responsividade:**
-- [ ] Funciona em smartphones (5-7 polegadas)
-- [ ] Funciona em tablets (8-12 polegadas)
-- [ ] Menu inferior adaptável
-- [ ] Botões e textos legíveis
+**Migration:**
+- [ ] Campo `postes_data` criado no Supabase
+- [ ] Índice GIN aplicado
+- [ ] Constraint de array aplicada
+- [ ] Obras sincronizam com `postes_data`
 
 ---
 
-**Data:** 2026-01-29
-**Sessão:** Preparação para Melhorias v2.0
-**Status:** Planejamento Completo ✓
+**Última Atualização:** 2026-01-30
+**Sessão:** Implementação de Sistema de Múltiplos Postes
+**Status:** ✅ Sistema implementado | 🚨 Tela de detalhes pendente
