@@ -98,6 +98,15 @@ type OnlineObra = {
   doc_fvbt?: FotoInfo[];
   doc_termo_desistencia_lpt?: FotoInfo[];
   doc_autorizacao_passagem?: FotoInfo[];
+  // POSTES DATA (Cava em Rocha, Linha Viva, etc)
+  postes_data?: Array<{
+    id: string;
+    numero: number;
+    fotos_antes: any[];
+    fotos_durante: any[];
+    fotos_depois: any[];
+    observacao?: string;
+  }>;
   origem?: 'online';
 };
 
@@ -174,6 +183,15 @@ type ObraPayload = (PendingObra & {
   doc_fvbt?: FotoInfo[];
   doc_termo_desistencia_lpt?: FotoInfo[];
   doc_autorizacao_passagem?: FotoInfo[];
+  // POSTES DATA (Cava em Rocha, Linha Viva, etc)
+  postes_data?: Array<{
+    id: string;
+    numero: number;
+    fotos_antes: any[];
+    fotos_durante: any[];
+    fotos_depois: any[];
+    observacao?: string;
+  }>;
 });
 
 type ObraDetalheData = (OnlineObra | ObraPayload) & {
@@ -518,6 +536,12 @@ export default function ObraDetalhe() {
         ...(sourceObra.doc_laudo_regulador || []),
         ...(sourceObra.doc_laudo_religador || []),
         ...(sourceObra.doc_fvbt || []),
+        // Adicionar photoIds de postes_data
+        ...(sourceObra.postes_data || []).flatMap((poste: any) => [
+          ...(poste.fotos_antes || []),
+          ...(poste.fotos_durante || []),
+          ...(poste.fotos_depois || []),
+        ]),
       ].filter(id => typeof id === 'string') : [];
 
       // Usar função com fallback para encontrar fotos mesmo quando obraId mudou
@@ -662,6 +686,43 @@ export default function ObraDetalhe() {
       utmY: p.utmY,
       utmZone: p.utmZone,
     }));
+  };
+
+  // Helper para obter fotos de um poste específico
+  const getPhotosForPoste = (poste: any, secao: 'fotos_antes' | 'fotos_durante' | 'fotos_depois'): FotoInfo[] => {
+    if (!poste || !poste[secao]) return [];
+
+    const photoData = poste[secao];
+
+    // Se é array de objetos com URL/URI, usar diretamente
+    if (Array.isArray(photoData) && photoData.length > 0 && typeof photoData[0] === 'object') {
+      return (photoData as FotoInfo[]).filter(f => f.url || f.uri);
+    }
+
+    // Se é array de strings (photoIds), buscar nos metadados locais
+    if (Array.isArray(photoData) && photoData.length > 0 && typeof photoData[0] === 'string') {
+      const photoIds = photoData as string[];
+      const fotos: FotoInfo[] = [];
+
+      for (const photoId of photoIds) {
+        const metadata = localPhotos.find(p => p.id === photoId);
+        if (metadata) {
+          fotos.push({
+            url: metadata.supabaseUrl || metadata.uploadUrl,
+            uri: (metadata.supabaseUrl || metadata.uploadUrl) ? undefined : metadata.compressedPath,
+            latitude: metadata.latitude,
+            longitude: metadata.longitude,
+            utmX: metadata.utmX,
+            utmY: metadata.utmY,
+            utmZone: metadata.utmZone,
+          });
+        }
+      }
+
+      return fotos;
+    }
+
+    return [];
   };
 
   // Calcular fotos faltantes por tipo de serviço
@@ -1059,6 +1120,127 @@ export default function ObraDetalhe() {
           );
         })()}
 
+        {/* Checklist de Postes (Cava em Rocha, Linha Viva, etc) */}
+        {obra?.postes_data && obra.postes_data.length > 0 && (
+          <>
+            <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+              📋 Checklist de Postes
+            </Text>
+            {obra.postes_data.map((poste: any) => {
+              const fotosAntes = getPhotosForPoste(poste, 'fotos_antes');
+              const fotosDurante = getPhotosForPoste(poste, 'fotos_durante');
+              const fotosDepois = getPhotosForPoste(poste, 'fotos_depois');
+              const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length;
+              const statusCompleto = fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
+              const statusParcial = totalFotos > 0 && !statusCompleto;
+              const statusIcon = statusCompleto ? '✓' : statusParcial ? '◐' : '○';
+              const statusColor = statusCompleto ? '#28a745' : statusParcial ? '#ffc107' : '#999';
+
+              return (
+                <View key={poste.id} style={styles.posteCard}>
+                  {/* Header do Poste */}
+                  <View style={[styles.posteHeader, { borderLeftColor: statusColor }]}>
+                    <View style={styles.posteHeaderLeft}>
+                      <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}>
+                        <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
+                      </View>
+                      <View>
+                        <Text style={styles.posteHeaderTitle}>Poste {poste.id}</Text>
+                        <Text style={styles.posteHeaderSubtitle}>
+                          {totalFotos} foto(s) • {fotosAntes.length} Antes • {fotosDurante.length} Durante • {fotosDepois.length} Depois
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Conteúdo do Poste */}
+                  <View style={styles.posteContent}>
+                    {/* Seção: Fotos Antes */}
+                    <View style={styles.posteSection}>
+                      <Text style={styles.posteSectionTitle}>📸 Fotos Antes ({fotosAntes.length})</Text>
+                      {fotosAntes.length > 0 ? (
+                        <View style={styles.photoGrid}>
+                          {fotosAntes.map((foto, index) => {
+                            const source = getPhotoSource(foto);
+                            if (!source) return null;
+                            return (
+                              <TouchableOpacity
+                                key={`${poste.id}-antes-${index}`}
+                                onPress={() => openPhotoModal(foto, `poste_${poste.id}_antes`)}
+                                activeOpacity={0.8}
+                              >
+                                <Image source={source} style={styles.photoThumb} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                      )}
+                    </View>
+
+                    {/* Seção: Fotos Durante */}
+                    <View style={styles.posteSection}>
+                      <Text style={styles.posteSectionTitle}>🔨 Fotos Durante ({fotosDurante.length})</Text>
+                      {fotosDurante.length > 0 ? (
+                        <View style={styles.photoGrid}>
+                          {fotosDurante.map((foto, index) => {
+                            const source = getPhotoSource(foto);
+                            if (!source) return null;
+                            return (
+                              <TouchableOpacity
+                                key={`${poste.id}-durante-${index}`}
+                                onPress={() => openPhotoModal(foto, `poste_${poste.id}_durante`)}
+                                activeOpacity={0.8}
+                              >
+                                <Image source={source} style={styles.photoThumb} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                      )}
+                    </View>
+
+                    {/* Seção: Fotos Depois */}
+                    <View style={styles.posteSection}>
+                      <Text style={styles.posteSectionTitle}>✅ Fotos Depois ({fotosDepois.length})</Text>
+                      {fotosDepois.length > 0 ? (
+                        <View style={styles.photoGrid}>
+                          {fotosDepois.map((foto, index) => {
+                            const source = getPhotoSource(foto);
+                            if (!source) return null;
+                            return (
+                              <TouchableOpacity
+                                key={`${poste.id}-depois-${index}`}
+                                onPress={() => openPhotoModal(foto, `poste_${poste.id}_depois`)}
+                                activeOpacity={0.8}
+                              >
+                                <Image source={source} style={styles.photoThumb} />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                      )}
+                    </View>
+
+                    {/* Observação do Poste */}
+                    {poste.observacao && (
+                      <View style={styles.posteObservacao}>
+                        <Text style={styles.posteObservacaoLabel}>Observação:</Text>
+                        <Text style={styles.posteObservacaoText}>{poste.observacao}</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        )}
+
         {(() => {
           // Filtrar seções relevantes baseado no tipo de serviço
           const tipoServico = obra?.tipo_servico || '';
@@ -1071,9 +1253,10 @@ export default function ObraDetalhe() {
           const isServicoDocumentacao = tipoServico === 'Documentação';
           const isServicoAltimetria = tipoServico === 'Altimetria';
           const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
+          const isServicoCavaRocha = tipoServico === 'Cava em Rocha';
           const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento &&
             !isServicoTransformador && !isServicoMedidor && !isServicoChecklist &&
-            !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento;
+            !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoCavaRocha;
 
           const relevantSections = PHOTO_SECTIONS.filter(section => {
             // Serviço Padrão: Antes, Durante, Depois
@@ -1621,5 +1804,81 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  posteCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    overflow: 'hidden',
+  },
+  posteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderLeftWidth: 4,
+    backgroundColor: '#fafafa',
+  },
+  posteHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  posteStatusIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  posteStatusIconText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  posteHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1a1a1a',
+  },
+  posteHeaderSubtitle: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 2,
+  },
+  posteContent: {
+    padding: 16,
+  },
+  posteSection: {
+    marginBottom: 16,
+  },
+  posteSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 8,
+  },
+  posteObservacao: {
+    backgroundColor: '#f9f9f9',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007bff',
+  },
+  posteObservacaoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#555',
+    marginBottom: 4,
+  },
+  posteObservacaoText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
   },
 });
