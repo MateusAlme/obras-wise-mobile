@@ -1275,8 +1275,8 @@ export default function ObraDetalhe() {
             if (isServicoBookAterramento && section.key.startsWith('fotos_aterramento_')) {
               return true;
             }
-            // APR - Aparece em TODOS os serviços
-            if (section.key === 'doc_apr') {
+            // APR - Aparece em serviços que precisam (exceto Documentação e Cava em Rocha)
+            if (section.key === 'doc_apr' && !isServicoDocumentacao && !isServicoCavaRocha) {
               return true;
             }
             // Transformador - Filtrar por status (Instalado/Retirado)
