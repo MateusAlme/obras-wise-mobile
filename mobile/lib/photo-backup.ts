@@ -14,7 +14,7 @@ export interface PhotoMetadata {
     'aterramento_vala_aberta' | 'aterramento_hastes' | 'aterramento_vala_fechada' | 'aterramento_medicao' |
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
-    'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_antes_retirar' | 'transformador_laudo_retirado' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
     'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
     'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
@@ -118,7 +118,7 @@ export const backupPhoto = async (
     'aterramento_vala_aberta' | 'aterramento_hastes' | 'aterramento_vala_fechada' | 'aterramento_medicao' |
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
-    'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_antes_retirar' | 'transformador_laudo_retirado' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
     'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
     'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |

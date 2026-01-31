@@ -1047,7 +1047,7 @@ export default function NovaObra() {
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
     'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
-    'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_antes_retirar' | 'transformador_laudo_retirado' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
     'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
     'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
@@ -1801,7 +1801,7 @@ export default function NovaObra() {
     'transformador_laudo' | 'transformador_componente_instalado' | 'transformador_tombamento_instalado' |
     'transformador_tape' | 'transformador_placa_instalado' | 'transformador_instalado' |
     'transformador_conexoes_primarias_instalado' | 'transformador_conexoes_secundarias_instalado' |
-    'transformador_antes_retirar' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
+    'transformador_antes_retirar' | 'transformador_laudo_retirado' | 'transformador_tombamento_retirado' | 'transformador_placa_retirado' |
     'transformador_conexoes_primarias_retirado' | 'transformador_conexoes_secundarias_retirado' |
     'medidor_padrao' | 'medidor_leitura' | 'medidor_selo_born' | 'medidor_selo_caixa' | 'medidor_identificador_fase' |
     'altimetria_lado_fonte' | 'altimetria_medicao_fonte' | 'altimetria_lado_carga' | 'altimetria_medicao_carga' |
@@ -9122,22 +9122,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  // Estilos para Cava em Rocha - Sistema de Múltiplos Postes
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  posteCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    overflow: 'hidden',
-  },
+  // Estilos adicionais para Cava em Rocha - Sistema de Múltiplos Postes
   posteHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -9161,11 +9146,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '700',
-  },
-  posteTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1a1a1a',
   },
   posteHeaderRight: {
     flexDirection: 'row',
@@ -9196,20 +9176,6 @@ const styles = StyleSheet.create({
   },
   fotoSecaoPoste: {
     marginBottom: 16,
-  },
-  photoButtonSmall: {
-    backgroundColor: '#dc3545',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  photoButtonTextSmall: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   photoGridSmall: {
     flexDirection: 'row',
