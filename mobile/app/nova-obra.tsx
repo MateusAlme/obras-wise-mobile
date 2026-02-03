@@ -160,6 +160,7 @@ export default function NovaObra() {
   // Estados dinâmicos para Postes (cada poste tem status e fotos)
   const [numPostes, setNumPostes] = useState(1);
   const [fotosPostes, setFotosPostes] = useState<Array<{
+    numero: string; // Número/identificador do poste
     status: 'instalado' | 'retirado' | ''; // Status do poste
     posteInteiro: FotoData[];
     engaste: FotoData[];
@@ -168,6 +169,7 @@ export default function NovaObra() {
     maiorEsforco: FotoData[];
     menorEsforco: FotoData[];
   }>>([{
+    numero: '', // Sem número inicial
     status: '', // Sem status inicial
     posteInteiro: [],
     engaste: [],
@@ -6559,6 +6561,7 @@ export default function NovaObra() {
                       onPress={() => {
                         setNumPostes(numPostes + 1);
                         setFotosPostes([...fotosPostes, {
+                          numero: '', // Novo poste sem número
                           status: '', // Novo poste sem status
                           posteInteiro: [],
                           engaste: [],
@@ -6576,12 +6579,32 @@ export default function NovaObra() {
                   {fotosPostes.map((poste, posteIndex) => (
                     <View key={posteIndex} style={styles.posteCard}>
                       <Text style={styles.posteTitle}>
-                        Poste {posteIndex + 1}
+                        Poste {posteIndex + 1}{poste.numero ? ` - P${poste.numero}` : ''}
                         {poste.status === 'instalado' && poste.posteInteiro.length > 0 && poste.engaste.length > 0 &&
                          poste.conexao1.length > 0 && poste.conexao2.length > 0 &&
                          poste.maiorEsforco.length >= 2 && poste.menorEsforco.length >= 2 && ' ✓'}
                         {poste.status === 'retirado' && poste.posteInteiro.length >= 2 && ' ✓'}
                       </Text>
+
+                      {/* Campo para identificar o número do poste */}
+                      <View style={styles.posteNumeroSection}>
+                        <Text style={styles.posteNumeroLabel}>🪧 Número do Poste *</Text>
+                        <TextInput
+                          style={styles.posteNumeroInput}
+                          placeholder="Ex: 5, 12, 23..."
+                          placeholderTextColor="#999"
+                          keyboardType="numeric"
+                          value={poste.numero}
+                          onChangeText={(text) => {
+                            const newPostes = [...fotosPostes];
+                            newPostes[posteIndex].numero = text.replace(/[^0-9]/g, '');
+                            setFotosPostes(newPostes);
+                          }}
+                        />
+                        {!poste.numero && (
+                          <Text style={styles.hint}>Informe o número do poste para identificação</Text>
+                        )}
+                      </View>
 
                       {/* Seleção de Status: Instalado ou Retirado */}
                       <View style={styles.posteStatusSection}>
@@ -8996,6 +9019,31 @@ const styles = StyleSheet.create({
     color: '#78350f',
     marginBottom: 14,
   },
+  posteNumeroSection: {
+    marginBottom: 16,
+    backgroundColor: '#f0fdf4',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  posteNumeroLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#166534',
+    marginBottom: 8,
+  },
+  posteNumeroInput: {
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#22c55e',
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#15803d',
+    textAlign: 'center',
+  },
   posteStatusSection: {
     marginBottom: 16,
   },
@@ -9291,16 +9339,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: '#334155',
-  },
-  posteNumeroInput: {
-    flex: 1,
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    backgroundColor: '#fff',
   },
   posteAddButtonText: {
     color: '#fff',
