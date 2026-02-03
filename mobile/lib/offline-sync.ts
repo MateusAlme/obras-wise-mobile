@@ -214,23 +214,32 @@ export const saveObraLocal = async (
     const obraIndex = localObras.findIndex(o => o.id === obraId);
     const now = new Date().toISOString();
 
+    // ✅ CRÍTICO: Preservar serverId da obra existente se não vier no parâmetro
+    // Isso evita perder o link com o servidor após re-edição
+    const existingObra = obraIndex !== -1 ? localObras[obraIndex] : null;
+    const serverId = (obra as any).serverId || existingObra?.serverId || null;
+
+    console.log(`💾 saveObraLocal - obraId: ${obraId}, serverId existente: ${existingObra?.serverId}, serverId no param: ${(obra as any).serverId}, final: ${serverId}`);
+
     const savedObra: LocalObra = {
       ...obra,
       id: obraId,
-      synced: false,
-      locallyModified: obraIndex !== -1, // Se já existe, marca como modificada
+      // ✅ CRÍTICO: Preservar serverId para identificar obra no servidor
+      ...(serverId && { serverId }),
+      synced: false, // Sempre marca como não sincronizado (nova modificação)
+      locallyModified: obraIndex !== -1 || !!serverId, // Modificada se já existia ou se já foi para o servidor
       last_modified: now,
-      created_at: obraIndex !== -1 ? (obra.created_at || now) : now, // Preservar created_at se já existe
+      created_at: obraIndex !== -1 ? (existingObra?.created_at || obra.created_at || now) : (obra.created_at || now),
     };
 
     if (obraIndex !== -1) {
       // Atualizar obra existente
       localObras[obraIndex] = savedObra;
-      console.log(`📝 Obra local atualizada: ${obraId}`);
+      console.log(`📝 Obra local atualizada: ${obraId} (serverId: ${serverId || 'none'})`);
     } else {
       // Adicionar nova obra
       localObras.push(savedObra);
-      console.log(`✅ Nova obra local criada: ${obraId}`);
+      console.log(`✅ Nova obra local criada: ${obraId} (serverId: ${serverId || 'none'})`);
     }
 
     await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
@@ -534,43 +543,36 @@ export const syncLocalObra = async (
 
       if (index !== -1) {
         if (syncedObra && !fetchError) {
-          // ✅ CRÍTICO: Se ID mudou (temp_ → UUID), remover entrada antiga e criar nova
-          if (finalId !== obraId) {
-            console.log(`🔄 ID mudou: ${obraId} → ${finalId}`);
-            // Remover entrada antiga
-            localObras.splice(index, 1);
-            // Adicionar nova entrada com ID correto
-            localObras.push({
-              ...syncedObra,
-              synced: true,
-              locallyModified: false,
-              serverId: syncedObra.id,
-              origem: 'online', // ✅ CRÍTICO: Obra foi sincronizada com sucesso
-              last_modified: syncedObra.updated_at || syncedObra.created_at,
-              created_at: syncedObra.created_at,
-            } as LocalObra);
-          } else {
-            // ID não mudou, apenas atualizar
-            localObras[index] = {
-              ...syncedObra,
-              synced: true,
-              locallyModified: false,
-              serverId: syncedObra.id,
-              origem: 'online', // ✅ CRÍTICO: Obra foi sincronizada com sucesso
-              last_modified: syncedObra.updated_at || syncedObra.created_at,
-              created_at: syncedObra.created_at,
-            } as LocalObra;
-          }
-          console.log(`✅ Obra atualizada com dados do Supabase (incluindo URLs de fotos)`);
+          // ✅ CRÍTICO: Manter o ID local mas adicionar serverId para futuras sincronizações
+          // NÃO remover a entrada - apenas atualizar com os dados do servidor
+          console.log(`🔄 Atualizando obra local ${obraId} com serverId: ${finalId}`);
+          
+          localObras[index] = {
+            ...localObras[index], // Manter dados locais
+            ...syncedObra, // Sobrescrever com dados do servidor
+            id: obraId, // ✅ MANTER o ID local original
+            serverId: finalId, // ✅ Guardar o UUID do Supabase
+            synced: true,
+            locallyModified: false,
+            origem: 'online',
+            last_modified: syncedObra.updated_at || syncedObra.created_at,
+            created_at: syncedObra.created_at,
+          } as LocalObra;
+          
+          console.log(`✅ Obra atualizada - ID local: ${obraId}, serverId: ${finalId}`);
         } else {
           // Fallback: apenas marcar como sincronizada (mantém IDs)
           console.warn(`⚠️ Não foi possível buscar dados atualizados, marcando apenas como sincronizada`);
           localObras[index].synced = true;
           localObras[index].locallyModified = false;
+          // ✅ Ainda assim, guardar o serverId se disponível
+          if (finalId && finalId !== obraId) {
+            (localObras[index] as any).serverId = finalId;
+          }
         }
 
         await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-        console.log(`✅ Obra marcada como sincronizada: ${finalId}`);
+        console.log(`✅ Obra marcada como sincronizada: ${obraId} (serverId: ${finalId})`);
       }
     }
 
@@ -1364,11 +1366,25 @@ export const syncObra = async (
     const fotosVazamentoInstalacaoData = convertPhotosToData(fotosVazamentoInstalacaoMetadata);
 
     // Se a obra pendente representa a edição de uma obra já existente no servidor,
-    // devemos atualizar (UPDATE) em vez de inserir (INSERT). Detectamos isso quando
-    // `obra.isEdited` é true e há um `originalId` (ou quando o id não é um temp_).
-    const idToUpdate = obra.originalId ?? (obra.id && !obra.id.startsWith('temp_') ? obra.id : null);
+    // devemos atualizar (UPDATE) em vez de inserir (INSERT). Detectamos isso quando:
+    // 1. `obra.isEdited` é true e há um `originalId`
+    // 2. ou quando o id não é um temp_/local_
+    // 3. ✅ NOVO: ou quando a obra tem serverId (já foi sincronizada antes)
+    const idToUpdate = obra.originalId 
+      ?? (obra as any).serverId  // ✅ Se tem serverId, usar para UPDATE
+      ?? (obra.id && !obra.id.startsWith('temp_') && !obra.id.startsWith('local_') ? obra.id : null);
 
-    if (obra.isEdited && idToUpdate) {
+    // ✅ CORRIGIDO: Fazer UPDATE se tem serverId OU se isEdited
+    const shouldUpdate = (obra.isEdited && idToUpdate) || ((obra as any).serverId && idToUpdate);
+
+    console.log(`🔍 [syncObra] Decisão de sync:`);
+    console.log(`   - obra.id: ${obra.id}`);
+    console.log(`   - obra.serverId: ${(obra as any).serverId || 'undefined'}`);
+    console.log(`   - obra.isEdited: ${obra.isEdited}`);
+    console.log(`   - idToUpdate: ${idToUpdate}`);
+    console.log(`   - shouldUpdate: ${shouldUpdate}`);
+
+    if (shouldUpdate && idToUpdate) {
       console.log(`🔁 [syncObra] Atualizando obra existente no servidor: ${idToUpdate}`);
 
       // Buscar obra existente no servidor
@@ -1379,8 +1395,14 @@ export const syncObra = async (
         .single();
 
       if (fetchError) {
-        console.warn('⚠️ Não foi possível buscar obra existente para atualizar, tentando inserir:', fetchError);
-      } else if (existingObra) {
+        // ✅ CRÍTICO: Se não conseguiu buscar a obra, NÃO inserir nova!
+        // Isso causaria duplicação. Melhor falhar e tentar novamente.
+        console.error(`❌ [syncObra] Não foi possível buscar obra ${idToUpdate} para atualização:`, fetchError);
+        console.error(`❌ [syncObra] Abortando para evitar duplicação. A obra pode ter sido deletada do servidor.`);
+        throw new Error(`Não foi possível encontrar obra ${idToUpdate} no servidor para atualização. Verifique se a obra ainda existe.`);
+      }
+      
+      if (existingObra) {
         // ✅ CORRIGIDO: Substituir fotos se houver novas, caso contrário manter existentes
         // Isso evita duplicação ao sincronizar múltiplas vezes
         const replaceOrKeep = (newData: any[], existingData: any[]) => {
@@ -1482,6 +1504,9 @@ export const syncObra = async (
         await removePendingObra(obra.id);
         return { success: true, newId: idToUpdate };
       }
+      // Se existingObra é null mas não deu erro, algo estranho aconteceu
+      console.error(`❌ [syncObra] existingObra é null mas fetchError não foi definido - situação inesperada`);
+      throw new Error(`Situação inesperada ao atualizar obra ${idToUpdate}`);
     }
 
     // Se não fizemos update e chegamos aqui, inserir nova obra no servidor

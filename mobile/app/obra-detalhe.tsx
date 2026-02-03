@@ -198,6 +198,8 @@ type ObraDetalheData = (OnlineObra | ObraPayload) & {
   origem?: 'online' | 'offline';
   sync_status?: PendingObra['sync_status'];
   error_message?: string;
+  synced?: boolean;
+  serverId?: string;
 };
 
 const PHOTO_SECTIONS = [
@@ -240,15 +242,16 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_medidor_selo_born', label: 'Medidor - Selo do Born do Medidor' },
   { key: 'fotos_medidor_selo_caixa', label: 'Medidor - Selo da Caixa' },
   { key: 'fotos_medidor_identificador_fase', label: 'Medidor - Identificador de Fase' },
-  { key: 'fotos_checklist_croqui', label: 'Checklist - Croqui' },
-  { key: 'fotos_checklist_panoramica_inicial', label: 'Checklist - Foto Panorâmica Inicial' },
-  { key: 'fotos_checklist_chede', label: 'Checklist - CHEDE' },
-  { key: 'fotos_checklist_aterramento_cerca', label: 'Checklist - Aterramento de Cerca' },
-  { key: 'fotos_checklist_padrao_geral', label: 'Checklist - Padrão Geral' },
-  { key: 'fotos_checklist_padrao_interno', label: 'Checklist - Padrão Interno' },
-  { key: 'fotos_checklist_panoramica_final', label: 'Checklist - Foto Panorâmica Final' },
-  { key: 'fotos_checklist_postes', label: 'Checklist - Postes' },
-  { key: 'fotos_checklist_seccionamentos', label: 'Checklist - Seccionamentos' },
+  // CHECKLIST DE FISCALIZAÇÃO - Na ordem do formulário
+  { key: 'fotos_checklist_croqui', label: '1️⃣ Croqui da Obra' },
+  { key: 'fotos_checklist_panoramica_inicial', label: '2️⃣ Panorâmica Inicial' },
+  { key: 'fotos_checklist_chede', label: '3️⃣ Chave com Componente' },
+  { key: 'fotos_checklist_postes', label: '4️⃣ Registro dos Postes' },
+  { key: 'fotos_checklist_seccionamentos', label: '5️⃣ Seccionamento de Cerca' },
+  { key: 'fotos_checklist_aterramento_cerca', label: '6️⃣ Aterramento de Cerca' },
+  { key: 'fotos_checklist_padrao_geral', label: '7️⃣ Padrão de Ligação - Vista Geral' },
+  { key: 'fotos_checklist_padrao_interno', label: '8️⃣ Padrão de Ligação - Interno' },
+  { key: 'fotos_checklist_panoramica_final', label: '9️⃣ Panorâmica Final' },
   { key: 'fotos_altimetria_lado_fonte', label: 'Altimetria - Lado Fonte' },
   { key: 'fotos_altimetria_medicao_fonte', label: 'Altimetria - Medição Fonte' },
   { key: 'fotos_altimetria_lado_carga', label: 'Altimetria - Lado Carga' },
@@ -307,6 +310,7 @@ export default function ObraDetalhe() {
   const [modalVisible, setModalVisible] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [isFinalizando, setIsFinalizando] = useState(false);
+  const [isSincronizando, setIsSincronizando] = useState(false);
   const insets = useSafeAreaInsets();
 
   // Monitor internet connection
@@ -544,8 +548,10 @@ export default function ObraDetalhe() {
       ].filter(id => typeof id === 'string') : [];
 
       // Usar função com fallback para encontrar fotos mesmo quando obraId mudou
-      const photos = await getPhotosByObraWithFallback(obraId, allPhotoIds);
-      console.log(`📸 [loadLocalPhotos] Carregou ${photos.length} foto(s) para obra ${obraId}`);
+      // IMPORTANTE: Passar serverId para buscar fotos que foram atualizadas após sync
+      const serverId = sourceObra?.serverId;
+      const photos = await getPhotosByObraWithFallback(obraId, allPhotoIds, serverId);
+      console.log(`📸 [loadLocalPhotos] Carregou ${photos.length} foto(s) para obra ${obraId} (serverId: ${serverId || 'nenhum'})`);
       setLocalPhotos(photos);
     } catch (error) {
       console.error('Erro ao carregar fotos locais:', error);
@@ -829,6 +835,92 @@ export default function ObraDetalhe() {
     return { total: faltantes.length, detalhes: faltantes };
   };
 
+  // ✅ NOVA FUNÇÃO: Sincronizar obra sem finalizar (para acompanhamento no web)
+  const handleSincronizar = async () => {
+    if (!obra || !obra.id) return;
+
+    // Verificar se está online
+    if (!isOnline) {
+      Alert.alert(
+        'Sem Conexão',
+        'É necessário estar conectado à internet para sincronizar a obra.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // ✅ CORRIGIDO: Permitir re-sincronização se a obra foi modificada após sync
+    // synced=false indica que há alterações pendentes, mesmo se serverId existir
+    const hasServerId = !!obra.serverId;
+    const isLocal = obra.id.startsWith('local_');
+    const needsSync = !obra.synced; // synced=false significa alterações pendentes
+
+    console.log(`🔍 handleSincronizar - hasServerId: ${hasServerId}, isLocal: ${isLocal}, synced: ${obra.synced}, needsSync: ${needsSync}`);
+
+    // Se já está sincronizada E não tem alterações pendentes, não precisa sincronizar
+    if (hasServerId && !needsSync) {
+      Alert.alert('Info', 'Esta obra já está sincronizada com o servidor.\n\nNão há alterações pendentes.');
+      return;
+    }
+
+    // Determinar mensagem baseado no estado
+    const isReSync = hasServerId && needsSync;
+    const message = isReSync
+      ? 'Esta obra foi modificada desde a última sincronização.\n\nAs alterações serão enviadas para o servidor.'
+      : 'A obra será enviada para o servidor para acompanhamento.\n\nO status continuará "Em Aberto" até você finalizar.';
+
+    Alert.alert(
+      isReSync ? 'Atualizar Obra' : 'Sincronizar Obra',
+      message,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: isReSync ? 'Atualizar' : 'Sincronizar',
+          onPress: async () => {
+            try {
+              setIsSincronizando(true);
+              console.log(isReSync ? '🔄 Re-sincronizando obra:' : '📤 Sincronizando rascunho local:', obra.id);
+
+              const success = await syncLocalObra(obra.id);
+
+              if (!success) {
+                throw new Error('Erro ao sincronizar obra');
+              }
+
+              // Buscar o novo serverId
+              const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+              const LOCAL_OBRAS_KEY = '@obras_local';
+              const obrasJson = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
+              
+              if (obrasJson) {
+                const obras = JSON.parse(obrasJson);
+                const obraAtualizada = obras.find((o: any) => o.id === obra.id);
+                if (obraAtualizada?.serverId) {
+                  // Atualizar o estado local da obra com o serverId
+                  setObra((prev: any) => prev ? { ...prev, serverId: obraAtualizada.serverId, synced: true } : prev);
+                }
+              }
+
+              console.log('✅ Obra sincronizada com sucesso!');
+              Alert.alert(
+                'Sucesso',
+                isReSync 
+                  ? 'Alterações enviadas para o servidor com sucesso!'
+                  : 'Obra sincronizada! Agora ela pode ser acompanhada no sistema web.\n\nQuando terminar, clique em "Finalizar" para concluir.',
+                [{ text: 'OK' }]
+              );
+            } catch (error: any) {
+              console.error('❌ Erro ao sincronizar obra:', error);
+              Alert.alert('Erro', `Não foi possível sincronizar a obra: ${error.message}`);
+            } finally {
+              setIsSincronizando(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleFinalizarObra = async () => {
     if (!obra || !obra.id) return;
 
@@ -837,6 +929,17 @@ export default function ObraDetalhe() {
       Alert.alert(
         'Sem Conexão',
         'É necessário estar conectado à internet para finalizar a obra.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Verificar se é rascunho local não sincronizado
+    const isLocalDraft = obra.id.startsWith('local_');
+    if (isLocalDraft && !obra.serverId) {
+      Alert.alert(
+        'Sincronize Primeiro',
+        'Esta obra precisa ser sincronizada antes de finalizar.\n\nClique em "Sincronizar" primeiro.',
         [{ text: 'OK' }]
       );
       return;
@@ -867,37 +970,23 @@ export default function ObraDetalhe() {
               setIsFinalizando(true);
               const dataFechamento = new Date().toISOString();
 
-              // ✅ CRÍTICO: Detectar se é rascunho local (ID começa com 'local_')
-              const isLocalDraft = obra.id.startsWith('local_');
+              // Determinar qual ID usar (serverId se for local sincronizado, ou id direto)
+              const idParaFinalizar = (isLocalDraft && obra.serverId) ? obra.serverId : obra.id;
+              
+              console.log('📤 Finalizando obra:', idParaFinalizar);
 
-              if (isLocalDraft) {
-                // Para rascunhos locais, usar syncLocalObra que cria no Supabase
-                console.log('📤 Finalizando rascunho local:', obra.id);
+              const { error } = await supabase
+                .from('obras')
+                .update({
+                  status: 'finalizada',
+                  finalizada_em: dataFechamento,
+                  data_fechamento: dataFechamento,
+                })
+                .eq('id', idParaFinalizar);
 
-                const success = await syncLocalObra(obra.id);
+              if (error) throw error;
 
-                if (!success) {
-                  throw new Error('Erro ao sincronizar obra');
-                }
-
-                console.log('✅ Rascunho sincronizado com sucesso!');
-              } else {
-                // Para obras já no Supabase, fazer UPDATE direto
-                console.log('📤 Finalizando obra existente:', obra.id);
-
-                const { error } = await supabase
-                  .from('obras')
-                  .update({
-                    status: 'finalizada',
-                    finalizada_em: dataFechamento,
-                    data_fechamento: dataFechamento,
-                  })
-                  .eq('id', obra.id);
-
-                if (error) throw error;
-              }
-
-              // ✅ CRÍTICO: Atualizar AsyncStorage local com novo status
+              // Atualizar AsyncStorage local com novo status
               console.log('✅ Obra finalizada no Supabase, atualizando AsyncStorage...');
               try {
                 const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
@@ -921,7 +1010,6 @@ export default function ObraDetalhe() {
                 }
               } catch (storageError) {
                 console.error('⚠️ Erro ao atualizar AsyncStorage:', storageError);
-                // Não bloquear o fluxo se falhar atualização local
               }
 
               Alert.alert('Sucesso', 'Obra finalizada com sucesso!', [
@@ -1046,7 +1134,20 @@ export default function ObraDetalhe() {
         {/* Botões de ação */}
         {obra.status !== 'finalizada' && (() => {
           const { total: fotosFaltantes, detalhes: fotosFaltantesDetalhes } = calcularFotosFaltantes();
-          const podeFinalizar = isOnline && fotosFaltantes === 0;
+          const isLocalDraft = obra.id.startsWith('local_');
+          // ✅ CORRIGIDO: Verificar serverId (indica que já foi sincronizado com Supabase)
+          const jaSincronizada = !isLocalDraft || !!obra.serverId;
+          
+          // Finalizar: só habilitado se já sincronizada E sem fotos faltantes E online
+          const podeFinalizar = jaSincronizada && isOnline && fotosFaltantes === 0;
+          
+          // ✅ CORRIGIDO: Sincronizar aparece se:
+          // 1. É rascunho local E NÃO tem serverId (primeira sync)
+          // 2. OU tem serverId MAS synced=false (foi editada após sync)
+          const primeiraSync = isLocalDraft && !obra.serverId;
+          const reSync = obra.serverId && obra.synced === false;
+          const podeSincronizar = isOnline && (primeiraSync || reSync);
+          const textoSincronizar = reSync ? '🔄 Atualizar' : '📤 Sincronizar';
 
           return (
             <View>
@@ -1064,8 +1165,8 @@ export default function ObraDetalhe() {
                 </View>
               )}
 
+              {/* Primeira linha de botões: Adicionar Fotos */}
               <View style={styles.actionButtons}>
-                {/* Botão Adicionar Fotos - SEMPRE visível */}
                 <TouchableOpacity
                   style={[styles.continuarButton, { flex: 1 }]}
                   onPress={() => {
@@ -1080,202 +1181,238 @@ export default function ObraDetalhe() {
                   activeOpacity={0.7}
                 >
                   <Ionicons name="camera" size={20} color="#fff" />
-                  <Text style={styles.continuarButtonText}>Adicionar Fotos</Text>
+                  <Text style={styles.continuarButtonText}>📷 Adicionar Fotos</Text>
                 </TouchableOpacity>
+              </View>
 
-                {/* Botão Finalizar Obra - Aparece para RASCUNHOS e OBRAS EM ABERTO */}
-                {/* (já estamos dentro do bloco onde status !== 'finalizada') */}
-                <TouchableOpacity
+              {/* Segunda linha de botões: Sincronizar e/ou Finalizar */}
+              <View style={[styles.actionButtons, { marginTop: 8 }]}>
+                {/* Botão SINCRONIZAR - aparece para primeira sync OU re-sync após edição */}
+                {(primeiraSync || reSync) && (
+                  <TouchableOpacity
                     style={[
-                      styles.finalizarButton,
+                      styles.sincronizarButton,
                       { flex: 1 },
-                      (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
+                      (!podeSincronizar || isSincronizando) && styles.sincronizarButtonDisabled
                     ]}
-                    onPress={handleFinalizarObra}
-                    activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
-                    disabled={!podeFinalizar || isFinalizando}
+                    onPress={handleSincronizar}
+                    activeOpacity={podeSincronizar && !isSincronizando ? 0.7 : 1}
+                    disabled={!podeSincronizar || isSincronizando}
                   >
-                    {isFinalizando ? (
+                    {isSincronizando ? (
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <>
-                        <Ionicons
-                          name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
-                          size={20}
-                          color="#fff"
-                        />
-                        <Text style={styles.finalizarButtonText}>
-                          {podeFinalizar ? '📤 Finalizar Obra' : `Faltam ${fotosFaltantes} foto(s)`}
+                        <Ionicons name="cloud-upload" size={20} color="#fff" />
+                        <Text style={styles.sincronizarButtonText}>
+                          {isOnline ? textoSincronizar : '📵 Sem conexão'}
                         </Text>
                       </>
                     )}
                   </TouchableOpacity>
+                )}
+
+                {/* Botão FINALIZAR */}
+                <TouchableOpacity
+                  style={[
+                    styles.finalizarButton,
+                    { flex: 1 },
+                    (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
+                  ]}
+                  onPress={handleFinalizarObra}
+                  activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
+                  disabled={!podeFinalizar || isFinalizando}
+                >
+                  {isFinalizando ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
+                        size={20}
+                        color="#fff"
+                      />
+                      <Text style={styles.finalizarButtonText}>
+                        {!jaSincronizada 
+                          ? '⏳ Sincronize primeiro' 
+                          : fotosFaltantes > 0 
+                            ? `Faltam ${fotosFaltantes} foto(s)` 
+                            : '✅ Finalizar Obra'}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
+
+              {/* Dica para o usuário */}
+              {isLocalDraft && !obra.serverId && (
+                <Text style={styles.dicaText}>
+                  💡 Sincronize para acompanhar no sistema web
+                </Text>
+              )}
             </View>
           );
         })()}
 
-        {/* Checklist de Postes (Cava em Rocha, Linha Viva, etc) */}
+        {/* Checklist/Identificação de Postes (Cava em Rocha, Linha Viva, etc) */}
         {obra?.postes_data && obra.postes_data.length > 0 && (
-          <>
-            <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
-              {/* Checklist/Identificação de Postes (Cava em Rocha, Linha Viva, etc) */}
-              {obra?.postes_data && obra.postes_data.length > 0 && (
-                (() => {
-                  const allSemFotos = obra.postes_data.every((poste: any) =>
-                    (poste?.fotos_antes?.length || 0) === 0 &&
-                    (poste?.fotos_durante?.length || 0) === 0 &&
-                    (poste?.fotos_depois?.length || 0) === 0
-                  );
+          (() => {
+            const allSemFotos = obra.postes_data.every((poste: any) =>
+              (poste?.fotos_antes?.length || 0) === 0 &&
+              (poste?.fotos_durante?.length || 0) === 0 &&
+              (poste?.fotos_depois?.length || 0) === 0
+            );
 
-                  if (allSemFotos) {
-                    return (
-                      <>
-                        <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
-                          🪧 Postes Identificados
-                        </Text>
-                        <View style={styles.posteIdentificacaoCard}>
-                          <View style={styles.posteIdentificacaoList}>
-                            {obra.postes_data.map((poste: any, index: number) => {
-                              const numero = typeof poste?.numero === 'number'
-                                ? poste.numero
-                                : parseInt(String(poste?.id || '').replace(/[^0-9]/g, ''), 10);
-                              const label = numero ? `P${numero}` : String(poste?.id || `P${index + 1}`);
-                              return (
-                                <View key={`${label}-${index}`} style={styles.posteIdentificacaoItem}>
-                                  <Text style={styles.posteIdentificacaoText}>{label}</Text>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        </View>
-                      </>
-                    );
-                  }
-
-                  return (
-                    <>
-                      <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
-                        📋 Checklist de Postes
-                      </Text>
-                      {obra.postes_data.map((poste: any) => {
-                        const fotosAntes = getPhotosForPoste(poste, 'fotos_antes');
-                        const fotosDurante = getPhotosForPoste(poste, 'fotos_durante');
-                        const fotosDepois = getPhotosForPoste(poste, 'fotos_depois');
-                        const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length;
-                        const statusCompleto = fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
-                        const statusParcial = totalFotos > 0 && !statusCompleto;
-                        const statusIcon = statusCompleto ? '✓' : statusParcial ? '◐' : '○';
-                        const statusColor = statusCompleto ? '#28a745' : statusParcial ? '#ffc107' : '#999';
-
+            if (allSemFotos) {
+              return (
+                <>
+                  <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+                    🏷️ Postes Identificados
+                  </Text>
+                  <View style={styles.posteIdentificacaoCard}>
+                    <View style={styles.posteIdentificacaoList}>
+                      {obra.postes_data.map((poste: any, index: number) => {
+                        const numero = typeof poste?.numero === 'number'
+                          ? poste.numero
+                          : parseInt(String(poste?.id || '').replace(/[^0-9]/g, ''), 10);
+                        const label = numero ? `P${numero}` : String(poste?.id || `P${index + 1}`);
                         return (
-                          <View key={poste.id} style={styles.posteCard}>
-                            {/* Header do Poste */}
-                            <View style={[styles.posteHeader, { borderLeftColor: statusColor }]}
-                            >
-                              <View style={styles.posteHeaderLeft}>
-                                <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}
-                                >
-                                  <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
-                                </View>
-                                <View>
-                                  <Text style={styles.posteHeaderTitle}>Poste {poste.id}</Text>
-                                  <Text style={styles.posteHeaderSubtitle}>
-                                    {totalFotos} foto(s) • {fotosAntes.length} Antes • {fotosDurante.length} Durante • {fotosDepois.length} Depois
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
-
-                            {/* Conteúdo do Poste */}
-                            <View style={styles.posteContent}>
-                              {/* Seção: Fotos Antes */}
-                              <View style={styles.posteSection}>
-                                <Text style={styles.posteSectionTitle}>📸 Fotos Antes ({fotosAntes.length})</Text>
-                                {fotosAntes.length > 0 ? (
-                                  <View style={styles.photoGrid}>
-                                    {fotosAntes.map((foto, index) => {
-                                      const source = getPhotoSource(foto);
-                                      if (!source) return null;
-                                      return (
-                                        <TouchableOpacity
-                                          key={`${poste.id}-antes-${index}`}
-                                          onPress={() => openPhotoModal(foto, `poste_${poste.id}_antes`)}
-                                          activeOpacity={0.8}
-                                        >
-                                          <Image source={source} style={styles.photoThumbnail} />
-                                        </TouchableOpacity>
-                                      );
-                                    })}
-                                  </View>
-                                ) : (
-                                  <Text style={styles.noPhotosText}>Sem fotos</Text>
-                                )}
-                              </View>
-
-                              {/* Seção: Fotos Durante */}
-                              <View style={styles.posteSection}>
-                                <Text style={styles.posteSectionTitle}>🔨 Fotos Durante ({fotosDurante.length})</Text>
-                                {fotosDurante.length > 0 ? (
-                                  <View style={styles.photoGrid}>
-                                    {fotosDurante.map((foto, index) => {
-                                      const source = getPhotoSource(foto);
-                                      if (!source) return null;
-                                      return (
-                                        <TouchableOpacity
-                                          key={`${poste.id}-durante-${index}`}
-                                          onPress={() => openPhotoModal(foto, `poste_${poste.id}_durante`)}
-                                          activeOpacity={0.8}
-                                        >
-                                          <Image source={source} style={styles.photoThumbnail} />
-                                        </TouchableOpacity>
-                                      );
-                                    })}
-                                  </View>
-                                ) : (
-                                  <Text style={styles.noPhotosText}>Sem fotos</Text>
-                                )}
-                              </View>
-
-                              {/* Seção: Fotos Depois */}
-                              <View style={styles.posteSection}>
-                                <Text style={styles.posteSectionTitle}>✅ Fotos Depois ({fotosDepois.length})</Text>
-                                {fotosDepois.length > 0 ? (
-                                  <View style={styles.photoGrid}>
-                                    {fotosDepois.map((foto, index) => {
-                                      const source = getPhotoSource(foto);
-                                      if (!source) return null;
-                                      return (
-                                        <TouchableOpacity
-                                          key={`${poste.id}-depois-${index}`}
-                                          onPress={() => openPhotoModal(foto, `poste_${poste.id}_depois`)}
-                                          activeOpacity={0.8}
-                                        >
-                                          <Image source={source} style={styles.photoThumbnail} />
-                                        </TouchableOpacity>
-                                      );
-                                    })}
-                                  </View>
-                                ) : (
-                                  <Text style={styles.noPhotosText}>Sem fotos</Text>
-                                )}
-                              </View>
-
-                              {/* Observação do Poste */}
-                              {poste.observacao && (
-                                <View style={styles.posteObservacao}>
-                                  <Text style={styles.posteObservacaoLabel}>Observação:</Text>
-                                  <Text style={styles.posteObservacaoText}>{poste.observacao}</Text>
-                                </View>
-                              )}
-                            </View>
+                          <View key={`${label}-${index}`} style={styles.posteIdentificacaoItem}>
+                            <Text style={styles.posteIdentificacaoText}>{label}</Text>
                           </View>
                         );
                       })}
-                    </>
+                    </View>
+                  </View>
+                </>
+              );
+            }
+
+            return (
+              <>
+                <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+                  📋 Checklist de Postes
+                </Text>
+                {obra.postes_data.map((poste: any) => {
+                  const fotosAntes = getPhotosForPoste(poste, 'fotos_antes');
+                  const fotosDurante = getPhotosForPoste(poste, 'fotos_durante');
+                  const fotosDepois = getPhotosForPoste(poste, 'fotos_depois');
+                  const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length;
+                  const statusCompleto = fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
+                  const statusParcial = totalFotos > 0 && !statusCompleto;
+                  const statusIcon = statusCompleto ? '✓' : statusParcial ? '◐' : '○';
+                  const statusColor = statusCompleto ? '#28a745' : statusParcial ? '#ffc107' : '#999';
+
+                  return (
+                    <View key={poste.id} style={styles.posteCard}>
+                      {/* Header do Poste */}
+                      <View style={[styles.posteHeader, { borderLeftColor: statusColor }]}>
+                        <View style={styles.posteHeaderLeft}>
+                          <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}>
+                            <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
+                          </View>
+                          <View>
+                            <Text style={styles.posteHeaderTitle}>Poste {poste.id}</Text>
+                            <Text style={styles.posteHeaderSubtitle}>
+                              {totalFotos} foto(s) • {fotosAntes.length} Antes • {fotosDurante.length} Durante • {fotosDepois.length} Depois
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Conteúdo do Poste */}
+                      <View style={styles.posteContent}>
+                        {/* Seção: Fotos Antes */}
+                        <View style={styles.posteSection}>
+                          <Text style={styles.posteSectionTitle}>📸 Fotos Antes ({fotosAntes.length})</Text>
+                          {fotosAntes.length > 0 ? (
+                            <View style={styles.photoGrid}>
+                              {fotosAntes.map((foto, index) => {
+                                const source = getPhotoSource(foto);
+                                if (!source) return null;
+                                return (
+                                  <TouchableOpacity
+                                    key={`${poste.id}-antes-${index}`}
+                                    onPress={() => openPhotoModal(foto, `poste_${poste.id}_antes`)}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Image source={source} style={styles.photoThumb} />
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          ) : (
+                            <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                          )}
+                        </View>
+
+                        {/* Seção: Fotos Durante */}
+                        <View style={styles.posteSection}>
+                          <Text style={styles.posteSectionTitle}>🔨 Fotos Durante ({fotosDurante.length})</Text>
+                          {fotosDurante.length > 0 ? (
+                            <View style={styles.photoGrid}>
+                              {fotosDurante.map((foto, index) => {
+                                const source = getPhotoSource(foto);
+                                if (!source) return null;
+                                return (
+                                  <TouchableOpacity
+                                    key={`${poste.id}-durante-${index}`}
+                                    onPress={() => openPhotoModal(foto, `poste_${poste.id}_durante`)}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Image source={source} style={styles.photoThumb} />
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          ) : (
+                            <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                          )}
+                        </View>
+
+                        {/* Seção: Fotos Depois */}
+                        <View style={styles.posteSection}>
+                          <Text style={styles.posteSectionTitle}>✅ Fotos Depois ({fotosDepois.length})</Text>
+                          {fotosDepois.length > 0 ? (
+                            <View style={styles.photoGrid}>
+                              {fotosDepois.map((foto, index) => {
+                                const source = getPhotoSource(foto);
+                                if (!source) return null;
+                                return (
+                                  <TouchableOpacity
+                                    key={`${poste.id}-depois-${index}`}
+                                    onPress={() => openPhotoModal(foto, `poste_${poste.id}_depois`)}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Image source={source} style={styles.photoThumb} />
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          ) : (
+                            <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                          )}
+                        </View>
+
+                        {/* Observação do Poste */}
+                        {poste.observacao && (
+                          <View style={styles.posteObservacao}>
+                            <Text style={styles.posteObservacaoLabel}>Observação:</Text>
+                            <Text style={styles.posteObservacaoText}>{poste.observacao}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
                   );
-                })()
-              )}
+                })}
+              </>
+            );
+          })()
+        )}
+
+        {(() => {
+          // Filtrar seções relevantes baseado no tipo de serviço
+          const tipoServico = obra?.tipo_servico || '';
           const isServicoChave = tipoServico === 'Abertura e Fechamento de Chave';
           const isServicoDitais = tipoServico === 'Ditais';
           const isServicoBookAterramento = tipoServico === 'Book de Aterramento';
@@ -1776,6 +1913,40 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Estilos do botão Sincronizar
+  sincronizarButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#2196F3',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+    marginRight: 8,
+  },
+  sincronizarButtonDisabled: {
+    backgroundColor: '#90CAF9',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  sincronizarButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dicaText: {
+    textAlign: 'center',
+    color: '#666',
+    fontSize: 13,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.95)',
@@ -1903,26 +2074,35 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#555',
     marginBottom: 4,
+  },
+  posteObservacaoText: {
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
+  },
+  posteIdentificacaoCard: {
+    marginHorizontal: 16,
+    marginVertical: 8,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
   posteIdentificacaoList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   posteIdentificacaoItem: {
-    backgroundColor: '#e0f2fe',
+    backgroundColor: '#28a745',
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 999,
+    borderRadius: 16,
   },
   posteIdentificacaoText: {
-    color: '#0369a1',
-    fontWeight: '700',
+    color: '#fff',
     fontSize: 14,
-  },
-  },
-  posteObservacaoText: {
-    fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
+    fontWeight: '600',
   },
 });

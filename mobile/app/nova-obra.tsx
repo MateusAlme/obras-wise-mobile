@@ -247,6 +247,8 @@ export default function NovaObra() {
   const [tempObraId, setTempObraId] = useState<string>(`temp_${Date.now()}`);
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
   const [syncingPending, setSyncingPending] = useState(false);
+  // ✅ Guardar serverId para não perder quando salvar novamente
+  const [currentServerId, setCurrentServerId] = useState<string | null>(null);
 
   // Quando em modo de edição, usar o obraId real para salvar fotos corretamente
   const backupObraId = isEditMode && obraId ? obraId : tempObraId;
@@ -407,11 +409,29 @@ export default function NovaObra() {
       const loadObraDataAsync = async () => {
         try {
           const obraData = JSON.parse(params.obraData);
+
+          // DEBUG: Mostrar o que está sendo carregado
+          console.log('🔍 DEBUG loadObraDataAsync - Dados recebidos:');
+          console.log('   obraData.id:', obraData.id);
+          console.log('   obraData.tipo_servico:', obraData.tipo_servico);
+          console.log('   obraData.fotos_antes:', obraData.fotos_antes?.length || 0, obraData.fotos_antes);
+          console.log('   obraData.fotos_durante:', obraData.fotos_durante?.length || 0, obraData.fotos_durante);
+          console.log('   obraData.fotos_depois:', obraData.fotos_depois?.length || 0, obraData.fotos_depois);
+          console.log('   obraData.fotos_ditais_abertura:', obraData.fotos_ditais_abertura?.length || 0, obraData.fotos_ditais_abertura);
+          console.log('   obraData.fotos_transformador_laudo:', obraData.fotos_transformador_laudo?.length || 0, obraData.fotos_transformador_laudo);
+          console.log('   obraData.fotos_medidor_padrao:', obraData.fotos_medidor_padrao?.length || 0, obraData.fotos_medidor_padrao);
+
           setObraId(obraData.id);
           setData(obraData.data);
           setObra(obraData.obra);
           setResponsavel(obraData.responsavel);
           setTipoServico(obraData.tipo_servico);
+          
+          // ✅ CRÍTICO: Guardar serverId para não criar duplicatas ao salvar
+          if (obraData.serverId) {
+            setCurrentServerId(obraData.serverId);
+            console.log('📌 ServerId carregado:', obraData.serverId);
+          }
 
           if (['Linha Viva', 'Book de Aterramento', 'Fundação Especial'].includes(obraData.tipo_servico) && Array.isArray(obraData.postes_data)) {
             const numeros = obraData.postes_data
@@ -431,34 +451,96 @@ export default function NovaObra() {
 
           // Coletar todos os IDs de fotos na obra para o fallback
           const allPhotoIds: string[] = [
+            // Fotos padrão
             ...(obraData.fotos_antes || []),
             ...(obraData.fotos_durante || []),
             ...(obraData.fotos_depois || []),
             ...(obraData.fotos_abertura || []),
             ...(obraData.fotos_fechamento || []),
+            // DITAIS
             ...(obraData.fotos_ditais_abertura || []),
             ...(obraData.fotos_ditais_impedir || []),
             ...(obraData.fotos_ditais_testar || []),
             ...(obraData.fotos_ditais_aterrar || []),
             ...(obraData.fotos_ditais_sinalizar || []),
+            // Aterramento
             ...(obraData.fotos_aterramento_vala_aberta || []),
             ...(obraData.fotos_aterramento_hastes || []),
             ...(obraData.fotos_aterramento_vala_fechada || []),
             ...(obraData.fotos_aterramento_medicao || []),
+            // Transformador
             ...(obraData.fotos_transformador_laudo || []),
             ...(obraData.fotos_transformador_componente_instalado || []),
             ...(obraData.fotos_transformador_tombamento_instalado || []),
+            ...(obraData.fotos_transformador_tape || []),
+            ...(obraData.fotos_transformador_placa_instalado || []),
+            ...(obraData.fotos_transformador_instalado || []),
+            ...(obraData.fotos_transformador_conexoes_primarias_instalado || []),
+            ...(obraData.fotos_transformador_conexoes_secundarias_instalado || []),
+            ...(obraData.fotos_transformador_antes_retirar || []),
+            ...(obraData.fotos_transformador_laudo_retirado || []),
+            ...(obraData.fotos_transformador_tombamento_retirado || []),
+            ...(obraData.fotos_transformador_placa_retirado || []),
+            ...(obraData.fotos_transformador_conexoes_primarias_retirado || []),
+            ...(obraData.fotos_transformador_conexoes_secundarias_retirado || []),
+            // Medidor
+            ...(obraData.fotos_medidor_padrao || []),
+            ...(obraData.fotos_medidor_leitura || []),
+            ...(obraData.fotos_medidor_selo_born || []),
+            ...(obraData.fotos_medidor_selo_caixa || []),
+            ...(obraData.fotos_medidor_identificador_fase || []),
+            // Checklist de Fiscalização
+            ...(obraData.fotos_checklist_croqui || []),
+            ...(obraData.fotos_checklist_panoramica_inicial || []),
+            ...(obraData.fotos_checklist_chede || []),
+            ...(obraData.fotos_checklist_padrao_geral || []),
+            ...(obraData.fotos_checklist_padrao_interno || []),
+            ...(obraData.fotos_checklist_panoramica_final || []),
+            ...(obraData.fotos_checklist_postes || []),
+            ...(obraData.fotos_checklist_seccionamentos || []),
+            ...(obraData.fotos_checklist_aterramento_cerca || []),
+            // Altimetria
+            ...(obraData.fotos_altimetria_lado_fonte || []),
+            ...(obraData.fotos_altimetria_medicao_fonte || []),
+            ...(obraData.fotos_altimetria_lado_carga || []),
+            ...(obraData.fotos_altimetria_medicao_carga || []),
+            // Vazamento
+            ...(obraData.fotos_vazamento_evidencia || []),
+            ...(obraData.fotos_vazamento_equipamentos_limpeza || []),
+            ...(obraData.fotos_vazamento_tombamento_retirado || []),
+            ...(obraData.fotos_vazamento_placa_retirado || []),
+            ...(obraData.fotos_vazamento_tombamento_instalado || []),
+            ...(obraData.fotos_vazamento_placa_instalado || []),
+            ...(obraData.fotos_vazamento_instalacao || []),
+            // Documentação
             ...(obraData.doc_laudo_transformador || []),
             ...(obraData.doc_cadastro_medidor || []),
             ...(obraData.doc_apr || []),
+            ...(obraData.doc_laudo_regulador || []),
+            ...(obraData.doc_laudo_religador || []),
+            ...(obraData.doc_fvbt || []),
+            ...(obraData.doc_termo_desistencia_lpt || []),
+            ...(obraData.doc_autorizacao_passagem || []),
+            // Postes checklist (extrair IDs das estruturas)
+            ...(obraData.checklist_postes_data || []).flatMap((poste: any) => [
+              ...(poste.posteInteiro || []),
+              ...(poste.engaste || []),
+              ...(poste.conexao1 || []),
+              ...(poste.conexao2 || []),
+              ...(poste.maiorEsforco || []),
+              ...(poste.menorEsforco || []),
+            ]),
+            ...(obraData.checklist_seccionamentos_data || []).flatMap((sec: any) => sec.fotos || []),
+            ...(obraData.checklist_aterramentos_cerca_data || []).flatMap((aterr: any) => aterr.fotos || []),
           ].filter(id => typeof id === 'string');
 
           let localPhotos: any[] = [];
 
           try {
             // Usar função com fallback para encontrar fotos mesmo quando obraId mudou
-            localPhotos = await getPhotosByObraWithFallback(obraData.id, allPhotoIds);
-            console.log(`✅ ${localPhotos.length} foto(s) encontradas no photo-backup`);
+            // IMPORTANTE: Passar serverId para buscar fotos que foram atualizadas após sync
+            localPhotos = await getPhotosByObraWithFallback(obraData.id, allPhotoIds, obraData.serverId);
+            console.log(`✅ ${localPhotos.length} foto(s) encontradas no photo-backup (obraId: ${obraData.id}, serverId: ${obraData.serverId || 'nenhum'})`);
           } catch (err: any) {
             console.error('❌ Erro ao carregar fotos:', err);
             console.warn('⚠️ Continuando sem fotos. Você pode adicionar novas fotos normalmente.');
@@ -538,9 +620,20 @@ export default function NovaObra() {
                         };
                       }
                     }
-                    // Log quando não encontra uma foto
+                    // ✅ CRÍTICO: Preservar photoId mesmo quando não encontra a foto
+                    // Isso evita perder o ID ao pausar a obra novamente
                     console.warn(`⚠️ [mapPhotos] Foto não encontrada para ${fieldName}: ${item}`);
-                    return null;
+                    console.warn(`   ℹ️ Mantendo photoId para não perder a referência`);
+                    return {
+                      uri: '', // URI vazia - foto não será exibida
+                      latitude: null,
+                      longitude: null,
+                      utmX: null,
+                      utmY: null,
+                      utmZone: null,
+                      photoId: item, // ✅ Preservar o ID original
+                      _notFound: true, // Flag indicando que a foto não foi encontrada
+                    };
                   }
 
                   // CASO 2: Objeto com URL (foto sincronizada do banco)
@@ -576,7 +669,18 @@ export default function NovaObra() {
                         };
                       }
                     }
-                    return null;
+                    // ✅ CRÍTICO: Preservar ID do objeto mesmo quando não encontra
+                    console.warn(`⚠️ [mapPhotos] Foto não encontrada por item.id: ${item.id}`);
+                    return {
+                      uri: '',
+                      latitude: null,
+                      longitude: null,
+                      utmX: null,
+                      utmY: null,
+                      utmZone: null,
+                      photoId: item.id,
+                      _notFound: true,
+                    };
                   }
 
                   return null;
@@ -664,6 +768,40 @@ export default function NovaObra() {
             if (obraData.fotos_checklist_padrao_geral?.length) setFotosChecklistPadraoGeral(mapPhotos(obraData.fotos_checklist_padrao_geral, 'fotos_checklist_padrao_geral'));
             if (obraData.fotos_checklist_padrao_interno?.length) setFotosChecklistPadraoInterno(mapPhotos(obraData.fotos_checklist_padrao_interno, 'fotos_checklist_padrao_interno'));
             if (obraData.fotos_checklist_panoramica_final?.length) setFotosChecklistPanoramicaFinal(mapPhotos(obraData.fotos_checklist_panoramica_final, 'fotos_checklist_panoramica_final'));
+
+            // Carregar estrutura dos postes do Checklist
+            if (obraData.checklist_postes_data?.length) {
+              const postesCarregados = obraData.checklist_postes_data.map((poste: any) => ({
+                numero: poste.numero || '',
+                status: poste.status || '',
+                posteInteiro: mapPhotos(poste.posteInteiro || [], 'checklist_poste_inteiro'),
+                engaste: mapPhotos(poste.engaste || [], 'checklist_poste_engaste'),
+                conexao1: mapPhotos(poste.conexao1 || [], 'checklist_poste_conexao1'),
+                conexao2: mapPhotos(poste.conexao2 || [], 'checklist_poste_conexao2'),
+                maiorEsforco: mapPhotos(poste.maiorEsforco || [], 'checklist_poste_maior_esforco'),
+                menorEsforco: mapPhotos(poste.menorEsforco || [], 'checklist_poste_menor_esforco'),
+              }));
+              setFotosPostes(postesCarregados);
+              setNumPostes(postesCarregados.length);
+            }
+
+            // Carregar estrutura dos seccionamentos do Checklist
+            if (obraData.checklist_seccionamentos_data?.length) {
+              const seccionamentosCarregados = obraData.checklist_seccionamentos_data.map((sec: any) =>
+                mapPhotos(sec.fotos || [], 'checklist_seccionamento')
+              );
+              setFotosSeccionamentos(seccionamentosCarregados);
+              setNumSeccionamentos(seccionamentosCarregados.length);
+            }
+
+            // Carregar estrutura dos aterramentos de cerca do Checklist
+            if (obraData.checklist_aterramentos_cerca_data?.length) {
+              const aterramentosCarregados = obraData.checklist_aterramentos_cerca_data.map((aterr: any) =>
+                mapPhotos(aterr.fotos || [], 'checklist_aterramento_cerca')
+              );
+              setFotosAterramentosCerca(aterramentosCarregados);
+              setNumAterramentosCerca(aterramentosCarregados.length);
+            }
           } catch (err) {
             console.error('❌ Erro ao carregar fotos do checklist:', err);
           }
@@ -2412,90 +2550,90 @@ export default function NovaObra() {
         }).filter(Boolean);
       };
 
-      // Obter IDs das fotos com backup
+      // ✅ CORREÇÃO CRÍTICA: Salvar TODAS as fotos que estão no estado
+      // Removidas as condicionais (isServicoPadrao, isServicoChave, etc.)
+      // O estado só terá fotos se o usuário tirou fotos naquela seção
       const photoIds = {
-        antes: isServicoPadrao ? extractPhotoData(fotosAntes) : [],
-        durante: isServicoPadrao ? extractPhotoData(fotosDurante) : [],
-        depois: isServicoPadrao ? extractPhotoData(fotosDepois) : [],
-        abertura: isServicoChave ? extractPhotoData(fotosAbertura) : [],
-        fechamento: isServicoChave ? extractPhotoData(fotosFechamento) : [],
-        // Fotos DITAIS
-        ditais_abertura: isServicoDitais ? extractPhotoData(fotosDitaisAbertura) as string[] : [],
-        ditais_impedir: isServicoDitais ? extractPhotoData(fotosDitaisImpedir) as string[] : [],
-        ditais_testar: isServicoDitais ? extractPhotoData(fotosDitaisTestar) as string[] : [],
-        ditais_aterrar: isServicoDitais ? extractPhotoData(fotosDitaisAterrar) as string[] : [],
-        ditais_sinalizar: isServicoDitais ? extractPhotoData(fotosDitaisSinalizar) as string[] : [],
-        // Fotos BOOK ATERRAMENTO
-        aterramento_vala_aberta: isServicoBookAterramento ? extractPhotoData(fotosAterramentoValaAberta) as string[] : [],
-        aterramento_hastes: isServicoBookAterramento ? extractPhotoData(fotosAterramentoHastes) as string[] : [],
-        aterramento_vala_fechada: isServicoBookAterramento ? extractPhotoData(fotosAterramentoValaFechada) as string[] : [],
-        aterramento_medicao: isServicoBookAterramento ? extractPhotoData(fotosAterramentoMedicao) as string[] : [],
-        // Fotos TRANSFORMADOR
-        transformador_laudo: isServicoTransformador ? extractPhotoData(fotosTransformadorLaudo) as string[] : [],
-        transformador_componente_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorComponenteInstalado) as string[] : [],
-        transformador_tombamento_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorTombamentoInstalado) as string[] : [],
-        transformador_tape: isServicoTransformador ? extractPhotoData(fotosTransformadorTape) as string[] : [],
-        transformador_placa_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorPlacaInstalado) as string[] : [],
-        transformador_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorInstalado) as string[] : [],
-        transformador_conexoes_primarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasInstalado) as string[] : [],
-        transformador_conexoes_secundarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesSecundariasInstalado) as string[] : [],
-        transformador_antes_retirar: isServicoTransformador ? extractPhotoData(fotosTransformadorAntesRetirar) as string[] : [],
-        transformador_laudo_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorLaudoRetirado) as string[] : [],
-        transformador_tombamento_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorTombamentoRetirado) as string[] : [],
-        transformador_placa_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorPlacaRetirado) as string[] : [],
-        transformador_conexoes_primarias_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasRetirado) as string[] : [],
-        transformador_conexoes_secundarias_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesSecundariasRetirado) as string[] : [],
-        // Fotos INSTALAÇÃO DO MEDIDOR
-        medidor_padrao: isServicoMedidor ? extractPhotoData(fotosMedidorPadrao) as string[] : [],
-        medidor_leitura: isServicoMedidor ? extractPhotoData(fotosMedidorLeitura) as string[] : [],
-        medidor_selo_born: isServicoMedidor ? extractPhotoData(fotosMedidorSeloBorn) as string[] : [],
-        medidor_selo_caixa: isServicoMedidor ? extractPhotoData(fotosMedidorSeloCaixa) as string[] : [],
-        medidor_identificador_fase: isServicoMedidor ? extractPhotoData(fotosMedidorIdentificadorFase) as string[] : [],
-        // Fotos ALTIMETRIA
-        altimetria_lado_fonte: isServicoAltimetria ? extractPhotoData(fotosAltimetriaLadoFonte) as string[] : [],
-        altimetria_medicao_fonte: isServicoAltimetria ? extractPhotoData(fotosAltimetriaMedicaoFonte) as string[] : [],
-        altimetria_lado_carga: isServicoAltimetria ? extractPhotoData(fotosAltimetriaLadoCarga) as string[] : [],
-        altimetria_medicao_carga: isServicoAltimetria ? extractPhotoData(fotosAltimetriaMedicaoCarga) as string[] : [],
-        // Fotos VAZAMENTO E LIMPEZA
-        vazamento_evidencia: isServicoVazamento ? extractPhotoData(fotosVazamentoEvidencia) as string[] : [],
-        vazamento_equipamentos_limpeza: isServicoVazamento ? extractPhotoData(fotosVazamentoEquipamentosLimpeza) as string[] : [],
-        vazamento_tombamento_retirado: isServicoVazamento ? extractPhotoData(fotosVazamentoTombamentoRetirado) as string[] : [],
-        vazamento_placa_retirado: isServicoVazamento ? extractPhotoData(fotosVazamentoPlacaRetirado) as string[] : [],
-        vazamento_tombamento_instalado: isServicoVazamento ? extractPhotoData(fotosVazamentoTombamentoInstalado) as string[] : [],
-        vazamento_placa_instalado: isServicoVazamento ? extractPhotoData(fotosVazamentoPlacaInstalado) as string[] : [],
-        vazamento_instalacao: isServicoVazamento ? extractPhotoData(fotosVazamentoInstalacao) as string[] : [],
-        // Fotos CHECKLIST DE FISCALIZAÇÃO
-        checklist_croqui: isServicoChecklist ? extractPhotoData(fotosChecklistCroqui) as string[] : [],
-        checklist_panoramica_inicial: isServicoChecklist ? extractPhotoData(fotosChecklistPanoramicaInicial) as string[] : [],
-        checklist_chede: isServicoChecklist ? extractPhotoData(fotosChecklistChaveComponente) as string[] : [],
-        checklist_padrao_geral: isServicoChecklist ? extractPhotoData(fotosChecklistPadraoGeral) as string[] : [],
-        checklist_padrao_interno: isServicoChecklist ? extractPhotoData(fotosChecklistPadraoInterno) as string[] : [],
-        checklist_panoramica_final: isServicoChecklist ? extractPhotoData(fotosChecklistPanoramicaFinal) as string[] : [],
-        // Fotos dinâmicas - postes (cada poste tem 6 fotos: 4 unitárias + 2 com mínimo de 2 fotos cada)
-        checklist_postes: isServicoChecklist ? fotosPostes.flatMap((poste, index) => [
+        // Fotos padrão (Emenda, Poda, etc.)
+        antes: extractPhotoData(fotosAntes),
+        durante: extractPhotoData(fotosDurante),
+        depois: extractPhotoData(fotosDepois),
+        // Chave
+        abertura: extractPhotoData(fotosAbertura),
+        fechamento: extractPhotoData(fotosFechamento),
+        // DITAIS
+        ditais_abertura: extractPhotoData(fotosDitaisAbertura) as string[],
+        ditais_impedir: extractPhotoData(fotosDitaisImpedir) as string[],
+        ditais_testar: extractPhotoData(fotosDitaisTestar) as string[],
+        ditais_aterrar: extractPhotoData(fotosDitaisAterrar) as string[],
+        ditais_sinalizar: extractPhotoData(fotosDitaisSinalizar) as string[],
+        // Aterramento
+        aterramento_vala_aberta: extractPhotoData(fotosAterramentoValaAberta) as string[],
+        aterramento_hastes: extractPhotoData(fotosAterramentoHastes) as string[],
+        aterramento_vala_fechada: extractPhotoData(fotosAterramentoValaFechada) as string[],
+        aterramento_medicao: extractPhotoData(fotosAterramentoMedicao) as string[],
+        // Transformador
+        transformador_laudo: extractPhotoData(fotosTransformadorLaudo) as string[],
+        transformador_componente_instalado: extractPhotoData(fotosTransformadorComponenteInstalado) as string[],
+        transformador_tombamento_instalado: extractPhotoData(fotosTransformadorTombamentoInstalado) as string[],
+        transformador_tape: extractPhotoData(fotosTransformadorTape) as string[],
+        transformador_placa_instalado: extractPhotoData(fotosTransformadorPlacaInstalado) as string[],
+        transformador_instalado: extractPhotoData(fotosTransformadorInstalado) as string[],
+        transformador_conexoes_primarias_instalado: extractPhotoData(fotosTransformadorConexoesPrimariasInstalado) as string[],
+        transformador_conexoes_secundarias_instalado: extractPhotoData(fotosTransformadorConexoesSecundariasInstalado) as string[],
+        transformador_antes_retirar: extractPhotoData(fotosTransformadorAntesRetirar) as string[],
+        transformador_laudo_retirado: extractPhotoData(fotosTransformadorLaudoRetirado) as string[],
+        transformador_tombamento_retirado: extractPhotoData(fotosTransformadorTombamentoRetirado) as string[],
+        transformador_placa_retirado: extractPhotoData(fotosTransformadorPlacaRetirado) as string[],
+        transformador_conexoes_primarias_retirado: extractPhotoData(fotosTransformadorConexoesPrimariasRetirado) as string[],
+        transformador_conexoes_secundarias_retirado: extractPhotoData(fotosTransformadorConexoesSecundariasRetirado) as string[],
+        // Medidor
+        medidor_padrao: extractPhotoData(fotosMedidorPadrao) as string[],
+        medidor_leitura: extractPhotoData(fotosMedidorLeitura) as string[],
+        medidor_selo_born: extractPhotoData(fotosMedidorSeloBorn) as string[],
+        medidor_selo_caixa: extractPhotoData(fotosMedidorSeloCaixa) as string[],
+        medidor_identificador_fase: extractPhotoData(fotosMedidorIdentificadorFase) as string[],
+        // Altimetria
+        altimetria_lado_fonte: extractPhotoData(fotosAltimetriaLadoFonte) as string[],
+        altimetria_medicao_fonte: extractPhotoData(fotosAltimetriaMedicaoFonte) as string[],
+        altimetria_lado_carga: extractPhotoData(fotosAltimetriaLadoCarga) as string[],
+        altimetria_medicao_carga: extractPhotoData(fotosAltimetriaMedicaoCarga) as string[],
+        // Vazamento
+        vazamento_evidencia: extractPhotoData(fotosVazamentoEvidencia) as string[],
+        vazamento_equipamentos_limpeza: extractPhotoData(fotosVazamentoEquipamentosLimpeza) as string[],
+        vazamento_tombamento_retirado: extractPhotoData(fotosVazamentoTombamentoRetirado) as string[],
+        vazamento_placa_retirado: extractPhotoData(fotosVazamentoPlacaRetirado) as string[],
+        vazamento_tombamento_instalado: extractPhotoData(fotosVazamentoTombamentoInstalado) as string[],
+        vazamento_placa_instalado: extractPhotoData(fotosVazamentoPlacaInstalado) as string[],
+        vazamento_instalacao: extractPhotoData(fotosVazamentoInstalacao) as string[],
+        // Checklist
+        checklist_croqui: extractPhotoData(fotosChecklistCroqui) as string[],
+        checklist_panoramica_inicial: extractPhotoData(fotosChecklistPanoramicaInicial) as string[],
+        checklist_chede: extractPhotoData(fotosChecklistChaveComponente) as string[],
+        checklist_padrao_geral: extractPhotoData(fotosChecklistPadraoGeral) as string[],
+        checklist_padrao_interno: extractPhotoData(fotosChecklistPadraoInterno) as string[],
+        checklist_panoramica_final: extractPhotoData(fotosChecklistPanoramicaFinal) as string[],
+        checklist_postes: fotosPostes.flatMap((poste, index) => [
           ...extractPhotoData(poste.posteInteiro),
           ...extractPhotoData(poste.engaste),
           ...extractPhotoData(poste.conexao1),
           ...extractPhotoData(poste.conexao2),
           ...extractPhotoData(poste.maiorEsforco),
           ...extractPhotoData(poste.menorEsforco),
-        ]) : [],
-        // Fotos dinâmicas - seccionamentos
-        checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => extractPhotoData(sec)) : [],
-        // Fotos dinâmicas - aterramentos de cerca
-        checklist_aterramento_cerca: isServicoChecklist ? fotosAterramentosCerca.flatMap(aterr => extractPhotoData(aterr)) : [],
-        // Documentação - Apenas no book Documentação
-        doc_apr: isServicoDocumentacao ? extractPhotoData(docApr) as string[] : [], // APR apenas em Documentação
-        doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[], // Quando Medidor OU Documentação
-        doc_laudo_transformador: extractPhotoData(docLaudoTransformador) as string[], // Quando Transformador OU Documentação
-        // Documentação exclusiva (só no book Documentação)
-        doc_laudo_regulador: isServicoDocumentacao ? extractPhotoData(docLaudoRegulador) as string[] : [],
-        doc_laudo_religador: isServicoDocumentacao ? extractPhotoData(docLaudoReligador) as string[] : [],
-        doc_fvbt: isServicoDocumentacao ? extractPhotoData(docFvbt) as string[] : [],
-        doc_termo_desistencia_lpt: isServicoDocumentacao ? extractPhotoData(docTermoDesistenciaLpt) as string[] : [],
-        doc_autorizacao_passagem: isServicoDocumentacao ? extractPhotoData(docAutorizacaoPassagem) as string[] : [],
-        doc_materiais_previsto: isServicoDocumentacao ? extractPhotoData(docMateriaisPrevisto) as string[] : [],
-        doc_materiais_realizado: isServicoDocumentacao ? extractPhotoData(docMateriaisRealizado) as string[] : [],
+        ]),
+        checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => extractPhotoData(sec)),
+        checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => extractPhotoData(aterr)),
+        // Documentação
+        doc_apr: extractPhotoData(docApr) as string[],
+        doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[],
+        doc_laudo_transformador: extractPhotoData(docLaudoTransformador) as string[],
+        doc_laudo_regulador: extractPhotoData(docLaudoRegulador) as string[],
+        doc_laudo_religador: extractPhotoData(docLaudoReligador) as string[],
+        doc_fvbt: extractPhotoData(docFvbt) as string[],
+        doc_termo_desistencia_lpt: extractPhotoData(docTermoDesistenciaLpt) as string[],
+        doc_autorizacao_passagem: extractPhotoData(docAutorizacaoPassagem) as string[],
+        doc_materiais_previsto: extractPhotoData(docMateriaisPrevisto) as string[],
+        doc_materiais_realizado: extractPhotoData(docMateriaisRealizado) as string[],
       };
 
       const obraData: any = {
@@ -2530,6 +2668,28 @@ export default function NovaObra() {
             fotos_durante: [],
             fotos_depois: [],
             observacao: '',
+          })),
+        }),
+        // Checklist de Fiscalização - Estrutura dos postes, seccionamentos e aterramentos
+        ...(isServicoChecklist && {
+          checklist_postes_data: fotosPostes.map((poste, index) => ({
+            id: `poste_${index + 1}`,
+            numero: poste.numero,
+            status: poste.status,
+            posteInteiro: extractPhotoData(poste.posteInteiro),
+            engaste: extractPhotoData(poste.engaste),
+            conexao1: extractPhotoData(poste.conexao1),
+            conexao2: extractPhotoData(poste.conexao2),
+            maiorEsforco: extractPhotoData(poste.maiorEsforco),
+            menorEsforco: extractPhotoData(poste.menorEsforco),
+          })),
+          checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
+            id: `seccionamento_${index + 1}`,
+            fotos: extractPhotoData(sec),
+          })),
+          checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
+            id: `aterramento_${index + 1}`,
+            fotos: extractPhotoData(aterr),
           })),
         }),
       };
@@ -3244,6 +3404,28 @@ export default function NovaObra() {
             fotos_checklist_postes: mergePhotos(obraAtual.fotos_checklist_postes, fotosChecklistPostesUploaded),
             fotos_checklist_seccionamentos: mergePhotos(obraAtual.fotos_checklist_seccionamentos, fotosChecklistSeccionamentosUploaded),
             fotos_checklist_aterramento_cerca: mergePhotos(obraAtual.fotos_checklist_aterramento_cerca, fotosChecklistAterramentoCercaUploaded),
+            // Estrutura dos postes, seccionamentos e aterramentos do Checklist
+            ...(isServicoChecklist && {
+              checklist_postes_data: fotosPostes.map((poste, index) => ({
+                id: `poste_${index + 1}`,
+                numero: poste.numero,
+                status: poste.status,
+                posteInteiro: poste.posteInteiro.map(f => f.photoId).filter(Boolean),
+                engaste: poste.engaste.map(f => f.photoId).filter(Boolean),
+                conexao1: poste.conexao1.map(f => f.photoId).filter(Boolean),
+                conexao2: poste.conexao2.map(f => f.photoId).filter(Boolean),
+                maiorEsforco: poste.maiorEsforco.map(f => f.photoId).filter(Boolean),
+                menorEsforco: poste.menorEsforco.map(f => f.photoId).filter(Boolean),
+              })),
+              checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
+                id: `seccionamento_${index + 1}`,
+                fotos: sec.map(f => f.photoId).filter(Boolean),
+              })),
+              checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
+                id: `aterramento_${index + 1}`,
+                fotos: aterr.map(f => f.photoId).filter(Boolean),
+              })),
+            }),
           })
           .eq('id', obraId);
 
@@ -3528,6 +3710,24 @@ export default function NovaObra() {
     setLoading(true);
     try {
       console.log('💾 Pausando obra como rascunho...');
+      console.log('🔍 DEBUG handlePausar - Tipo de serviço:', tipoServico);
+      console.log('🔍 DEBUG handlePausar - isServicoPadrao:', isServicoPadrao);
+      console.log('🔍 DEBUG handlePausar - isServicoDitais:', isServicoDitais);
+      console.log('🔍 DEBUG handlePausar - isServicoTransformador:', isServicoTransformador);
+      console.log('🔍 DEBUG handlePausar - isServicoMedidor:', isServicoMedidor);
+      console.log('🔍 DEBUG handlePausar - isServicoChecklist:', isServicoChecklist);
+      console.log('🔍 DEBUG handlePausar - isServicoAltimetria:', isServicoAltimetria);
+      console.log('🔍 DEBUG handlePausar - isServicoVazamento:', isServicoVazamento);
+
+      // DEBUG: Mostrar estado atual das fotos
+      console.log('📸 DEBUG handlePausar - Estado das fotos:');
+      console.log('   fotosAntes:', fotosAntes.length, 'fotos', fotosAntes.map(f => f.photoId));
+      console.log('   fotosDurante:', fotosDurante.length, 'fotos', fotosDurante.map(f => f.photoId));
+      console.log('   fotosDepois:', fotosDepois.length, 'fotos', fotosDepois.map(f => f.photoId));
+      console.log('   fotosDitaisAbertura:', fotosDitaisAbertura.length, 'fotos', fotosDitaisAbertura.map(f => f.photoId));
+      console.log('   fotosDitaisImpedir:', fotosDitaisImpedir.length, 'fotos', fotosDitaisImpedir.map(f => f.photoId));
+      console.log('   fotosTransformadorLaudo:', fotosTransformadorLaudo.length, 'fotos', fotosTransformadorLaudo.map(f => f.photoId));
+      console.log('   fotosMedidorPadrao:', fotosMedidorPadrao.length, 'fotos', fotosMedidorPadrao.map(f => f.photoId));
 
       // Helper: extrair photoId (local) ou objeto original (sincronizada)
       const extractPhotoData = (fotos: FotoData[]) => {
@@ -3541,79 +3741,90 @@ export default function NovaObra() {
         }).filter(Boolean);
       };
 
-      // Montar IDs das fotos
+      // ✅ CORREÇÃO CRÍTICA: Salvar TODAS as fotos que estão no estado
+      // Removidas as condicionais (isServicoPadrao, isServicoChave, etc.)
+      // O estado só terá fotos se o usuário tirou fotos naquela seção
+      // Isso evita perder fotos quando o tipo de serviço é interpretado incorretamente
       const photoIds = {
-        fotos_antes: isServicoPadrao ? extractPhotoData(fotosAntes) as string[] : [],
-        fotos_durante: isServicoPadrao ? extractPhotoData(fotosDurante) as string[] : [],
-        fotos_depois: isServicoPadrao ? extractPhotoData(fotosDepois) as string[] : [],
-        fotos_abertura: isServicoChave ? extractPhotoData(fotosAbertura) as string[] : [],
-        fotos_fechamento: isServicoChave ? extractPhotoData(fotosFechamento) as string[] : [],
-        fotos_ditais_abertura: isServicoDitais ? extractPhotoData(fotosDitaisAbertura) as string[] : [],
-        fotos_ditais_impedir: isServicoDitais ? extractPhotoData(fotosDitaisImpedir) as string[] : [],
-        fotos_ditais_testar: isServicoDitais ? extractPhotoData(fotosDitaisTestar) as string[] : [],
-        fotos_ditais_aterrar: isServicoDitais ? extractPhotoData(fotosDitaisAterrar) as string[] : [],
-        fotos_ditais_sinalizar: isServicoDitais ? extractPhotoData(fotosDitaisSinalizar) as string[] : [],
-        fotos_aterramento_vala_aberta: isServicoBookAterramento ? extractPhotoData(fotosAterramentoValaAberta) as string[] : [],
-        fotos_aterramento_hastes: isServicoBookAterramento ? extractPhotoData(fotosAterramentoHastes) as string[] : [],
-        fotos_aterramento_vala_fechada: isServicoBookAterramento ? extractPhotoData(fotosAterramentoValaFechada) as string[] : [],
-        fotos_aterramento_medicao: isServicoBookAterramento ? extractPhotoData(fotosAterramentoMedicao) as string[] : [],
-        fotos_transformador_laudo: isServicoTransformador ? extractPhotoData(fotosTransformadorLaudo) as string[] : [],
-        fotos_transformador_componente_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorComponenteInstalado) as string[] : [],
-        fotos_transformador_tombamento_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorTombamentoInstalado) as string[] : [],
-        fotos_transformador_tape: isServicoTransformador ? extractPhotoData(fotosTransformadorTape) as string[] : [],
-        fotos_transformador_placa_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorPlacaInstalado) as string[] : [],
-        fotos_transformador_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorInstalado) as string[] : [],
-        fotos_transformador_conexoes_primarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasInstalado) as string[] : [],
-        fotos_transformador_conexoes_secundarias_instalado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesSecundariasInstalado) as string[] : [],
-        fotos_transformador_antes_retirar: isServicoTransformador ? extractPhotoData(fotosTransformadorAntesRetirar) as string[] : [],
-        fotos_transformador_laudo_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorLaudoRetirado) as string[] : [],
-        fotos_transformador_tombamento_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorTombamentoRetirado) as string[] : [],
-        fotos_transformador_placa_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorPlacaRetirado) as string[] : [],
-        fotos_transformador_conexoes_primarias_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesPrimariasRetirado) as string[] : [],
-        fotos_transformador_conexoes_secundarias_retirado: isServicoTransformador ? extractPhotoData(fotosTransformadorConexoesSecundariasRetirado) as string[] : [],
-        fotos_medidor_padrao: isServicoMedidor ? extractPhotoData(fotosMedidorPadrao) as string[] : [],
-        fotos_medidor_leitura: isServicoMedidor ? extractPhotoData(fotosMedidorLeitura) as string[] : [],
-        fotos_medidor_selo_born: isServicoMedidor ? extractPhotoData(fotosMedidorSeloBorn) as string[] : [],
-        fotos_medidor_selo_caixa: isServicoMedidor ? extractPhotoData(fotosMedidorSeloCaixa) as string[] : [],
-        fotos_medidor_identificador_fase: isServicoMedidor ? extractPhotoData(fotosMedidorIdentificadorFase) as string[] : [],
-        fotos_altimetria_lado_fonte: isServicoAltimetria ? extractPhotoData(fotosAltimetriaLadoFonte) as string[] : [],
-        fotos_altimetria_medicao_fonte: isServicoAltimetria ? extractPhotoData(fotosAltimetriaMedicaoFonte) as string[] : [],
-        fotos_altimetria_lado_carga: isServicoAltimetria ? extractPhotoData(fotosAltimetriaLadoCarga) as string[] : [],
-        fotos_altimetria_medicao_carga: isServicoAltimetria ? extractPhotoData(fotosAltimetriaMedicaoCarga) as string[] : [],
-        fotos_vazamento_evidencia: isServicoVazamento ? extractPhotoData(fotosVazamentoEvidencia) as string[] : [],
-        fotos_vazamento_equipamentos_limpeza: isServicoVazamento ? extractPhotoData(fotosVazamentoEquipamentosLimpeza) as string[] : [],
-        fotos_vazamento_tombamento_retirado: isServicoVazamento ? extractPhotoData(fotosVazamentoTombamentoRetirado) as string[] : [],
-        fotos_vazamento_placa_retirado: isServicoVazamento ? extractPhotoData(fotosVazamentoPlacaRetirado) as string[] : [],
-        fotos_vazamento_tombamento_instalado: isServicoVazamento ? extractPhotoData(fotosVazamentoTombamentoInstalado) as string[] : [],
-        fotos_vazamento_placa_instalado: isServicoVazamento ? extractPhotoData(fotosVazamentoPlacaInstalado) as string[] : [],
-        fotos_vazamento_instalacao: isServicoVazamento ? extractPhotoData(fotosVazamentoInstalacao) as string[] : [],
-        fotos_checklist_croqui: isServicoChecklist ? extractPhotoData(fotosChecklistCroqui) as string[] : [],
-        fotos_checklist_panoramica_inicial: isServicoChecklist ? extractPhotoData(fotosChecklistPanoramicaInicial) as string[] : [],
-        fotos_checklist_chede: isServicoChecklist ? extractPhotoData(fotosChecklistChaveComponente) as string[] : [],
-        fotos_checklist_aterramento_cerca: isServicoChecklist ? fotosAterramentosCerca.flatMap(aterr => aterr.map(f => f.photoId).filter(Boolean) as string[]) : [],
-        fotos_checklist_padrao_geral: isServicoChecklist ? extractPhotoData(fotosChecklistPadraoGeral) as string[] : [],
-        fotos_checklist_padrao_interno: isServicoChecklist ? extractPhotoData(fotosChecklistPadraoInterno) as string[] : [],
-        fotos_checklist_panoramica_final: isServicoChecklist ? extractPhotoData(fotosChecklistPanoramicaFinal) as string[] : [],
-        fotos_checklist_postes: isServicoChecklist ? fotosPostes.flatMap((poste, index) => [
+        // Fotos padrão (Emenda, Poda, etc.)
+        fotos_antes: extractPhotoData(fotosAntes) as string[],
+        fotos_durante: extractPhotoData(fotosDurante) as string[],
+        fotos_depois: extractPhotoData(fotosDepois) as string[],
+        // Chave
+        fotos_abertura: extractPhotoData(fotosAbertura) as string[],
+        fotos_fechamento: extractPhotoData(fotosFechamento) as string[],
+        // DITAIS
+        fotos_ditais_abertura: extractPhotoData(fotosDitaisAbertura) as string[],
+        fotos_ditais_impedir: extractPhotoData(fotosDitaisImpedir) as string[],
+        fotos_ditais_testar: extractPhotoData(fotosDitaisTestar) as string[],
+        fotos_ditais_aterrar: extractPhotoData(fotosDitaisAterrar) as string[],
+        fotos_ditais_sinalizar: extractPhotoData(fotosDitaisSinalizar) as string[],
+        // Aterramento
+        fotos_aterramento_vala_aberta: extractPhotoData(fotosAterramentoValaAberta) as string[],
+        fotos_aterramento_hastes: extractPhotoData(fotosAterramentoHastes) as string[],
+        fotos_aterramento_vala_fechada: extractPhotoData(fotosAterramentoValaFechada) as string[],
+        fotos_aterramento_medicao: extractPhotoData(fotosAterramentoMedicao) as string[],
+        // Transformador
+        fotos_transformador_laudo: extractPhotoData(fotosTransformadorLaudo) as string[],
+        fotos_transformador_componente_instalado: extractPhotoData(fotosTransformadorComponenteInstalado) as string[],
+        fotos_transformador_tombamento_instalado: extractPhotoData(fotosTransformadorTombamentoInstalado) as string[],
+        fotos_transformador_tape: extractPhotoData(fotosTransformadorTape) as string[],
+        fotos_transformador_placa_instalado: extractPhotoData(fotosTransformadorPlacaInstalado) as string[],
+        fotos_transformador_instalado: extractPhotoData(fotosTransformadorInstalado) as string[],
+        fotos_transformador_conexoes_primarias_instalado: extractPhotoData(fotosTransformadorConexoesPrimariasInstalado) as string[],
+        fotos_transformador_conexoes_secundarias_instalado: extractPhotoData(fotosTransformadorConexoesSecundariasInstalado) as string[],
+        fotos_transformador_antes_retirar: extractPhotoData(fotosTransformadorAntesRetirar) as string[],
+        fotos_transformador_laudo_retirado: extractPhotoData(fotosTransformadorLaudoRetirado) as string[],
+        fotos_transformador_tombamento_retirado: extractPhotoData(fotosTransformadorTombamentoRetirado) as string[],
+        fotos_transformador_placa_retirado: extractPhotoData(fotosTransformadorPlacaRetirado) as string[],
+        fotos_transformador_conexoes_primarias_retirado: extractPhotoData(fotosTransformadorConexoesPrimariasRetirado) as string[],
+        fotos_transformador_conexoes_secundarias_retirado: extractPhotoData(fotosTransformadorConexoesSecundariasRetirado) as string[],
+        // Medidor
+        fotos_medidor_padrao: extractPhotoData(fotosMedidorPadrao) as string[],
+        fotos_medidor_leitura: extractPhotoData(fotosMedidorLeitura) as string[],
+        fotos_medidor_selo_born: extractPhotoData(fotosMedidorSeloBorn) as string[],
+        fotos_medidor_selo_caixa: extractPhotoData(fotosMedidorSeloCaixa) as string[],
+        fotos_medidor_identificador_fase: extractPhotoData(fotosMedidorIdentificadorFase) as string[],
+        // Altimetria
+        fotos_altimetria_lado_fonte: extractPhotoData(fotosAltimetriaLadoFonte) as string[],
+        fotos_altimetria_medicao_fonte: extractPhotoData(fotosAltimetriaMedicaoFonte) as string[],
+        fotos_altimetria_lado_carga: extractPhotoData(fotosAltimetriaLadoCarga) as string[],
+        fotos_altimetria_medicao_carga: extractPhotoData(fotosAltimetriaMedicaoCarga) as string[],
+        // Vazamento
+        fotos_vazamento_evidencia: extractPhotoData(fotosVazamentoEvidencia) as string[],
+        fotos_vazamento_equipamentos_limpeza: extractPhotoData(fotosVazamentoEquipamentosLimpeza) as string[],
+        fotos_vazamento_tombamento_retirado: extractPhotoData(fotosVazamentoTombamentoRetirado) as string[],
+        fotos_vazamento_placa_retirado: extractPhotoData(fotosVazamentoPlacaRetirado) as string[],
+        fotos_vazamento_tombamento_instalado: extractPhotoData(fotosVazamentoTombamentoInstalado) as string[],
+        fotos_vazamento_placa_instalado: extractPhotoData(fotosVazamentoPlacaInstalado) as string[],
+        fotos_vazamento_instalacao: extractPhotoData(fotosVazamentoInstalacao) as string[],
+        // Checklist
+        fotos_checklist_croqui: extractPhotoData(fotosChecklistCroqui) as string[],
+        fotos_checklist_panoramica_inicial: extractPhotoData(fotosChecklistPanoramicaInicial) as string[],
+        fotos_checklist_chede: extractPhotoData(fotosChecklistChaveComponente) as string[],
+        fotos_checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => aterr.map(f => f.photoId).filter(Boolean) as string[]),
+        fotos_checklist_padrao_geral: extractPhotoData(fotosChecklistPadraoGeral) as string[],
+        fotos_checklist_padrao_interno: extractPhotoData(fotosChecklistPadraoInterno) as string[],
+        fotos_checklist_panoramica_final: extractPhotoData(fotosChecklistPanoramicaFinal) as string[],
+        fotos_checklist_postes: fotosPostes.flatMap((poste, index) => [
           ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.conexao1.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.conexao2.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.maiorEsforco.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.menorEsforco.map(f => f.photoId).filter(Boolean) as string[],
-        ]) : [],
-        fotos_checklist_seccionamentos: isServicoChecklist ? fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]) : [],
-        // Documentação - Apenas no book Documentação
-        doc_apr: isServicoDocumentacao ? extractPhotoData(docApr) as string[] : [], // APR apenas em Documentação
-        doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[], // Quando Medidor OU Documentação
-        doc_laudo_transformador: extractPhotoData(docLaudoTransformador) as string[], // Quando Transformador OU Documentação
-        // Documentação exclusiva (só no book Documentação)
-        doc_laudo_regulador: isServicoDocumentacao ? extractPhotoData(docLaudoRegulador) as string[] : [],
-        doc_laudo_religador: isServicoDocumentacao ? extractPhotoData(docLaudoReligador) as string[] : [],
-        doc_fvbt: isServicoDocumentacao ? extractPhotoData(docFvbt) as string[] : [],
-        doc_termo_desistencia_lpt: isServicoDocumentacao ? extractPhotoData(docTermoDesistenciaLpt) as string[] : [],
-        doc_autorizacao_passagem: isServicoDocumentacao ? extractPhotoData(docAutorizacaoPassagem) as string[] : [],
-        // Cava em Rocha - Dados dos postes
+        ]),
+        fotos_checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]),
+        // Documentação - sempre salvar o que tiver no estado
+        doc_apr: extractPhotoData(docApr) as string[],
+        doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[],
+        doc_laudo_transformador: extractPhotoData(docLaudoTransformador) as string[],
+        doc_laudo_regulador: extractPhotoData(docLaudoRegulador) as string[],
+        doc_laudo_religador: extractPhotoData(docLaudoReligador) as string[],
+        doc_fvbt: extractPhotoData(docFvbt) as string[],
+        doc_termo_desistencia_lpt: extractPhotoData(docTermoDesistenciaLpt) as string[],
+        doc_autorizacao_passagem: extractPhotoData(docAutorizacaoPassagem) as string[],
+        // Cava em Rocha - Dados dos postes (condicional pois é estrutura diferente)
         ...(isServicoCavaRocha && {
           postes_data: postesData.map(poste => ({
             id: poste.id,
@@ -3646,6 +3857,8 @@ export default function NovaObra() {
 
       const obraData: any = {
         id: finalObraId,
+        // ✅ CRÍTICO: Preservar serverId se já foi sincronizada (evita duplicação)
+        ...(currentServerId && { serverId: currentServerId }),
         obra: obra?.trim() || '',
         data: data || '',
         responsavel: isCompUser ? 'COMP' : (responsavel || ''),
@@ -3683,7 +3896,38 @@ export default function NovaObra() {
           })),
           observacoes: observacaoGeralCavaRocha,
         }),
+        // Checklist de Fiscalização - Estrutura dos postes, seccionamentos e aterramentos
+        ...(isServicoChecklist && {
+          checklist_postes_data: fotosPostes.map((poste, index) => ({
+            id: `poste_${index + 1}`,
+            numero: poste.numero,
+            status: poste.status,
+            posteInteiro: poste.posteInteiro.map(f => f.photoId).filter(Boolean),
+            engaste: poste.engaste.map(f => f.photoId).filter(Boolean),
+            conexao1: poste.conexao1.map(f => f.photoId).filter(Boolean),
+            conexao2: poste.conexao2.map(f => f.photoId).filter(Boolean),
+            maiorEsforco: poste.maiorEsforco.map(f => f.photoId).filter(Boolean),
+            menorEsforco: poste.menorEsforco.map(f => f.photoId).filter(Boolean),
+          })),
+          checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
+            id: `seccionamento_${index + 1}`,
+            fotos: sec.map(f => f.photoId).filter(Boolean),
+          })),
+          checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
+            id: `aterramento_${index + 1}`,
+            fotos: aterr.map(f => f.photoId).filter(Boolean),
+          })),
+        }),
       };
+
+      // DEBUG: Mostrar o que vai ser salvo
+      console.log('💾 DEBUG handlePausar - PhotoIds que serão salvos:');
+      console.log('   fotos_antes:', obraData.fotos_antes?.length || 0, obraData.fotos_antes);
+      console.log('   fotos_durante:', obraData.fotos_durante?.length || 0, obraData.fotos_durante);
+      console.log('   fotos_depois:', obraData.fotos_depois?.length || 0, obraData.fotos_depois);
+      console.log('   fotos_ditais_abertura:', obraData.fotos_ditais_abertura?.length || 0, obraData.fotos_ditais_abertura);
+      console.log('   fotos_transformador_laudo:', obraData.fotos_transformador_laudo?.length || 0, obraData.fotos_transformador_laudo);
+      console.log('   fotos_medidor_padrao:', obraData.fotos_medidor_padrao?.length || 0, obraData.fotos_medidor_padrao);
 
       const savedObraId = await saveObraLocal(obraData);
 

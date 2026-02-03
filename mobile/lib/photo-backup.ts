@@ -255,36 +255,67 @@ export const getPhotosByObra = async (obraId: string): Promise<PhotoMetadata[]> 
  */
 export const getPhotosByObraWithFallback = async (
   obraId: string,
-  photoIdsInObra?: string[]
+  photoIdsInObra?: string[],
+  serverId?: string // ✅ NOVO: Aceitar serverId da obra (UUID do banco)
 ): Promise<PhotoMetadata[]> => {
   const allMetadata = await getAllPhotoMetadata();
+  
+  // 🔍 DEBUG: Mostrar total de fotos no storage e seus obraIds únicos
+  const uniqueObraIds = [...new Set(allMetadata.map(m => m.obraId))];
+  console.log(`🔍 [getPhotosByObraWithFallback] Total de ${allMetadata.length} foto(s) no storage`);
+  console.log(`🔍 [getPhotosByObraWithFallback] ObraIds únicos no storage: ${uniqueObraIds.join(', ')}`);
 
-  // Primeiro, buscar pelo obraId direto
-  let photos = allMetadata.filter(m => m.obraId === obraId);
+  // ✅ Coletar todos os possíveis obraIds desde o início
+  const allPossibleObraIds = new Set<string>([obraId]);
+  if (serverId) {
+    allPossibleObraIds.add(serverId);
+  }
 
-  // Se não encontrou fotos e temos IDs na obra, tentar extrair obraIds dos IDs das fotos
-  if (photos.length === 0 && photoIdsInObra && photoIdsInObra.length > 0) {
-    // Extrair possíveis obraIds dos IDs das fotos
-    const possibleObraIds = new Set<string>();
-
+  // Extrair obraIds dos IDs das fotos
+  if (photoIdsInObra && photoIdsInObra.length > 0) {
+    console.log(`🔍 [getPhotosByObraWithFallback] PhotoIds na obra: ${photoIdsInObra.join(', ')}`);
     for (const photoId of photoIdsInObra) {
       // Formato: obraId_tipo_index_timestamp
-      // Tentar extrair o obraId do início do ID
       const match = photoId.match(/^(.+?)_(antes|durante|depois|abertura|fechamento|ditais_|aterramento_|transformador_|medidor_|checklist_|altimetria_|vazamento_|doc_)/);
       if (match && match[1]) {
-        possibleObraIds.add(match[1]);
+        allPossibleObraIds.add(match[1]);
       }
     }
+  }
 
-    // Buscar fotos por qualquer um dos possíveis obraIds
-    if (possibleObraIds.size > 0) {
-      console.log(`🔍 [getPhotosByObraWithFallback] Buscando por possíveis obraIds: ${Array.from(possibleObraIds).join(', ')}`);
-      photos = allMetadata.filter(m => possibleObraIds.has(m.obraId));
+  console.log(`🔍 [getPhotosByObraWithFallback] Buscando por obraIds: ${Array.from(allPossibleObraIds).join(', ')}`);
 
-      if (photos.length > 0) {
-        console.log(`✅ [getPhotosByObraWithFallback] Encontrou ${photos.length} foto(s) com obraIds alternativos`);
-      }
+  // Buscar fotos por qualquer um dos possíveis obraIds
+  let photos = allMetadata.filter(m => allPossibleObraIds.has(m.obraId));
+  console.log(`🔍 [getPhotosByObraWithFallback] Encontradas ${photos.length} foto(s) por obraId`);
+
+  // Se não encontrou e temos IDs específicos, buscar diretamente pelos IDs
+  if (photos.length === 0 && photoIdsInObra && photoIdsInObra.length > 0) {
+    console.log(`🔍 [getPhotosByObraWithFallback] Buscando diretamente pelos IDs das fotos...`);
+    const stringPhotoIds = photoIdsInObra.filter(id => typeof id === 'string');
+    photos = allMetadata.filter(m => stringPhotoIds.includes(m.id));
+
+    if (photos.length > 0) {
+      console.log(`✅ [getPhotosByObraWithFallback] Encontrou ${photos.length} foto(s) diretamente pelos IDs`);
     }
+  } else if (photos.length < (photoIdsInObra?.length || 0)) {
+    // Há menos fotos do que esperado - tentar buscar as faltantes pelos IDs
+    console.log(`⚠️ [getPhotosByObraWithFallback] Encontrou ${photos.length} mas esperava ${photoIdsInObra?.length || 0}. Buscando faltantes pelos IDs...`);
+    const foundIds = new Set(photos.map(p => p.id));
+    const missingIds = (photoIdsInObra || []).filter(id => !foundIds.has(id));
+    console.log(`🔍 [getPhotosByObraWithFallback] IDs faltantes: ${missingIds.join(', ')}`);
+    
+    const missingPhotos = allMetadata.filter(m => missingIds.includes(m.id));
+    if (missingPhotos.length > 0) {
+      console.log(`✅ [getPhotosByObraWithFallback] Encontrou ${missingPhotos.length} foto(s) faltantes pelos IDs`);
+      photos = [...photos, ...missingPhotos];
+    }
+  }
+
+  if (photos.length > 0) {
+    console.log(`✅ [getPhotosByObraWithFallback] Total: ${photos.length} foto(s) encontradas`);
+    // Mostrar IDs das fotos encontradas
+    console.log(`📸 [getPhotosByObraWithFallback] IDs encontrados: ${photos.map(p => p.id).join(', ')}`);
   }
 
   return photos;
