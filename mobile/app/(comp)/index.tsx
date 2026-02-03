@@ -128,14 +128,38 @@ export default function CompIndex() {
       // Carregar obras online se houver internet
       if (isOnline) {
         try {
-          // Buscar apenas obras de Cava em Rocha criadas pelo COMP
-          // Filtrar por responsavel = 'COMP' (workaround até migration ser aplicada)
+          // DEBUG: Primeiro buscar TODAS as obras para ver o que tem
+          const { data: todasObras, error: debugError } = await supabase
+            .from('obras')
+            .select('id, obra, tipo_servico, creator_role, responsavel, created_at')
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          console.log('🔍 [COMP DEBUG] Últimas 10 obras no banco:', todasObras?.map(o => ({
+            id: o.id?.substring(0, 8),
+            obra: o.obra,
+            tipo: o.tipo_servico,
+            creator: o.creator_role,
+            resp: o.responsavel
+          })));
+
+          if (debugError) {
+            console.error('❌ [COMP DEBUG] Erro:', debugError.message);
+          }
+
+          // Buscar apenas obras de Cava em Rocha (serviço exclusivo do COMP)
+          // Também buscar por creator_role = 'compressor' como fallback
           const { data, error } = await supabase
             .from('obras')
             .select('*')
-            .eq('tipo_servico', 'Cava em Rocha')
-            .eq('responsavel', 'COMP')
+            .or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor')
             .order('created_at', { ascending: false });
+
+          console.log('🌐 [COMP] Obras encontradas (Cava em Rocha OU creator_role=compressor):', data?.length || 0);
+
+          if (error) {
+            console.error('❌ [COMP] Erro na query:', error);
+          }
 
           if (!error && data) {
             obrasOnline = data.map(obra => ({ ...obra, origem: 'online' as const }));
@@ -148,10 +172,27 @@ export default function CompIndex() {
       // Carregar obras pendentes (offline - sincronização)
       try {
         const pendentes = await getPendingObras();
-        // Filtrar apenas obras de Cava em Rocha criadas pelo COMP
-        const pendentesCOMP = pendentes.filter(
-          p => p.tipo_servico === 'Cava em Rocha' && p.responsavel === 'COMP'
-        );
+        console.log('📊 [COMP] Total de obras pendentes:', pendentes.length);
+
+        // Filtrar apenas obras de Cava em Rocha
+        // NOTA: Cava em Rocha é serviço EXCLUSIVO do COMP, não precisa verificar responsavel/creator_role
+        const pendentesCOMP = pendentes.filter(p => {
+          const isCavaRocha = p.tipo_servico === 'Cava em Rocha';
+
+          // Log para debug
+          if (isCavaRocha) {
+            console.log('🔍 [COMP] Obra pendente Cava em Rocha:', {
+              id: p.id,
+              obra: p.obra,
+              responsavel: p.responsavel,
+              status: p.sync_status,
+            });
+          }
+
+          return isCavaRocha; // Cava em Rocha = COMP (exclusivo)
+        });
+
+        console.log('✅ [COMP] Obras pendentes do COMP:', pendentesCOMP.length);
 
         obrasPendentes = pendentesCOMP.map(p => ({
           id: p.id,
@@ -174,23 +215,23 @@ export default function CompIndex() {
         const locais = await getLocalObras();
         console.log('📊 [COMP] Total de obras locais:', locais.length);
 
-        // Filtrar apenas obras de Cava em Rocha criadas pelo COMP
-        // Aceitar obras onde: tipo_servico = 'Cava em Rocha' E (responsavel = 'COMP' OU creator_role = 'compressor')
+        // Filtrar apenas obras de Cava em Rocha
+        // NOTA: Cava em Rocha é serviço EXCLUSIVO do COMP, não precisa verificar responsavel/creator_role
         const locaisCOMP = locais.filter(l => {
           const isCavaRocha = l.tipo_servico === 'Cava em Rocha';
-          const isCOMP = l.responsavel === 'COMP' || (l as any).creator_role === 'compressor';
 
-          if (isCavaRocha && !isCOMP) {
-            console.log('🔍 [COMP] Obra filtrada:', {
+          // Log para debug
+          if (isCavaRocha) {
+            console.log('🔍 [COMP] Obra local Cava em Rocha:', {
               id: l.id,
               obra: l.obra,
-              tipo_servico: l.tipo_servico,
               responsavel: l.responsavel,
-              creator_role: (l as any).creator_role,
+              status: l.status,
+              synced: l.synced,
             });
           }
 
-          return isCavaRocha && isCOMP;
+          return isCavaRocha; // Cava em Rocha = COMP (exclusivo)
         });
 
         console.log('✅ [COMP] Obras locais do COMP:', locaisCOMP.length);

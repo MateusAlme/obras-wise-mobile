@@ -19,7 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { backupPhoto } from '../lib/photo-backup';
-import { addToUploadQueue, processObraPhotos } from '../lib/photo-queue';
+import { saveObraLocal } from '../lib/offline-sync';
 
 const EQUIPES_DISPONIVEIS = [
   'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
@@ -243,95 +243,105 @@ export default function CavaRocha() {
 
     try {
       const createdBy = await AsyncStorage.getItem('@user_logado') || 'COMP';
-      const obraId = `comp_${Date.now()}`;
+      const obraId = `comp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-      // Coletar todos os IDs de fotos
-      const allPhotoIds: string[] = [];
-      postes.forEach(poste => {
-        const ids = [
-          ...poste.fotosAntes.map(f => f.photoId),
-          ...poste.fotosDurante.map(f => f.photoId),
-          ...poste.fotosDepois.map(f => f.photoId),
-        ].filter(Boolean) as string[];
-        allPhotoIds.push(...ids);
-      });
-
-      // Adicionar à fila de upload
-      for (const photoId of allPhotoIds) {
-        await addToUploadQueue(photoId, obraId);
-      }
-
-      // Processar uploads
-      const uploadResult = await processObraPhotos(obraId);
-
-      if (uploadResult.failed > 0) {
-        Alert.alert(
-          'Aviso',
-          `${uploadResult.failed} foto(s) falharam no upload. Tente novamente.`
-        );
-        setLoading(false);
-        return;
-      }
-
-      // Obter URLs das fotos uploadadas
-      const { getAllPhotoMetadata } = await import('../lib/photo-backup');
-      const allPhotos = await getAllPhotoMetadata();
-
-      // Montar estrutura de postes para salvar
+      // Montar estrutura de postes com photoIds (para sincronização posterior)
       const postesData = postes.map(poste => ({
         id: poste.id,
         numero: poste.numero,
-        fotos_antes: allPhotos
-          .filter(p => poste.fotosAntes.map(f => f.photoId).includes(p.id) && p.uploaded)
-          .map(p => ({
-            url: p.uploadUrl!,
-            latitude: p.latitude,
-            longitude: p.longitude,
-          })),
-        fotos_durante: allPhotos
-          .filter(p => poste.fotosDurante.map(f => f.photoId).includes(p.id) && p.uploaded)
-          .map(p => ({
-            url: p.uploadUrl!,
-            latitude: p.latitude,
-            longitude: p.longitude,
-          })),
-        fotos_depois: allPhotos
-          .filter(p => poste.fotosDepois.map(f => f.photoId).includes(p.id) && p.uploaded)
-          .map(p => ({
-            url: p.uploadUrl!,
-            latitude: p.latitude,
-            longitude: p.longitude,
-          })),
+        fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
+        fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
+        fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
         observacao: poste.observacao,
       }));
 
-      // Salvar no banco
-      const { error } = await supabase.from('obras').insert([
-        {
-          data,
-          obra,
-          responsavel,
-          equipe: equipeExecutora,
-          tipo_servico: 'Cava em Rocha',
-          postes_data: postesData,
-          observacoes: observacaoGeral,
-          created_by: createdBy,
-          creator_role: 'compressor',
-          created_at: new Date().toISOString(),
-          status: 'finalizada',
-          user_id: null,
-        },
-      ]);
+      // Montar dados da obra para salvar localmente (offline-first)
+      const obraData: any = {
+        id: obraId,
+        data,
+        obra,
+        responsavel,
+        equipe: equipeExecutora,
+        tipo_servico: 'Cava em Rocha',
+        postes_data: postesData,
+        observacoes: observacaoGeral,
+        created_by: createdBy,
+        creator_role: 'compressor',
+        created_at: new Date().toISOString(),
+        status: 'em_aberto', // Será 'finalizada' quando sincronizar
+        origem: 'offline',
+        sync_status: 'pending',
+        photos_uploaded: false,
+        // Campos vazios obrigatórios para o tipo PendingObra
+        fotos_antes: [],
+        fotos_durante: [],
+        fotos_depois: [],
+        fotos_abertura: [],
+        fotos_fechamento: [],
+        fotos_ditais_abertura: [],
+        fotos_ditais_impedir: [],
+        fotos_ditais_testar: [],
+        fotos_ditais_aterrar: [],
+        fotos_ditais_sinalizar: [],
+        fotos_aterramento_vala_aberta: [],
+        fotos_aterramento_hastes: [],
+        fotos_aterramento_vala_fechada: [],
+        fotos_aterramento_medicao: [],
+        fotos_transformador_laudo: [],
+        fotos_transformador_componente_instalado: [],
+        fotos_transformador_tombamento_instalado: [],
+        fotos_transformador_tape: [],
+        fotos_transformador_placa_instalado: [],
+        fotos_transformador_instalado: [],
+        fotos_transformador_antes_retirar: [],
+        fotos_transformador_tombamento_retirado: [],
+        fotos_transformador_placa_retirado: [],
+        fotos_transformador_conexoes_primarias_instalado: [],
+        fotos_transformador_conexoes_secundarias_instalado: [],
+        fotos_transformador_conexoes_primarias_retirado: [],
+        fotos_transformador_conexoes_secundarias_retirado: [],
+        fotos_medidor_padrao: [],
+        fotos_medidor_leitura: [],
+        fotos_medidor_selo_born: [],
+        fotos_medidor_selo_caixa: [],
+        fotos_medidor_identificador_fase: [],
+        fotos_checklist_croqui: [],
+        fotos_checklist_panoramica_inicial: [],
+        fotos_checklist_chede: [],
+        fotos_checklist_aterramento_cerca: [],
+        fotos_checklist_padrao_geral: [],
+        fotos_checklist_padrao_interno: [],
+        fotos_checklist_panoramica_final: [],
+        fotos_checklist_postes: [],
+        fotos_checklist_seccionamentos: [],
+        doc_cadastro_medidor: [],
+        doc_laudo_transformador: [],
+        doc_laudo_regulador: [],
+        doc_laudo_religador: [],
+        doc_apr: [],
+        doc_fvbt: [],
+        doc_termo_desistencia_lpt: [],
+        doc_autorizacao_passagem: [],
+        fotos_altimetria_lado_fonte: [],
+        fotos_altimetria_medicao_fonte: [],
+        fotos_altimetria_lado_carga: [],
+        fotos_altimetria_medicao_carga: [],
+        fotos_vazamento_evidencia: [],
+        fotos_vazamento_equipamentos_limpeza: [],
+        fotos_vazamento_tombamento_retirado: [],
+        fotos_vazamento_placa_retirado: [],
+        fotos_vazamento_tombamento_instalado: [],
+        fotos_vazamento_placa_instalado: [],
+        fotos_vazamento_instalacao: [],
+      };
 
-      if (error) {
-        console.error('Erro ao salvar:', error);
-        Alert.alert('Erro', 'Não foi possível salvar o registro.');
-        return;
-      }
+      // Salvar localmente (offline-first)
+      const savedObraId = await saveObraLocal(obraData);
+      console.log(`✅ [Cava em Rocha] Obra salva localmente: ${savedObraId}`);
 
       Alert.alert(
         'Sucesso!',
-        `Book de Cava em Rocha registrado para a equipe ${equipeExecutora}\n\n${postes.length} poste(s) salvos com sucesso!`,
+        `Book de Cava em Rocha salvo para a equipe ${equipeExecutora}\n\n${postes.length} poste(s) registrados.\n\nA obra será sincronizada automaticamente quando houver internet.`,
         [
           {
             text: 'OK',
@@ -344,13 +354,15 @@ export default function CavaRocha() {
               setPostes([]);
               setProximoNumero(1);
               adicionarPoste(); // Adicionar um poste novo
+              // Navegar para o histórico
+              router.push('/(comp)');
             },
           },
         ]
       );
     } catch (err) {
       console.error('Erro inesperado:', err);
-      Alert.alert('Erro', 'Ocorreu um erro inesperado.');
+      Alert.alert('Erro', 'Ocorreu um erro inesperado ao salvar.');
     } finally {
       setLoading(false);
     }

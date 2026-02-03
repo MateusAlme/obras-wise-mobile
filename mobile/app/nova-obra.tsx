@@ -48,20 +48,20 @@ import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
 const TIPOS_SERVICO = [
-  'Emenda',
-  'Bandolamento',
-  'Linha Viva',
   'Abertura e Fechamento de Chave',
-  'Ditais',
+  'Altimetria',
+  'Bandolamento',
   'Book de Aterramento',
-  'Transformador',
-  'Poda',
+  'Cava em Rocha',
+  'Checklist de Fiscalização',
+  'Ditais',
+  'Documentação',
+  'Emenda',
   'Fundação Especial',
   'Instalação do Medidor',
-  'Checklist de Fiscalização',
-  'Documentação',
-  'Cava em Rocha',
-  'Altimetria',
+  'Linha Viva',
+  'Poda',
+  'Transformador',
   'Vazamento e Limpeza de Transformador',
 ];
 
@@ -211,6 +211,10 @@ export default function NovaObra() {
   const [docAutorizacaoPassagem, setDocAutorizacaoPassagem] = useState<FotoData[]>([]);
   const [docMateriaisPrevisto, setDocMateriaisPrevisto] = useState<FotoData[]>([]);
   const [docMateriaisRealizado, setDocMateriaisRealizado] = useState<FotoData[]>([]);
+
+  // Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial)
+  const [posteNumeroInput, setPosteNumeroInput] = useState('');
+  const [postesIdentificados, setPostesIdentificados] = useState<number[]>([]);
 
   // Estados para CAVA EM ROCHA - Sistema de Múltiplos Postes
   type Poste = {
@@ -366,6 +370,7 @@ export default function NovaObra() {
   const isServicoAltimetria = tipoServico === 'Altimetria';
   const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
   const isServicoCavaRocha = tipoServico === 'Cava em Rocha';
+  const isServicoPostesIdentificacao = ['Linha Viva', 'Book de Aterramento', 'Fundação Especial'].includes(tipoServico);
   const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoCavaRocha;
 
   // Carregar equipe da sessão automaticamente
@@ -405,6 +410,19 @@ export default function NovaObra() {
           setObra(obraData.obra);
           setResponsavel(obraData.responsavel);
           setTipoServico(obraData.tipo_servico);
+
+          if (['Linha Viva', 'Book de Aterramento', 'Fundação Especial'].includes(obraData.tipo_servico) && Array.isArray(obraData.postes_data)) {
+            const numeros = obraData.postes_data
+              .map((poste: any) => {
+                if (typeof poste?.numero === 'number') return poste.numero;
+                const id = String(poste?.id || '').replace(/[^0-9]/g, '');
+                return id ? parseInt(id, 10) : null;
+              })
+              .filter((n: number | null) => !!n && n > 0) as number[];
+            if (numeros.length > 0) {
+              setPostesIdentificados(Array.from(new Set(numeros)).sort((a, b) => a - b));
+            }
+          }
 
           // ✅ Carregar fotos do photo-backup usando os IDs salvos na obra
           console.log('📸 Buscando fotos da obra:', obraData.id);
@@ -885,6 +903,25 @@ export default function NovaObra() {
       setPostesData(prevPostes => [...prevPostes, novoPoste]);
       return prev + 1;
     });
+  };
+
+  // Identificação guiada de postes (sem fotos)
+  const adicionarPosteIdentificado = () => {
+    const numero = parseInt(posteNumeroInput.replace(/[^0-9]/g, ''), 10);
+    if (!numero || numero <= 0) {
+      Alert.alert('Atenção', 'Informe apenas o número do poste. Ex: 3');
+      return;
+    }
+    if (postesIdentificados.includes(numero)) {
+      Alert.alert('Atenção', `O poste P${numero} já foi adicionado.`);
+      return;
+    }
+    setPostesIdentificados(prev => [...prev, numero].sort((a, b) => a - b));
+    setPosteNumeroInput('');
+  };
+
+  const removerPosteIdentificado = (numero: number) => {
+    setPostesIdentificados(prev => prev.filter(n => n !== numero));
   };
 
   const removerPoste = (posteId: string) => {
@@ -2483,6 +2520,16 @@ export default function NovaObra() {
           })),
           observacoes: observacaoGeralCavaRocha,
         }),
+        ...(isServicoPostesIdentificacao && {
+          postes_data: postesIdentificados.map(numero => ({
+            id: `P${numero}`,
+            numero,
+            fotos_antes: [],
+            fotos_durante: [],
+            fotos_depois: [],
+            observacao: '',
+          })),
+        }),
       };
 
       // Adicionar campos created_by e creator_role apenas se as colunas existirem no banco
@@ -2493,6 +2540,10 @@ export default function NovaObra() {
 
       if (!isConnected) {
         // MODO OFFLINE: Salvar obra com IDs das fotos
+        // DEBUG: Verificar postes antes de salvar offline
+        console.log('🪧 DEBUG OFFLINE SAVE - postesIdentificados:', postesIdentificados);
+        console.log('🪧 DEBUG OFFLINE SAVE - obraData.postes_data:', JSON.stringify(obraData.postes_data));
+
         await saveObraOffline(obraData, photoIds, backupObraId);
         await loadPendingObras();
 
@@ -3197,6 +3248,11 @@ export default function NovaObra() {
         error = updateError;
       } else {
         // MODO NOVO: Fazer INSERT
+        // DEBUG: Verificar postes_data antes do INSERT
+        console.log('🪧 DEBUG INSERT - postesIdentificados:', postesIdentificados);
+        console.log('🪧 DEBUG INSERT - obraData.postes_data:', JSON.stringify(obraData.postes_data));
+        console.log('🪧 DEBUG INSERT - isServicoPostesIdentificacao:', isServicoPostesIdentificacao);
+
         const { error: insertError } = await supabase
           .from('obras')
           .insert([
@@ -3567,6 +3623,17 @@ export default function NovaObra() {
           })),
           observacoes: observacaoGeralCavaRocha,
         }),
+        // Linha Viva, Book de Aterramento, Fundação Especial - Identificação de Postes
+        ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
+          postes_data: postesIdentificados.map(numero => ({
+            id: `P${numero}`,
+            numero,
+            fotos_antes: [],
+            fotos_durante: [],
+            fotos_depois: [],
+            observacao: '',
+          })),
+        }),
       };
 
       // Montar dados da obra (ZERO validações - aceita qualquer estado)
@@ -3591,6 +3658,29 @@ export default function NovaObra() {
         num_seccionamentos: numSeccionamentos,
         num_aterramento_cerca: numAterramentosCerca,
         ...photoIds,
+        // Postes identificados (Linha Viva, Book de Aterramento, Fundação Especial)
+        ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
+          postes_data: postesIdentificados.map(numero => ({
+            id: `P${numero}`,
+            numero,
+            fotos_antes: [],
+            fotos_durante: [],
+            fotos_depois: [],
+            observacao: '',
+          })),
+        }),
+        // Cava em Rocha - Dados dos postes com fotos
+        ...(isServicoCavaRocha && {
+          postes_data: postesData.map(poste => ({
+            id: poste.id,
+            numero: poste.numero,
+            fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
+            fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
+            fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
+            observacao: poste.observacao,
+          })),
+          observacoes: observacaoGeralCavaRocha,
+        }),
       };
 
       const savedObraId = await saveObraLocal(obraData);
@@ -4071,6 +4161,53 @@ export default function NovaObra() {
                   </View>
                 ) : null;
               })()}
+
+              {/* Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial) */}
+              {isServicoPostesIdentificacao && (
+                <View style={styles.posteIdentificacaoSection}>
+                  <Text style={styles.sectionTitle}>🪧 Identificação de Postes</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Digite apenas o número. O prefixo "P" é automático.
+                  </Text>
+
+                  <View style={styles.posteInputRow}>
+                    <View style={styles.postePrefixBox}>
+                      <Text style={styles.postePrefixText}>P</Text>
+                    </View>
+                    <TextInput
+                      style={styles.posteNumeroInput}
+                      value={posteNumeroInput}
+                      onChangeText={(text) => setPosteNumeroInput(text.replace(/[^0-9]/g, '').slice(0, 4))}
+                      placeholder="Número"
+                      keyboardType="numeric"
+                      maxLength={4}
+                    />
+                    <TouchableOpacity
+                      style={styles.posteAddButton}
+                      onPress={adicionarPosteIdentificado}
+                      disabled={!posteNumeroInput.trim()}
+                    >
+                      <Text style={styles.posteAddButtonText}>Adicionar</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {postesIdentificados.length > 0 && (
+                    <View style={styles.posteTagsContainer}>
+                      {postesIdentificados.map((numero) => (
+                        <View key={numero} style={styles.posteTag}>
+                          <Text style={styles.posteTagText}>P{numero}</Text>
+                          <TouchableOpacity
+                            style={styles.posteTagRemove}
+                            onPress={() => removerPosteIdentificado(numero)}
+                          >
+                            <Text style={styles.posteTagRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
 
               {/* CAVA EM ROCHA - Sistema de Múltiplos Postes */}
               {isServicoCavaRocha && (
@@ -9121,6 +9258,87 @@ const styles = StyleSheet.create({
     color: '#d1d5db',
     fontSize: 12,
     marginTop: 4,
+  },
+  // Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial)
+  posteIdentificacaoSection: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 4,
+  },
+  posteInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  postePrefixBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#e2e8f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  postePrefixText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#334155',
+  },
+  posteNumeroInput: {
+    flex: 1,
+    height: 44,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
+  },
+  posteAddButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  posteTagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  posteTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e0f2fe',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  posteTagText: {
+    color: '#0369a1',
+    fontWeight: '700',
+    marginRight: 6,
+  },
+  posteTagRemove: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#0ea5e9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  posteTagRemoveText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: '700',
   },
   // Estilos adicionais para Cava em Rocha - Sistema de Múltiplos Postes
   posteHeader: {

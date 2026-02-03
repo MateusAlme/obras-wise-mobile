@@ -85,6 +85,17 @@ export interface PendingObra {
   fotos_vazamento_tombamento_instalado: string[];
   fotos_vazamento_placa_instalado: string[];
   fotos_vazamento_instalacao: string[];
+  // Cava em Rocha - Dados dos postes
+  postes_data?: Array<{
+    id: string;
+    numero: number;
+    fotos_antes: string[];
+    fotos_durante: string[];
+    fotos_depois: string[];
+    observacao?: string;
+  }>;
+  // Identificação do criador
+  creator_role?: 'compressor' | 'equipe'; // Identificador permanente de quem criou
   created_at: string;
   sync_status: 'pending' | 'syncing' | 'failed';
   error_message?: string;
@@ -682,6 +693,9 @@ export const saveObraOffline = async (
   existingObraId?: string
 ): Promise<string> => {
   try {
+    // DEBUG: Verificar postes_data recebido
+    console.log('🪧 DEBUG saveObraOffline - obra.postes_data:', JSON.stringify((obra as any).postes_data));
+
     const pendingObras = await getPendingObras();
     const obraId =
       existingObraId || `offline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1446,6 +1460,10 @@ export const syncObra = async (
           fotos_vazamento_tombamento_instalado: replaceOrKeep(fotosVazamentoTombamentoInstaladoData, existingObra.fotos_vazamento_tombamento_instalado),
           fotos_vazamento_placa_instalado: replaceOrKeep(fotosVazamentoPlacaInstaladoData, existingObra.fotos_vazamento_placa_instalado),
           fotos_vazamento_instalacao: replaceOrKeep(fotosVazamentoInstalacaoData, existingObra.fotos_vazamento_instalacao),
+          // Cava em Rocha - Dados dos postes
+          postes_data: obra.postes_data || existingObra.postes_data || null,
+          observacoes: (obra as any).observacoes || existingObra.observacoes || null,
+          creator_role: (obra as any).creator_role || existingObra.creator_role || null,
         };
 
         // Executar update
@@ -1538,6 +1556,10 @@ export const syncObra = async (
           fotos_vazamento_tombamento_instalado: fotosVazamentoTombamentoInstaladoData,
           fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstaladoData,
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
+          // Cava em Rocha - Dados dos postes
+          postes_data: obra.postes_data || null,
+          observacoes: (obra as any).observacoes || null,
+          creator_role: (obra as any).creator_role || null,
           // user_id removido - Login por equipe não usa Supabase Auth
           created_at: obra.created_at || new Date().toISOString(),
         },
@@ -1575,7 +1597,7 @@ export const syncObra = async (
 };
 
 /**
- * Sincroniza todas as obras pendentes
+ * Sincroniza todas as obras pendentes (inclui @obras_pending_sync E @obras_local)
  */
 export const syncAllPendingObras = async (): Promise<{ success: number; failed: number }> => {
   if (syncInProgress) {
@@ -1588,20 +1610,58 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
     const isOnline = await checkInternetConnection();
 
     if (!isOnline) {
+      console.log('📵 [syncAllPendingObras] Sem conexão, abortando');
       return { success: 0, failed: 0 };
     }
-
-    const pendingObras = await getPendingObras();
-    const obrasToSync = pendingObras.filter(o => o.sync_status === 'pending' || o.sync_status === 'failed');
 
     let success = 0;
     let failed = 0;
 
+    // 1. Sincronizar obras de @obras_pending_sync
+    const pendingObras = await getPendingObras();
+    const obrasToSync = pendingObras.filter(o => o.sync_status === 'pending' || o.sync_status === 'failed');
+    console.log(`📊 [syncAllPendingObras] Obras em pending_sync: ${obrasToSync.length}`);
+
     for (const obra of obrasToSync) {
       const result = await syncObra(obra);
-      if (result) {
+      if (result.success) {
         success++;
       } else {
+        failed++;
+      }
+    }
+
+    // 2. Sincronizar obras de @obras_local que não foram sincronizadas
+    const localObras = await getLocalObras();
+    const localObrasToSync = localObras.filter(o => !o.synced && o.sync_status !== 'syncing');
+    console.log(`📊 [syncAllPendingObras] Obras locais não sincronizadas: ${localObrasToSync.length}`);
+
+    for (const localObra of localObrasToSync) {
+      try {
+        // Converter LocalObra para PendingObra para usar syncObra
+        const pendingObra: PendingObra = {
+          ...localObra,
+          sync_status: 'pending',
+          photos_uploaded: false,
+        };
+
+        const result = await syncObra(pendingObra);
+        if (result.success) {
+          // Marcar como sincronizada em @obras_local
+          const updatedLocalObras = await getLocalObras();
+          const index = updatedLocalObras.findIndex(o => o.id === localObra.id);
+          if (index !== -1) {
+            updatedLocalObras[index].synced = true;
+            updatedLocalObras[index].serverId = result.newId;
+            await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(updatedLocalObras));
+          }
+          success++;
+          console.log(`✅ [syncAllPendingObras] Obra local sincronizada: ${localObra.obra}`);
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        console.error(`❌ [syncAllPendingObras] Erro ao sincronizar obra local ${localObra.id}:`, error);
         failed++;
       }
     }
@@ -1615,10 +1675,10 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
         console.log(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
       } catch (error) {
         console.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
-        // Não falhar a sincronização se a limpeza de cache falhar
       }
     }
 
+    console.log(`📊 [syncAllPendingObras] Resultado: ${success} sucesso, ${failed} falhas`);
     return { success, failed };
   } finally {
     syncInProgress = false;

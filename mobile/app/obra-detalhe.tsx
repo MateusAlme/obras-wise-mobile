@@ -202,7 +202,6 @@ type ObraDetalheData = (OnlineObra | ObraPayload) & {
 
 const PHOTO_SECTIONS = [
   // 📋 DOCUMENTAÇÃO OBRIGATÓRIA (aparecem primeiro)
-  { key: 'doc_apr', label: 'APR - Análise Preliminar de Risco' },
   { key: 'doc_laudo_transformador_servico', label: 'Laudo de Transformador' },
   { key: 'doc_cadastro_medidor_servico', label: 'Cadastro de Medidor' },
   // 📸 FOTOS BÁSICAS
@@ -732,11 +731,7 @@ export default function ObraDetalhe() {
     const tiposServico = obra.tipo_servico.split(',').map(t => t.trim());
     const faltantes: string[] = [];
 
-    // ⚡ APR - OBRIGATÓRIO EM TODOS OS SERVIÇOS (exceto Documentação)
-    const isDocumentacao = tiposServico.includes('Documentação');
-    if (!isDocumentacao && !getPhotosForSection('doc_apr').length) {
-      faltantes.push('APR - Análise Preliminar de Risco');
-    }
+    // APR é opcional; não bloquear por ausência
 
     tiposServico.forEach(tipo => {
       switch (tipo) {
@@ -1124,126 +1119,163 @@ export default function ObraDetalhe() {
         {obra?.postes_data && obra.postes_data.length > 0 && (
           <>
             <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
-              📋 Checklist de Postes
-            </Text>
-            {obra.postes_data.map((poste: any) => {
-              const fotosAntes = getPhotosForPoste(poste, 'fotos_antes');
-              const fotosDurante = getPhotosForPoste(poste, 'fotos_durante');
-              const fotosDepois = getPhotosForPoste(poste, 'fotos_depois');
-              const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length;
-              const statusCompleto = fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
-              const statusParcial = totalFotos > 0 && !statusCompleto;
-              const statusIcon = statusCompleto ? '✓' : statusParcial ? '◐' : '○';
-              const statusColor = statusCompleto ? '#28a745' : statusParcial ? '#ffc107' : '#999';
+              {/* Checklist/Identificação de Postes (Cava em Rocha, Linha Viva, etc) */}
+              {obra?.postes_data && obra.postes_data.length > 0 && (
+                (() => {
+                  const allSemFotos = obra.postes_data.every((poste: any) =>
+                    (poste?.fotos_antes?.length || 0) === 0 &&
+                    (poste?.fotos_durante?.length || 0) === 0 &&
+                    (poste?.fotos_depois?.length || 0) === 0
+                  );
 
-              return (
-                <View key={poste.id} style={styles.posteCard}>
-                  {/* Header do Poste */}
-                  <View style={[styles.posteHeader, { borderLeftColor: statusColor }]}>
-                    <View style={styles.posteHeaderLeft}>
-                      <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}>
-                        <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
-                      </View>
-                      <View>
-                        <Text style={styles.posteHeaderTitle}>Poste {poste.id}</Text>
-                        <Text style={styles.posteHeaderSubtitle}>
-                          {totalFotos} foto(s) • {fotosAntes.length} Antes • {fotosDurante.length} Durante • {fotosDepois.length} Depois
+                  if (allSemFotos) {
+                    return (
+                      <>
+                        <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+                          🪧 Postes Identificados
                         </Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Conteúdo do Poste */}
-                  <View style={styles.posteContent}>
-                    {/* Seção: Fotos Antes */}
-                    <View style={styles.posteSection}>
-                      <Text style={styles.posteSectionTitle}>📸 Fotos Antes ({fotosAntes.length})</Text>
-                      {fotosAntes.length > 0 ? (
-                        <View style={styles.photoGrid}>
-                          {fotosAntes.map((foto, index) => {
-                            const source = getPhotoSource(foto);
-                            if (!source) return null;
-                            return (
-                              <TouchableOpacity
-                                key={`${poste.id}-antes-${index}`}
-                                onPress={() => openPhotoModal(foto, `poste_${poste.id}_antes`)}
-                                activeOpacity={0.8}
-                              >
-                                <Image source={source} style={styles.photoThumb} />
-                              </TouchableOpacity>
-                            );
-                          })}
+                        <View style={styles.posteIdentificacaoCard}>
+                          <View style={styles.posteIdentificacaoList}>
+                            {obra.postes_data.map((poste: any, index: number) => {
+                              const numero = typeof poste?.numero === 'number'
+                                ? poste.numero
+                                : parseInt(String(poste?.id || '').replace(/[^0-9]/g, ''), 10);
+                              const label = numero ? `P${numero}` : String(poste?.id || `P${index + 1}`);
+                              return (
+                                <View key={`${label}-${index}`} style={styles.posteIdentificacaoItem}>
+                                  <Text style={styles.posteIdentificacaoText}>{label}</Text>
+                                </View>
+                              );
+                            })}
+                          </View>
                         </View>
-                      ) : (
-                        <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
-                      )}
-                    </View>
+                      </>
+                    );
+                  }
 
-                    {/* Seção: Fotos Durante */}
-                    <View style={styles.posteSection}>
-                      <Text style={styles.posteSectionTitle}>🔨 Fotos Durante ({fotosDurante.length})</Text>
-                      {fotosDurante.length > 0 ? (
-                        <View style={styles.photoGrid}>
-                          {fotosDurante.map((foto, index) => {
-                            const source = getPhotoSource(foto);
-                            if (!source) return null;
-                            return (
-                              <TouchableOpacity
-                                key={`${poste.id}-durante-${index}`}
-                                onPress={() => openPhotoModal(foto, `poste_${poste.id}_durante`)}
-                                activeOpacity={0.8}
-                              >
-                                <Image source={source} style={styles.photoThumb} />
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      ) : (
-                        <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
-                      )}
-                    </View>
+                  return (
+                    <>
+                      <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+                        📋 Checklist de Postes
+                      </Text>
+                      {obra.postes_data.map((poste: any) => {
+                        const fotosAntes = getPhotosForPoste(poste, 'fotos_antes');
+                        const fotosDurante = getPhotosForPoste(poste, 'fotos_durante');
+                        const fotosDepois = getPhotosForPoste(poste, 'fotos_depois');
+                        const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length;
+                        const statusCompleto = fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
+                        const statusParcial = totalFotos > 0 && !statusCompleto;
+                        const statusIcon = statusCompleto ? '✓' : statusParcial ? '◐' : '○';
+                        const statusColor = statusCompleto ? '#28a745' : statusParcial ? '#ffc107' : '#999';
 
-                    {/* Seção: Fotos Depois */}
-                    <View style={styles.posteSection}>
-                      <Text style={styles.posteSectionTitle}>✅ Fotos Depois ({fotosDepois.length})</Text>
-                      {fotosDepois.length > 0 ? (
-                        <View style={styles.photoGrid}>
-                          {fotosDepois.map((foto, index) => {
-                            const source = getPhotoSource(foto);
-                            if (!source) return null;
-                            return (
-                              <TouchableOpacity
-                                key={`${poste.id}-depois-${index}`}
-                                onPress={() => openPhotoModal(foto, `poste_${poste.id}_depois`)}
-                                activeOpacity={0.8}
-                              >
-                                <Image source={source} style={styles.photoThumb} />
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      ) : (
-                        <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
-                      )}
-                    </View>
+                        return (
+                          <View key={poste.id} style={styles.posteCard}>
+                            {/* Header do Poste */}
+                            <View style={[styles.posteHeader, { borderLeftColor: statusColor }]}
+                            >
+                              <View style={styles.posteHeaderLeft}>
+                                <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}
+                                >
+                                  <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
+                                </View>
+                                <View>
+                                  <Text style={styles.posteHeaderTitle}>Poste {poste.id}</Text>
+                                  <Text style={styles.posteHeaderSubtitle}>
+                                    {totalFotos} foto(s) • {fotosAntes.length} Antes • {fotosDurante.length} Durante • {fotosDepois.length} Depois
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
 
-                    {/* Observação do Poste */}
-                    {poste.observacao && (
-                      <View style={styles.posteObservacao}>
-                        <Text style={styles.posteObservacaoLabel}>Observação:</Text>
-                        <Text style={styles.posteObservacaoText}>{poste.observacao}</Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
-          </>
-        )}
+                            {/* Conteúdo do Poste */}
+                            <View style={styles.posteContent}>
+                              {/* Seção: Fotos Antes */}
+                              <View style={styles.posteSection}>
+                                <Text style={styles.posteSectionTitle}>📸 Fotos Antes ({fotosAntes.length})</Text>
+                                {fotosAntes.length > 0 ? (
+                                  <View style={styles.photoGrid}>
+                                    {fotosAntes.map((foto, index) => {
+                                      const source = getPhotoSource(foto);
+                                      if (!source) return null;
+                                      return (
+                                        <TouchableOpacity
+                                          key={`${poste.id}-antes-${index}`}
+                                          onPress={() => openPhotoModal(foto, `poste_${poste.id}_antes`)}
+                                          activeOpacity={0.8}
+                                        >
+                                          <Image source={source} style={styles.photoThumbnail} />
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                ) : (
+                                  <Text style={styles.noPhotosText}>Sem fotos</Text>
+                                )}
+                              </View>
 
-        {(() => {
-          // Filtrar seções relevantes baseado no tipo de serviço
-          const tipoServico = obra?.tipo_servico || '';
+                              {/* Seção: Fotos Durante */}
+                              <View style={styles.posteSection}>
+                                <Text style={styles.posteSectionTitle}>🔨 Fotos Durante ({fotosDurante.length})</Text>
+                                {fotosDurante.length > 0 ? (
+                                  <View style={styles.photoGrid}>
+                                    {fotosDurante.map((foto, index) => {
+                                      const source = getPhotoSource(foto);
+                                      if (!source) return null;
+                                      return (
+                                        <TouchableOpacity
+                                          key={`${poste.id}-durante-${index}`}
+                                          onPress={() => openPhotoModal(foto, `poste_${poste.id}_durante`)}
+                                          activeOpacity={0.8}
+                                        >
+                                          <Image source={source} style={styles.photoThumbnail} />
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                ) : (
+                                  <Text style={styles.noPhotosText}>Sem fotos</Text>
+                                )}
+                              </View>
+
+                              {/* Seção: Fotos Depois */}
+                              <View style={styles.posteSection}>
+                                <Text style={styles.posteSectionTitle}>✅ Fotos Depois ({fotosDepois.length})</Text>
+                                {fotosDepois.length > 0 ? (
+                                  <View style={styles.photoGrid}>
+                                    {fotosDepois.map((foto, index) => {
+                                      const source = getPhotoSource(foto);
+                                      if (!source) return null;
+                                      return (
+                                        <TouchableOpacity
+                                          key={`${poste.id}-depois-${index}`}
+                                          onPress={() => openPhotoModal(foto, `poste_${poste.id}_depois`)}
+                                          activeOpacity={0.8}
+                                        >
+                                          <Image source={source} style={styles.photoThumbnail} />
+                                        </TouchableOpacity>
+                                      );
+                                    })}
+                                  </View>
+                                ) : (
+                                  <Text style={styles.noPhotosText}>Sem fotos</Text>
+                                )}
+                              </View>
+
+                              {/* Observação do Poste */}
+                              {poste.observacao && (
+                                <View style={styles.posteObservacao}>
+                                  <Text style={styles.posteObservacaoLabel}>Observação:</Text>
+                                  <Text style={styles.posteObservacaoText}>{poste.observacao}</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </>
+                  );
+                })()
+              )}
           const isServicoChave = tipoServico === 'Abertura e Fechamento de Chave';
           const isServicoDitais = tipoServico === 'Ditais';
           const isServicoBookAterramento = tipoServico === 'Book de Aterramento';
@@ -1273,10 +1305,6 @@ export default function ObraDetalhe() {
             }
             // Book Aterramento: 4 fotos
             if (isServicoBookAterramento && section.key.startsWith('fotos_aterramento_')) {
-              return true;
-            }
-            // APR - Aparece em serviços que precisam (exceto Documentação e Cava em Rocha)
-            if (section.key === 'doc_apr' && !isServicoDocumentacao && !isServicoCavaRocha) {
               return true;
             }
             // Transformador - Filtrar por status (Instalado/Retirado)
@@ -1875,6 +1903,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#555',
     marginBottom: 4,
+  posteIdentificacaoList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  posteIdentificacaoItem: {
+    backgroundColor: '#e0f2fe',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
+  posteIdentificacaoText: {
+    color: '#0369a1',
+    fontWeight: '700',
+    fontSize: 14,
+  },
   },
   posteObservacaoText: {
     fontSize: 14,
