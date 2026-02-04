@@ -826,7 +826,21 @@ export default function ObraDetailPage() {
               </div>
             ) : null}
 
-            {/* Outras seções podem ser adicionadas aqui */}
+            {/* Checklist de Fiscalização */}
+            {(obra.fotos_checklist_croqui?.length || obra.fotos_checklist_panoramica_inicial?.length || obra.fotos_checklist_chede?.length || obra.fotos_checklist_aterramento_cerca?.length || obra.fotos_checklist_padrao_geral?.length || obra.fotos_checklist_padrao_interno?.length || obra.fotos_checklist_panoramica_final?.length || obra.fotos_checklist_postes?.length || obra.fotos_checklist_seccionamentos?.length) ? (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Checklist de Fiscalização</h3>
+                <PhotoGallery photos={obra.fotos_checklist_croqui || []} title="Croqui" sectionKey="fotos_checklist_croqui" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_panoramica_inicial || []} title="Panorâmica Inicial" sectionKey="fotos_checklist_panoramica_inicial" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_chede || []} title="CHEDE" sectionKey="fotos_checklist_chede" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_aterramento_cerca || []} title="Aterramento de Cerca" sectionKey="fotos_checklist_aterramento_cerca" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="Padrão Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="Padrão Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_postes || []} title="Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_seccionamentos || []} title="Seccionamentos" sectionKey="fotos_checklist_seccionamentos" {...galleryProps} />
+              </div>
+            ) : null}
           </div>
       </AppShell>
     </ProtectedRoute>
