@@ -73,6 +73,8 @@ type OnlineObra = {
   fotos_checklist_aterramento_cerca?: FotoInfo[];
   fotos_checklist_padrao_geral?: FotoInfo[];
   fotos_checklist_padrao_interno?: FotoInfo[];
+  fotos_checklist_frying?: FotoInfo[];
+  fotos_checklist_abertura_fechamento_pulo?: FotoInfo[];
   fotos_checklist_panoramica_final?: FotoInfo[];
   fotos_checklist_postes?: FotoInfo[];
   fotos_checklist_seccionamentos?: FotoInfo[];
@@ -181,6 +183,8 @@ type ObraPayload = (PendingObra & {
   fotos_checklist_aterramento_cerca?: FotoInfo[];
   fotos_checklist_padrao_geral?: FotoInfo[];
   fotos_checklist_padrao_interno?: FotoInfo[];
+  fotos_checklist_frying?: FotoInfo[];
+  fotos_checklist_abertura_fechamento_pulo?: FotoInfo[];
   fotos_checklist_panoramica_final?: FotoInfo[];
   fotos_checklist_postes?: FotoInfo[];
   fotos_checklist_seccionamentos?: FotoInfo[];
@@ -274,7 +278,9 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_checklist_aterramento_cerca', label: '6️⃣ Aterramento de Cerca' },
   { key: 'fotos_checklist_padrao_geral', label: '7️⃣ Padrão de Ligação - Vista Geral' },
   { key: 'fotos_checklist_padrao_interno', label: '8️⃣ Padrão de Ligação - Interno' },
-  { key: 'fotos_checklist_panoramica_final', label: '9️⃣ Panorâmica Final' },
+  { key: 'fotos_checklist_frying', label: '9️⃣ Frying' },
+  { key: 'fotos_checklist_abertura_fechamento_pulo', label: '🔟 Abertura e Fechamento de Pulo' },
+  { key: 'fotos_checklist_panoramica_final', label: '1️⃣1️⃣ Panorâmica Final' },
   { key: 'fotos_altimetria_lado_fonte', label: 'Altimetria - Lado Fonte' },
   { key: 'fotos_altimetria_medicao_fonte', label: 'Altimetria - Medição Fonte' },
   { key: 'fotos_altimetria_lado_carga', label: 'Altimetria - Lado Carga' },
@@ -664,6 +670,8 @@ export default function ObraDetalhe() {
       'fotos_checklist_aterramento_cerca': 'checklist_aterramento_cerca',
       'fotos_checklist_padrao_geral': 'checklist_padrao_geral',
       'fotos_checklist_padrao_interno': 'checklist_padrao_interno',
+      'fotos_checklist_frying': 'checklist_frying',
+      'fotos_checklist_abertura_fechamento_pulo': 'checklist_abertura_fechamento_pulo',
       'fotos_checklist_panoramica_final': 'checklist_panoramica_final',
       'fotos_checklist_postes': [
         'checklist_poste_inteiro',
