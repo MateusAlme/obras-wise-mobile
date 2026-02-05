@@ -842,34 +842,20 @@ export default function NovaObra() {
               setNumAterramentosCerca(aterramentosCarregados.length);
             }
 
-            // Carregar estrutura das hastes aplicadas do Checklist
-            if (obraData.checklist_hastes_aplicadas_data?.length) {
-              console.log('✅ Carregando', obraData.checklist_hastes_aplicadas_data.length, 'haste(s) aplicada(s) do checklist');
-              const hastesCarregadas = obraData.checklist_hastes_aplicadas_data.map((haste: any) => ({
-                numero: String(haste.numero || ''),
-                isAditivo: haste.isAditivo || false,
-                fotos: mapPhotos(haste.fotos || [], 'checklist_haste_aplicada')
+            // Carregar estrutura unificada de hastes e termômetros do Checklist
+            if (obraData.checklist_hastes_termometros_data?.length) {
+              console.log('✅ Carregando', obraData.checklist_hastes_termometros_data.length, 'ponto(s) de hastes/termômetros do checklist');
+              const pontosCarregados = obraData.checklist_hastes_termometros_data.map((ponto: any) => ({
+                numero: String(ponto.numero || ''),
+                isAditivo: ponto.isAditivo || false,
+                fotoHaste: mapPhotos(ponto.fotoHaste || [], 'checklist_ponto_haste'),
+                fotoTermometro: mapPhotos(ponto.fotoTermometro || [], 'checklist_ponto_termometro')
               }));
-              setFotosHastesAplicadas(hastesCarregadas);
-              setNumHastesAplicadas(hastesCarregadas.length);
-              console.log('✅ Hastes aplicadas carregadas:', hastesCarregadas);
+              setPontosHastesTermometros(pontosCarregados);
+              setNumPontosHastesTermometros(pontosCarregados.length);
+              console.log('✅ Pontos de hastes/termômetros carregados:', pontosCarregados);
             } else {
-              console.log('⚠️ Nenhuma haste encontrada em checklist_hastes_aplicadas_data');
-            }
-
-            // Carregar estrutura das medições de termômetro do Checklist
-            if (obraData.checklist_medicao_termometro_data?.length) {
-              console.log('✅ Carregando', obraData.checklist_medicao_termometro_data.length, 'medição(ões) de termômetro do checklist');
-              const medicoesCarregadas = obraData.checklist_medicao_termometro_data.map((term: any) => ({
-                numero: String(term.numero || ''),
-                isAditivo: term.isAditivo || false,
-                fotos: mapPhotos(term.fotos || [], 'checklist_medicao_termometro')
-              }));
-              setFotosMedicaoTermometro(medicoesCarregadas);
-              setNumMedicaoTermometro(medicoesCarregadas.length);
-              console.log('✅ Medições de termômetro carregadas:', medicoesCarregadas);
-            } else {
-              console.log('⚠️ Nenhuma medição de termômetro encontrada em checklist_medicao_termometro_data');
+              console.log('⚠️ Nenhum ponto de hastes/termômetros encontrado em checklist_hastes_termometros_data');
             }
           } catch (err) {
             console.error('❌ Erro ao carregar fotos do checklist:', err);
@@ -1301,7 +1287,7 @@ export default function NovaObra() {
     'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' |
-    'checklist_haste_aplicada' | 'checklist_medicao_termometro' | 'checklist_panoramica_final' |
+    'checklist_ponto_haste' | 'checklist_ponto_termometro' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
@@ -1312,8 +1298,7 @@ export default function NovaObra() {
     posteIndex?: number,
     seccionamentoIndex?: number,
     aterramentoCercaIndex?: number,
-    hasteAplicadaIndex?: number,
-    medicaoTermometroIndex?: number
+    pontoIndex?: number
   ) => {
     const hasPermission = await requestPermissions();
     if (!hasPermission) return;
@@ -1470,10 +1455,10 @@ export default function NovaObra() {
       else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].fotos.length;
       // Checklist - aterramento de cerca
       else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].fotos.length;
-      // Checklist - hastes aplicadas
-      else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) index = fotosHastesAplicadas[hasteAplicadaIndex].fotos.length;
-      // Checklist - medição do termômetro
-      else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) index = fotosMedicaoTermometro[medicaoTermometroIndex].fotos.length;
+      // Checklist - ponto haste
+      else if (tipo === 'checklist_ponto_haste' && pontoIndex !== undefined) index = pontosHastesTermometros[pontoIndex].fotoHaste.length;
+      // Checklist - ponto termômetro
+      else if (tipo === 'checklist_ponto_termometro' && pontoIndex !== undefined) index = pontosHastesTermometros[pontoIndex].fotoTermometro.length;
       // Documentos - Materiais
       else if (tipo === 'doc_materiais_previsto') index = docMateriaisPrevisto.length;
       else if (tipo === 'doc_materiais_realizado') index = docMateriaisRealizado.length;
@@ -1684,21 +1669,21 @@ export default function NovaObra() {
           };
           return updated;
         });
-      } else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) {
-        setFotosHastesAplicadas(prev => {
+      } else if (tipo === 'checklist_ponto_haste' && pontoIndex !== undefined) {
+        setPontosHastesTermometros(prev => {
           const updated = [...prev];
-          updated[hasteAplicadaIndex] = {
-            ...updated[hasteAplicadaIndex],
-            fotos: [...updated[hasteAplicadaIndex].fotos, photoData]
+          updated[pontoIndex] = {
+            ...updated[pontoIndex],
+            fotoHaste: [...updated[pontoIndex].fotoHaste, photoData]
           };
           return updated;
         });
-      } else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) {
-        setFotosMedicaoTermometro(prev => {
+      } else if (tipo === 'checklist_ponto_termometro' && pontoIndex !== undefined) {
+        setPontosHastesTermometros(prev => {
           const updated = [...prev];
-          updated[medicaoTermometroIndex] = {
-            ...updated[medicaoTermometroIndex],
-            fotos: [...updated[medicaoTermometroIndex].fotos, photoData]
+          updated[pontoIndex] = {
+            ...updated[pontoIndex],
+            fotoTermometro: [...updated[pontoIndex].fotoTermometro, photoData]
           };
           return updated;
         });
@@ -1936,21 +1921,21 @@ export default function NovaObra() {
         };
         return updated;
       });
-    } else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) {
-      setFotosHastesAplicadas(prev => {
+    } else if (tipo === 'checklist_ponto_haste' && pontoIndex !== undefined) {
+      setPontosHastesTermometros(prev => {
         const updated = [...prev];
-        updated[hasteAplicadaIndex] = {
-          ...updated[hasteAplicadaIndex],
-          fotos: [...updated[hasteAplicadaIndex].fotos, photoData]
+        updated[pontoIndex] = {
+          ...updated[pontoIndex],
+          fotoHaste: [...updated[pontoIndex].fotoHaste, photoData]
         };
         return updated;
       });
-    } else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) {
-      setFotosMedicaoTermometro(prev => {
+    } else if (tipo === 'checklist_ponto_termometro' && pontoIndex !== undefined) {
+      setPontosHastesTermometros(prev => {
         const updated = [...prev];
-        updated[medicaoTermometroIndex] = {
-          ...updated[medicaoTermometroIndex],
-          fotos: [...updated[medicaoTermometroIndex].fotos, photoData]
+        updated[pontoIndex] = {
+          ...updated[pontoIndex],
+          fotoTermometro: [...updated[pontoIndex].fotoTermometro, photoData]
         };
         return updated;
       });
@@ -2116,7 +2101,7 @@ export default function NovaObra() {
     'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' |
-    'checklist_haste_aplicada' | 'checklist_medicao_termometro' | 'checklist_panoramica_final' |
+    'checklist_ponto_haste' | 'checklist_ponto_termometro' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
@@ -2127,8 +2112,7 @@ export default function NovaObra() {
     posteIndex?: number,
     seccionamentoIndex?: number,
     aterramentoCercaIndex?: number,
-    hasteAplicadaIndex?: number,
-    medicaoTermometroIndex?: number
+    pontoIndex?: number
   ) => {
     try {
       // PROTEÇÃO: Validar parâmetros antes de remover
@@ -2312,21 +2296,21 @@ export default function NovaObra() {
         };
         return updated;
       });
-    } else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) {
-      setFotosHastesAplicadas(prev => {
+    } else if (tipo === 'checklist_ponto_haste' && pontoIndex !== undefined) {
+      setPontosHastesTermometros(prev => {
         const updated = [...prev];
-        updated[hasteAplicadaIndex] = {
-          ...updated[hasteAplicadaIndex],
-          fotos: updated[hasteAplicadaIndex].fotos.filter((_, i) => i !== index)
+        updated[pontoIndex] = {
+          ...updated[pontoIndex],
+          fotoHaste: updated[pontoIndex].fotoHaste.filter((_, i) => i !== index)
         };
         return updated;
       });
-    } else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) {
-      setFotosMedicaoTermometro(prev => {
+    } else if (tipo === 'checklist_ponto_termometro' && pontoIndex !== undefined) {
+      setPontosHastesTermometros(prev => {
         const updated = [...prev];
-        updated[medicaoTermometroIndex] = {
-          ...updated[medicaoTermometroIndex],
-          fotos: updated[medicaoTermometroIndex].fotos.filter((_, i) => i !== index)
+        updated[pontoIndex] = {
+          ...updated[pontoIndex],
+          fotoTermometro: updated[pontoIndex].fotoTermometro.filter((_, i) => i !== index)
         };
         return updated;
       });
@@ -2687,8 +2671,7 @@ export default function NovaObra() {
       fotosPostes.reduce((acc, p) => acc + p.posteInteiro.length + p.engaste.length + p.conexao1.length + p.conexao2.length + p.maiorEsforco.length + p.menorEsforco.length, 0) +
       fotosSeccionamentos.reduce((acc, s) => acc + s.fotos.length, 0) +
       fotosAterramentosCerca.reduce((acc, a) => acc + a.fotos.length, 0) +
-      fotosHastesAplicadas.reduce((acc, h) => acc + h.fotos.length, 0) +
-      fotosMedicaoTermometro.reduce((acc, t) => acc + t.fotos.length, 0) +
+      pontosHastesTermometros.reduce((acc, p) => acc + p.fotoHaste.length + p.fotoTermometro.length, 0) +
       fotosAltimetriaLadoFonte.length + fotosAltimetriaMedicaoFonte.length +
       fotosAltimetriaLadoCarga.length + fotosAltimetriaMedicaoCarga.length +
       fotosVazamentoEvidencia.length + fotosVazamentoEquipamentosLimpeza.length +
@@ -2878,17 +2861,12 @@ export default function NovaObra() {
             numero: parseInt(aterr.numero) || (index + 1),
             fotos: extractPhotoData(aterr.fotos),
           })),
-          checklist_hastes_aplicadas_data: fotosHastesAplicadas.map((haste, index) => ({
-            id: `haste_${index + 1}`,
-            numero: haste.numero || `${index + 1}`,
-            isAditivo: haste.isAditivo || false,
-            fotos: extractPhotoData(haste.fotos),
-          })),
-          checklist_medicao_termometro_data: fotosMedicaoTermometro.map((term, index) => ({
-            id: `termometro_${index + 1}`,
-            numero: term.numero || `${index + 1}`,
-            isAditivo: term.isAditivo || false,
-            fotos: extractPhotoData(term.fotos),
+          checklist_hastes_termometros_data: pontosHastesTermometros.map((ponto, index) => ({
+            id: `ponto_${index + 1}`,
+            numero: ponto.numero || `${index + 1}`,
+            isAditivo: ponto.isAditivo || false,
+            fotoHaste: extractPhotoData(ponto.fotoHaste),
+            fotoTermometro: extractPhotoData(ponto.fotoTermometro),
           })),
         }),
       };
@@ -3603,8 +3581,8 @@ export default function NovaObra() {
             fotos_checklist_postes: mergePhotos(obraAtual.fotos_checklist_postes, fotosChecklistPostesUploaded),
             fotos_checklist_seccionamentos: mergePhotos(obraAtual.fotos_checklist_seccionamentos, fotosChecklistSeccionamentosUploaded),
             fotos_checklist_aterramento_cerca: mergePhotos(obraAtual.fotos_checklist_aterramento_cerca, fotosChecklistAterramentoCercaUploaded),
-            fotos_checklist_hastes_aplicadas: fotosHastesAplicadas.flatMap(haste => haste.fotos.map(f => f.photoId).filter(Boolean) as string[]),
-            fotos_checklist_medicao_termometro: fotosMedicaoTermometro.flatMap(term => term.fotos.map(f => f.photoId).filter(Boolean) as string[]),
+            fotos_checklist_hastes_aplicadas: pontosHastesTermometros.flatMap(p => p.fotoHaste.map(f => f.photoId).filter(Boolean) as string[]),
+            fotos_checklist_medicao_termometro: pontosHastesTermometros.flatMap(p => p.fotoTermometro.map(f => f.photoId).filter(Boolean) as string[]),
             // Estrutura dos postes, seccionamentos e aterramentos do Checklist
             ...(isServicoChecklist && {
               checklist_postes_data: fotosPostes.map((poste, index) => ({
@@ -3629,17 +3607,12 @@ export default function NovaObra() {
                 numero: parseInt(aterr.numero) || (index + 1),
                 fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
               })),
-              checklist_hastes_aplicadas_data: fotosHastesAplicadas.map((haste, index) => ({
-                id: `haste_${index + 1}`,
-                numero: haste.numero || `${index + 1}`,
-                isAditivo: haste.isAditivo || false,
-                fotos: haste.fotos.map(f => f.photoId).filter(Boolean),
-              })),
-              checklist_medicao_termometro_data: fotosMedicaoTermometro.map((term, index) => ({
-                id: `termometro_${index + 1}`,
-                numero: term.numero || `${index + 1}`,
-                isAditivo: term.isAditivo || false,
-                fotos: term.fotos.map(f => f.photoId).filter(Boolean),
+              checklist_hastes_termometros_data: pontosHastesTermometros.map((ponto, index) => ({
+                id: `ponto_${index + 1}`,
+                numero: ponto.numero || `${index + 1}`,
+                isAditivo: ponto.isAditivo || false,
+                fotoHaste: ponto.fotoHaste.map(f => f.photoId).filter(Boolean),
+                fotoTermometro: ponto.fotoTermometro.map(f => f.photoId).filter(Boolean),
               })),
             }),
           })
