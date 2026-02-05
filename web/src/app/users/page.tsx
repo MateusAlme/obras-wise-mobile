@@ -21,7 +21,7 @@ interface AdminUser {
 }
 
 export default function UsersPage() {
-  const { user } = useAuth()
+  const { user, profile, isAdmin } = useAuth()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -40,12 +40,8 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // Lista de super admins autorizados (apenas eles podem criar/editar/excluir usuários)
-  const SUPER_ADMINS = ['mateusalmeidacz@gmail.com']
-
-  // Verificar se o usuário atual é super admin
-  const currentUserEmail = user?.email?.toLowerCase() || ''
-  const isSuperAdmin = SUPER_ADMINS.includes(currentUserEmail)
+  // Qualquer admin pode gerenciar usuários
+  const isSuperAdmin = isAdmin
 
   useEffect(() => {
     loadUsers()
