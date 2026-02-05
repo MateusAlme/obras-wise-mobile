@@ -2577,10 +2577,12 @@ export default function NovaObra() {
       fotosMedidorPadrao.length + fotosMedidorLeitura.length + fotosMedidorSeloBorn.length +
       fotosMedidorSeloCaixa.length + fotosMedidorIdentificadorFase.length +
       fotosChecklistCroqui.length + fotosChecklistPanoramicaInicial.length +
-      fotosChecklistChede.length + fotosChecklistPadraoGeral.length +
+      fotosChecklistChaveComponente.length + fotosChecklistPadraoGeral.length +
       fotosChecklistPadraoInterno.length + fotosChecklistFrying.length +
       fotosChecklistAberturaFechamentoPulo.length + fotosChecklistPanoramicaFinal.length +
-      fotosChecklistPostes.length + fotosChecklistSeccionamentos.length +
+      fotosPostes.reduce((acc, p) => acc + p.posteInteiro.length + p.engaste.length + p.conexao1.length + p.conexao2.length + p.maiorEsforco.length + p.menorEsforco.length, 0) +
+      fotosSeccionamentos.reduce((acc, s) => acc + s.fotos.length, 0) +
+      fotosAterramentosCerca.reduce((acc, a) => acc + a.fotos.length, 0) +
       fotosAltimetriaLadoFonte.length + fotosAltimetriaMedicaoFonte.length +
       fotosAltimetriaLadoCarga.length + fotosAltimetriaMedicaoCarga.length +
       fotosVazamentoEvidencia.length + fotosVazamentoEquipamentosLimpeza.length +
