@@ -64,6 +64,8 @@ export interface Obra {
   fotos_checklist_aterramento_cerca?: FotoInfo[] // Formato antigo (compatibilidade)
   fotos_checklist_padrao_geral?: FotoInfo[]
   fotos_checklist_padrao_interno?: FotoInfo[]
+  fotos_checklist_frying?: FotoInfo[]
+  fotos_checklist_abertura_fechamento_pulo?: FotoInfo[]
   fotos_checklist_panoramica_final?: FotoInfo[]
   fotos_checklist_postes?: FotoInfo[]
   fotos_checklist_seccionamentos?: FotoInfo[]

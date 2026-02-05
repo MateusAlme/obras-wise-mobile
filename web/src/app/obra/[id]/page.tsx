@@ -21,7 +21,7 @@ const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
   'Poda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
   'Fundação Especial': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
   'Instalação do Medidor': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
-  'Checklist de Fiscalização': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
+  'Checklist de Fiscalização': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_frying', 'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
   'DITAIS': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
   'Ditais': ['fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar'],
   'Book de Aterramento': ['fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao'],
@@ -29,7 +29,7 @@ const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
   'Medidor': ['fotos_medidor_padrao', 'fotos_medidor_leitura', 'fotos_medidor_selo_born', 'fotos_medidor_selo_caixa', 'fotos_medidor_identificador_fase'],
   'Altimetria': ['fotos_altimetria_lado_fonte', 'fotos_altimetria_medicao_fonte', 'fotos_altimetria_lado_carga', 'fotos_altimetria_medicao_carga'],
   'Vazamento': ['fotos_vazamento_evidencia', 'fotos_vazamento_equipamentos_limpeza', 'fotos_vazamento_tombamento_retirado', 'fotos_vazamento_placa_retirado', 'fotos_vazamento_tombamento_instalado', 'fotos_vazamento_placa_instalado', 'fotos_vazamento_instalacao'],
-  'Checklist': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
+  'Checklist': ['fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede', 'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno', 'fotos_checklist_frying', 'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_panoramica_final', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos'],
   'Documentação': ['doc_cadastro_medidor', 'doc_laudo_transformador', 'doc_laudo_regulador', 'doc_laudo_religador', 'doc_apr', 'doc_fvbt', 'doc_termo_desistencia_lpt']
 }
 
@@ -890,6 +890,8 @@ export default function ObraDetailPage() {
 
                 <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="Padrão Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="Padrão Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="Frying" sectionKey="fotos_checklist_frying" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_postes || []} title="Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_seccionamentos || []} title="Seccionamentos" sectionKey="fotos_checklist_seccionamentos" {...galleryProps} />

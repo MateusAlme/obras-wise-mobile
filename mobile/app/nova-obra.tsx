@@ -155,6 +155,8 @@ export default function NovaObra() {
   const [fotosChecklistChaveComponente, setFotosChecklistChaveComponente] = useState<FotoData[]>([]);
   const [fotosChecklistPadraoGeral, setFotosChecklistPadraoGeral] = useState<FotoData[]>([]);
   const [fotosChecklistPadraoInterno, setFotosChecklistPadraoInterno] = useState<FotoData[]>([]);
+  const [fotosChecklistFrying, setFotosChecklistFrying] = useState<FotoData[]>([]);
+  const [fotosChecklistAberturaFechamentoPulo, setFotosChecklistAberturaFechamentoPulo] = useState<FotoData[]>([]);
   const [fotosChecklistPanoramicaFinal, setFotosChecklistPanoramicaFinal] = useState<FotoData[]>([]);
 
   // Estados dinâmicos para Postes (cada poste tem status e fotos)
@@ -779,6 +781,8 @@ export default function NovaObra() {
             if (obraData.fotos_checklist_chede?.length) setFotosChecklistChaveComponente(mapPhotos(obraData.fotos_checklist_chede, 'fotos_checklist_chede'));
             if (obraData.fotos_checklist_padrao_geral?.length) setFotosChecklistPadraoGeral(mapPhotos(obraData.fotos_checklist_padrao_geral, 'fotos_checklist_padrao_geral'));
             if (obraData.fotos_checklist_padrao_interno?.length) setFotosChecklistPadraoInterno(mapPhotos(obraData.fotos_checklist_padrao_interno, 'fotos_checklist_padrao_interno'));
+            if (obraData.fotos_checklist_frying?.length) setFotosChecklistFrying(mapPhotos(obraData.fotos_checklist_frying, 'fotos_checklist_frying'));
+            if (obraData.fotos_checklist_abertura_fechamento_pulo?.length) setFotosChecklistAberturaFechamentoPulo(mapPhotos(obraData.fotos_checklist_abertura_fechamento_pulo, 'fotos_checklist_abertura_fechamento_pulo'));
             if (obraData.fotos_checklist_panoramica_final?.length) setFotosChecklistPanoramicaFinal(mapPhotos(obraData.fotos_checklist_panoramica_final, 'fotos_checklist_panoramica_final'));
 
             // Carregar estrutura dos postes do Checklist
@@ -1256,7 +1260,7 @@ export default function NovaObra() {
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
     'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
-    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
+    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
@@ -1409,6 +1413,8 @@ export default function NovaObra() {
       else if (tipo === 'checklist_chede') index = fotosChecklistChaveComponente.length;
       else if (tipo === 'checklist_padrao_geral') index = fotosChecklistPadraoGeral.length;
       else if (tipo === 'checklist_padrao_interno') index = fotosChecklistPadraoInterno.length;
+      else if (tipo === 'checklist_frying') index = fotosChecklistFrying.length;
+      else if (tipo === 'checklist_abertura_fechamento_pulo') index = fotosChecklistAberturaFechamentoPulo.length;
       else if (tipo === 'checklist_panoramica_final') index = fotosChecklistPanoramicaFinal.length;
       // Checklist - fotos dinâmicas (postes)
       else if (tipo === 'checklist_poste_inteiro' && posteIndex !== undefined) index = fotosPostes[posteIndex].posteInteiro.length;
@@ -1553,6 +1559,10 @@ export default function NovaObra() {
         setFotosChecklistPadraoGeral(prev => [...prev, photoData]);
       } else if (tipo === 'checklist_padrao_interno') {
         setFotosChecklistPadraoInterno(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_frying') {
+        setFotosChecklistFrying(prev => [...prev, photoData]);
+      } else if (tipo === 'checklist_abertura_fechamento_pulo') {
+        setFotosChecklistAberturaFechamentoPulo(prev => [...prev, photoData]);
       } else if (tipo === 'checklist_panoramica_final') {
         setFotosChecklistPanoramicaFinal(prev => [...prev, photoData]);
       } else if (tipo === 'checklist_poste_inteiro' && posteIndex !== undefined) {
@@ -2022,7 +2032,7 @@ export default function NovaObra() {
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
     'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
-    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_panoramica_final' |
+    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
@@ -2138,6 +2148,10 @@ export default function NovaObra() {
       setFotosChecklistPadraoGeral(fotosChecklistPadraoGeral.filter((_, i) => i !== index));
     } else if (tipo === 'checklist_padrao_interno') {
       setFotosChecklistPadraoInterno(fotosChecklistPadraoInterno.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_frying') {
+      setFotosChecklistFrying(fotosChecklistFrying.filter((_, i) => i !== index));
+    } else if (tipo === 'checklist_abertura_fechamento_pulo') {
+      setFotosChecklistAberturaFechamentoPulo(fotosChecklistAberturaFechamentoPulo.filter((_, i) => i !== index));
     } else if (tipo === 'checklist_panoramica_final') {
       setFotosChecklistPanoramicaFinal(fotosChecklistPanoramicaFinal.filter((_, i) => i !== index));
     } else if (tipo === 'checklist_poste_inteiro' && posteIndex !== undefined) {
@@ -2563,7 +2577,10 @@ export default function NovaObra() {
       fotosMedidorPadrao.length + fotosMedidorLeitura.length + fotosMedidorSeloBorn.length +
       fotosMedidorSeloCaixa.length + fotosMedidorIdentificadorFase.length +
       fotosChecklistCroqui.length + fotosChecklistPanoramicaInicial.length +
-      fotosChecklistPanoramicaFinal.length +
+      fotosChecklistChede.length + fotosChecklistPadraoGeral.length +
+      fotosChecklistPadraoInterno.length + fotosChecklistFrying.length +
+      fotosChecklistAberturaFechamentoPulo.length + fotosChecklistPanoramicaFinal.length +
+      fotosChecklistPostes.length + fotosChecklistSeccionamentos.length +
       fotosAltimetriaLadoFonte.length + fotosAltimetriaMedicaoFonte.length +
       fotosAltimetriaLadoCarga.length + fotosAltimetriaMedicaoCarga.length +
       fotosVazamentoEvidencia.length + fotosVazamentoEquipamentosLimpeza.length +
@@ -3870,6 +3887,8 @@ export default function NovaObra() {
         fotos_checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => aterr.fotos.map(f => f.photoId).filter(Boolean) as string[]),
         fotos_checklist_padrao_geral: extractPhotoData(fotosChecklistPadraoGeral) as string[],
         fotos_checklist_padrao_interno: extractPhotoData(fotosChecklistPadraoInterno) as string[],
+        fotos_checklist_frying: extractPhotoData(fotosChecklistFrying) as string[],
+        fotos_checklist_abertura_fechamento_pulo: extractPhotoData(fotosChecklistAberturaFechamentoPulo) as string[],
         fotos_checklist_panoramica_final: extractPhotoData(fotosChecklistPanoramicaFinal) as string[],
         fotos_checklist_postes: fotosPostes.flatMap((poste, index) => [
           ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
@@ -7589,9 +7608,99 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 9. Panorâmica Final */}
+                {/* 9. Frying - OPCIONAL */}
                 <View style={styles.checklistSection}>
-                  <Text style={styles.checklistSectionTitle}>9️⃣ Panorâmica Final {fotosChecklistPanoramicaFinal.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistSectionTitle}>9️⃣ Frying (Opcional) {fotosChecklistFrying.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Opcional - 2 fotos recomendadas</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_frying')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      + Adicionar Foto ({fotosChecklistFrying.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistFrying.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistFrying.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_frying', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 10. Abertura e Fechamento de Pulo - OPCIONAL */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>🔟 Abertura e Fechamento de Pulo (Opcional) {fotosChecklistAberturaFechamentoPulo.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistHint}>Opcional - 2 fotos recomendadas</Text>
+
+                  <TouchableOpacity
+                    style={styles.photoButtonSmall}
+                    onPress={() => takePicture('checklist_abertura_fechamento_pulo')}
+                    disabled={loading || uploadingPhoto}
+                  >
+                    <Text style={styles.photoButtonTextSmall}>
+                      + Adicionar Foto ({fotosChecklistAberturaFechamentoPulo.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {fotosChecklistAberturaFechamentoPulo.length > 0 && (
+                    <View style={styles.photoGrid}>
+                      {fotosChecklistAberturaFechamentoPulo.map((foto, index) => (
+                        <View key={index} style={styles.photoCard}>
+                          <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                      <PhotoWithPlaca
+                        uri={foto.uri}
+                        obraNumero={obra}
+                        tipoServico={tipoServico}
+                        equipe={isCompUser ? equipeExecutora : equipe}
+                        latitude={foto.latitude}
+                        longitude={foto.longitude}
+                        utmX={foto.utmX}
+                        utmY={foto.utmY}
+                        utmZone={foto.utmZone}
+                        style={styles.photoThumbnail}
+                      />
+                    </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.photoRemoveButton}
+                            onPress={() => removePhoto('checklist_abertura_fechamento_pulo', index)}
+                          >
+                            <Text style={styles.photoRemoveText}>×</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+
+                {/* 11. Panorâmica Final */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>1️⃣1️⃣ Panorâmica Final {fotosChecklistPanoramicaFinal.length >= 2 && '✓'}</Text>
                   <Text style={styles.checklistHint}>Recomendado: 2 fotos - Obra finalizada e limpa</Text>
 
                   <TouchableOpacity
