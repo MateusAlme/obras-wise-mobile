@@ -17,19 +17,43 @@ export interface UTMCoordinates {
   hemisphere: 'N' | 'S'
 }
 
+// Cache de endereços em memória (evita requisições duplicadas)
+const addressCache = new Map<string, Address>()
+
+// Fila de requisições para throttling (1 req/segundo)
+let lastRequestTime = 0
+const REQUEST_INTERVAL = 1100 // 1.1 segundos (margem de segurança)
+
 /**
  * Converte coordenadas GPS (latitude/longitude) para endereço usando Nominatim (OpenStreetMap)
  *
  * IMPORTANTE:
  * - Nominatim é gratuito mas requer header User-Agent
- * - Limite de 1 requisição/segundo
+ * - Limite de 1 requisição/segundo (implementado via throttling)
+ * - Usa cache em memória para evitar requisições duplicadas
  * - Requer internet ativa
  */
 export async function getAddressFromCoords(
   latitude: number,
   longitude: number
 ): Promise<Address> {
+  // Criar chave de cache (arredondar para 4 casas decimais ~ 11 metros de precisão)
+  const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`
+
+  // Verificar cache
+  if (addressCache.has(cacheKey)) {
+    return addressCache.get(cacheKey)!
+  }
+
   try {
+    // Throttling: aguardar se necessário
+    const now = Date.now()
+    const timeSinceLastRequest = now - lastRequestTime
+    if (timeSinceLastRequest < REQUEST_INTERVAL) {
+      await new Promise(resolve => setTimeout(resolve, REQUEST_INTERVAL - timeSinceLastRequest))
+    }
+    lastRequestTime = Date.now()
+
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1&accept-language=pt-BR`
 
     const response = await fetch(url, {
@@ -45,7 +69,9 @@ export async function getAddressFromCoords(
     const data = await response.json()
 
     if (!data.address) {
-      return { formattedAddress: 'Endereço não disponível' }
+      const result = { formattedAddress: 'Endereço não disponível' }
+      addressCache.set(cacheKey, result)
+      return result
     }
 
     // Formatar endereço
@@ -58,7 +84,7 @@ export async function getAddressFromCoords(
     }
     if (data.address.state) parts.push(data.address.state)
 
-    return {
+    const result = {
       formattedAddress: parts.length > 0 ? parts.join(', ') : 'Endereço não disponível',
       street: data.address.road,
       number: data.address.house_number,
@@ -68,9 +94,15 @@ export async function getAddressFromCoords(
       country: data.address.country,
       postalCode: data.address.postcode,
     }
+
+    // Salvar no cache
+    addressCache.set(cacheKey, result)
+    return result
   } catch (error) {
-    console.error('Erro ao buscar endereço:', error)
-    return { formattedAddress: 'Endereço não disponível' }
+    // Silenciar erro no console (já é esperado quando há rate limiting)
+    const result = { formattedAddress: 'Endereço não disponível' }
+    addressCache.set(cacheKey, result)
+    return result
   }
 }
 

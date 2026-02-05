@@ -107,6 +107,29 @@ type OnlineObra = {
     fotos_depois: any[];
     observacao?: string;
   }>;
+  // CHECKLIST DE FISCALIZAÇÃO - Structured Data
+  checklist_postes_data?: Array<{
+    id: string;
+    numero: string;
+    status: string;
+    isAditivo?: boolean;
+    posteInteiro: string[];
+    engaste: string[];
+    conexao1: string[];
+    conexao2: string[];
+    maiorEsforco: string[];
+    menorEsforco: string[];
+  }>;
+  checklist_seccionamentos_data?: Array<{
+    id: string;
+    numero: number;
+    fotos: string[];
+  }>;
+  checklist_aterramentos_cerca_data?: Array<{
+    id: string;
+    numero: number;
+    fotos: string[];
+  }>;
   origem?: 'online';
 };
 
@@ -362,7 +385,11 @@ export default function ObraDetalhe() {
           console.log('📱 Carregando obra do AsyncStorage:', parsed.id);
 
           // ✅ AUTO-CORREÇÃO: Se campos críticos estão faltando, buscar do Supabase
-          const precisaCorrecao = !localObra.origem || !localObra.status;
+          const precisaCorrecao = !localObra.origem || !localObra.status ||
+            (localObra.tipo_servico === 'Checklist de Fiscalização' &&
+             localObra.checklist_postes_data === undefined &&
+             localObra.checklist_seccionamentos_data === undefined &&
+             localObra.checklist_aterramentos_cerca_data === undefined);
 
           if (precisaCorrecao && localObra.synced) {
             console.log('⚠️ Obra sincronizada mas campos faltando - buscando do Supabase...');
@@ -556,6 +583,32 @@ export default function ObraDetalhe() {
     } catch (error) {
       console.error('Erro ao carregar fotos locais:', error);
     }
+  };
+
+  // Helper para buscar fotos pelos IDs
+  const getPhotosByIds = (photoIds: string[]): FotoInfo[] => {
+    if (!photoIds || photoIds.length === 0) return [];
+
+    const fotos: FotoInfo[] = [];
+    for (const photoId of photoIds) {
+      // Buscar nos metadados locais
+      const metadata = localPhotos.find(p => p.id === photoId);
+      if (metadata) {
+        fotos.push({
+          url: metadata.supabaseUrl || metadata.uploadUrl,
+          uri: (metadata.supabaseUrl || metadata.uploadUrl) ? undefined : metadata.compressedPath,
+          latitude: metadata.latitude,
+          longitude: metadata.longitude,
+          utmX: metadata.utmX,
+          utmY: metadata.utmY,
+          utmZone: metadata.utmZone,
+        });
+      } else if (typeof photoId === 'string' && photoId.startsWith('http')) {
+        // Se for uma URL completa, usar diretamente
+        fotos.push({ url: photoId });
+      }
+    }
+    return fotos;
   };
 
   // Mescla fotos do banco com fotos locais - SIMPLIFICADO
@@ -1029,6 +1082,11 @@ export default function ObraDetalhe() {
 
   const statusInfo = useMemo(() => {
     if (!obra || obra.origem !== 'offline') {
+      return null;
+    }
+
+    // Se já foi sincronizada (tem serverId e synced=true), não mostrar badge
+    if (obra.serverId && obra.synced !== false) {
       return null;
     }
 
@@ -1523,7 +1581,148 @@ export default function ObraDetalhe() {
               {relevantSections.map((section) => {
             const photos = getPhotosForSection(section.key);
 
-            // Sempre mostrar a seção, mesmo sem fotos
+            // 🎯 RENDERIZAÇÃO ESPECIAL PARA POSTES DO CHECKLIST
+            if (section.key === 'fotos_checklist_postes' && obra.checklist_postes_data?.length) {
+              return (
+                <View key={section.key} style={styles.infoCard}>
+                  <Text style={styles.photoSectionTitle}>{section.label}</Text>
+                  {obra.checklist_postes_data.map((poste, posteIndex) => {
+                    const categoriasPoste = [
+                      { label: '📸 Poste Inteiro', fotos: poste.posteInteiro || [] },
+                      { label: '🔩 Engaste', fotos: poste.engaste || [] },
+                      { label: '🔌 Conexão 1', fotos: poste.conexao1 || [] },
+                      { label: '🔌 Conexão 2', fotos: poste.conexao2 || [] },
+                      { label: '💪 Maior Esforço', fotos: poste.maiorEsforco || [] },
+                      { label: '👌 Menor Esforço', fotos: poste.menorEsforco || [] },
+                    ];
+
+                    const totalFotos = categoriasPoste.reduce((sum, cat) => sum + cat.fotos.length, 0);
+
+                    return (
+                      <View key={poste.id || posteIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: poste.isAditivo ? '#ff6b6b' : '#007bff' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                          {poste.isAditivo ? 'AD-' : ''}P{poste.numero} - {poste.status} ({totalFotos} fotos)
+                          {poste.isAditivo && <Text style={{ fontSize: 12, color: '#ff6b6b', marginLeft: 8 }}>(Aditivo)</Text>}
+                        </Text>
+                        {categoriasPoste.map((categoria, catIndex) => {
+                          const fotosCarregadas = getPhotosByIds(categoria.fotos);
+                          if (fotosCarregadas.length === 0) return null;
+
+                          return (
+                            <View key={catIndex} style={{ marginBottom: 12 }}>
+                              <Text style={{ fontSize: 14, color: '#666', marginBottom: 6, marginLeft: 8 }}>
+                                {categoria.label} ({fotosCarregadas.length})
+                              </Text>
+                              <View style={styles.photoGrid}>
+                                {fotosCarregadas.map((foto, fotoIndex) => {
+                                  const source = getPhotoSource(foto);
+                                  if (!source) return null;
+
+                                  return (
+                                    <TouchableOpacity
+                                      key={`${poste.id}-${catIndex}-${fotoIndex}`}
+                                      onPress={() => openPhotoModal(foto, section.key)}
+                                      activeOpacity={0.8}
+                                    >
+                                      <Image
+                                        source={source}
+                                        style={styles.photoThumb}
+                                      />
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            }
+
+            // 🎯 RENDERIZAÇÃO ESPECIAL PARA SECCIONAMENTOS DO CHECKLIST
+            if (section.key === 'fotos_checklist_seccionamentos' && obra.checklist_seccionamentos_data?.length) {
+              return (
+                <View key={section.key} style={styles.infoCard}>
+                  <Text style={styles.photoSectionTitle}>{section.label}</Text>
+                  {obra.checklist_seccionamentos_data.map((sec, secIndex) => {
+                    const fotosCarregadas = getPhotosByIds(sec.fotos || []);
+                    if (fotosCarregadas.length === 0) return null;
+
+                    return (
+                      <View key={sec.id || secIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: '#28a745' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                          S{sec.numero ?? (secIndex + 1)} ({fotosCarregadas.length} fotos)
+                        </Text>
+                        <View style={styles.photoGrid}>
+                          {fotosCarregadas.map((foto, fotoIndex) => {
+                            const source = getPhotoSource(foto);
+                            if (!source) return null;
+
+                            return (
+                              <TouchableOpacity
+                                key={`${sec.id}-${fotoIndex}`}
+                                onPress={() => openPhotoModal(foto, section.key)}
+                                activeOpacity={0.8}
+                              >
+                                <Image
+                                  source={source}
+                                  style={styles.photoThumb}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            }
+
+            // 🎯 RENDERIZAÇÃO ESPECIAL PARA ATERRAMENTOS DE CERCA DO CHECKLIST
+            if (section.key === 'fotos_checklist_aterramento_cerca' && obra.checklist_aterramentos_cerca_data?.length) {
+              return (
+                <View key={section.key} style={styles.infoCard}>
+                  <Text style={styles.photoSectionTitle}>{section.label}</Text>
+                  {obra.checklist_aterramentos_cerca_data.map((aterr, aterrIndex) => {
+                    const fotosCarregadas = getPhotosByIds(aterr.fotos || []);
+                    if (fotosCarregadas.length === 0) return null;
+
+                    return (
+                      <View key={aterr.id || aterrIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: '#ffc107' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                          A{aterr.numero ?? (aterrIndex + 1)} ({fotosCarregadas.length} fotos)
+                        </Text>
+                        <View style={styles.photoGrid}>
+                          {fotosCarregadas.map((foto, fotoIndex) => {
+                            const source = getPhotoSource(foto);
+                            if (!source) return null;
+
+                            return (
+                              <TouchableOpacity
+                                key={`${aterr.id}-${fotoIndex}`}
+                                onPress={() => openPhotoModal(foto, section.key)}
+                                activeOpacity={0.8}
+                              >
+                                <Image
+                                  source={source}
+                                  style={styles.photoThumb}
+                                />
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            }
+
+            // Renderização padrão para outras seções
             return (
               <View key={section.key} style={styles.infoCard}>
                 <Text style={styles.photoSectionTitle}>

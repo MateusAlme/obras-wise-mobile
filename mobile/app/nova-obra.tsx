@@ -161,7 +161,8 @@ export default function NovaObra() {
   const [numPostes, setNumPostes] = useState(1);
   const [fotosPostes, setFotosPostes] = useState<Array<{
     numero: string; // Número/identificador do poste
-    status: 'instalado' | 'retirado' | ''; // Status do poste
+    status: 'instalado' | 'retirado' | 'existente' | ''; // Status do poste
+    isAditivo?: boolean; // Se é poste aditivo (não previsto no croqui)
     posteInteiro: FotoData[];
     engaste: FotoData[];
     conexao1: FotoData[];
@@ -171,6 +172,7 @@ export default function NovaObra() {
   }>>([{
     numero: '', // Sem número inicial
     status: '', // Sem status inicial
+    isAditivo: false, // Não é aditivo por padrão
     posteInteiro: [],
     engaste: [],
     conexao1: [],
@@ -181,11 +183,17 @@ export default function NovaObra() {
 
   // Estados dinâmicos para Seccionamento (cada ponto tem 1 foto)
   const [numSeccionamentos, setNumSeccionamentos] = useState(0);
-  const [fotosSeccionamentos, setFotosSeccionamentos] = useState<Array<FotoData[]>>([]);
+  const [fotosSeccionamentos, setFotosSeccionamentos] = useState<Array<{
+    numero: string; // Número do seccionamento (ex: "1", "4") para exibir como S1, S4
+    fotos: FotoData[];
+  }>>([]);
 
   // Estados dinâmicos para Aterramento de Cerca (cada ponto tem 1 foto) - OPCIONAL
   const [numAterramentosCerca, setNumAterramentosCerca] = useState(0);
-  const [fotosAterramentosCerca, setFotosAterramentosCerca] = useState<Array<FotoData[]>>([]);
+  const [fotosAterramentosCerca, setFotosAterramentosCerca] = useState<Array<{
+    numero: string; // Número do aterramento (ex: "1", "3") para exibir como A1, A3
+    fotos: FotoData[];
+  }>>([]);
 
   // Fotos ALTIMETRIA (4 campos)
   const [fotosAltimetriaLadoFonte, setFotosAltimetriaLadoFonte] = useState<FotoData[]>([]);
@@ -420,6 +428,10 @@ export default function NovaObra() {
           console.log('   obraData.fotos_ditais_abertura:', obraData.fotos_ditais_abertura?.length || 0, obraData.fotos_ditais_abertura);
           console.log('   obraData.fotos_transformador_laudo:', obraData.fotos_transformador_laudo?.length || 0, obraData.fotos_transformador_laudo);
           console.log('   obraData.fotos_medidor_padrao:', obraData.fotos_medidor_padrao?.length || 0, obraData.fotos_medidor_padrao);
+          console.log('   🔍 CHECKLIST DATA:');
+          console.log('   obraData.checklist_postes_data:', obraData.checklist_postes_data);
+          console.log('   obraData.checklist_seccionamentos_data:', obraData.checklist_seccionamentos_data);
+          console.log('   obraData.checklist_aterramentos_cerca_data:', obraData.checklist_aterramentos_cerca_data);
 
           setObraId(obraData.id);
           setData(obraData.data);
@@ -770,10 +782,13 @@ export default function NovaObra() {
             if (obraData.fotos_checklist_panoramica_final?.length) setFotosChecklistPanoramicaFinal(mapPhotos(obraData.fotos_checklist_panoramica_final, 'fotos_checklist_panoramica_final'));
 
             // Carregar estrutura dos postes do Checklist
+            console.log('📊 Verificando checklist_postes_data...', obraData.checklist_postes_data);
             if (obraData.checklist_postes_data?.length) {
+              console.log('✅ Carregando', obraData.checklist_postes_data.length, 'poste(s) do checklist');
               const postesCarregados = obraData.checklist_postes_data.map((poste: any) => ({
                 numero: poste.numero || '',
                 status: poste.status || '',
+                isAditivo: poste.isAditivo || false,
                 posteInteiro: mapPhotos(poste.posteInteiro || [], 'checklist_poste_inteiro'),
                 engaste: mapPhotos(poste.engaste || [], 'checklist_poste_engaste'),
                 conexao1: mapPhotos(poste.conexao1 || [], 'checklist_poste_conexao1'),
@@ -783,22 +798,32 @@ export default function NovaObra() {
               }));
               setFotosPostes(postesCarregados);
               setNumPostes(postesCarregados.length);
+              console.log('✅ Postes carregados:', postesCarregados);
+            } else {
+              console.log('⚠️ Nenhum poste encontrado em checklist_postes_data');
             }
 
             // Carregar estrutura dos seccionamentos do Checklist
+            console.log('📊 Verificando checklist_seccionamentos_data...', obraData.checklist_seccionamentos_data);
             if (obraData.checklist_seccionamentos_data?.length) {
-              const seccionamentosCarregados = obraData.checklist_seccionamentos_data.map((sec: any) =>
-                mapPhotos(sec.fotos || [], 'checklist_seccionamento')
-              );
+              console.log('✅ Carregando', obraData.checklist_seccionamentos_data.length, 'seccionamento(s) do checklist');
+              const seccionamentosCarregados = obraData.checklist_seccionamentos_data.map((sec: any) => ({
+                numero: String(sec.numero || ''),
+                fotos: mapPhotos(sec.fotos || [], 'checklist_seccionamento')
+              }));
               setFotosSeccionamentos(seccionamentosCarregados);
               setNumSeccionamentos(seccionamentosCarregados.length);
+              console.log('✅ Seccionamentos carregados:', seccionamentosCarregados);
+            } else {
+              console.log('⚠️ Nenhum seccionamento encontrado em checklist_seccionamentos_data');
             }
 
             // Carregar estrutura dos aterramentos de cerca do Checklist
             if (obraData.checklist_aterramentos_cerca_data?.length) {
-              const aterramentosCarregados = obraData.checklist_aterramentos_cerca_data.map((aterr: any) =>
-                mapPhotos(aterr.fotos || [], 'checklist_aterramento_cerca')
-              );
+              const aterramentosCarregados = obraData.checklist_aterramentos_cerca_data.map((aterr: any) => ({
+                numero: String(aterr.numero || ''),
+                fotos: mapPhotos(aterr.fotos || [], 'checklist_aterramento_cerca')
+              }));
               setFotosAterramentosCerca(aterramentosCarregados);
               setNumAterramentosCerca(aterramentosCarregados.length);
             }
@@ -1393,9 +1418,9 @@ export default function NovaObra() {
       else if (tipo === 'checklist_poste_maior_esforco' && posteIndex !== undefined) index = fotosPostes[posteIndex].maiorEsforco.length;
       else if (tipo === 'checklist_poste_menor_esforco' && posteIndex !== undefined) index = fotosPostes[posteIndex].menorEsforco.length;
       // Checklist - seccionamento
-      else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].length;
+      else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].fotos.length;
       // Checklist - aterramento de cerca
-      else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].length;
+      else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].fotos.length;
       // Documentos - Materiais
       else if (tipo === 'doc_materiais_previsto') index = docMateriaisPrevisto.length;
       else if (tipo === 'doc_materiais_realizado') index = docMateriaisRealizado.length;
@@ -1587,13 +1612,19 @@ export default function NovaObra() {
       } else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) {
         setFotosSeccionamentos(prev => {
           const updated = [...prev];
-          updated[seccionamentoIndex] = [...updated[seccionamentoIndex], photoData];
+          updated[seccionamentoIndex] = {
+            ...updated[seccionamentoIndex],
+            fotos: [...updated[seccionamentoIndex].fotos, photoData]
+          };
           return updated;
         });
       } else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) {
         setFotosAterramentosCerca(prev => {
           const updated = [...prev];
-          updated[aterramentoCercaIndex] = [...updated[aterramentoCercaIndex], photoData];
+          updated[aterramentoCercaIndex] = {
+            ...updated[aterramentoCercaIndex],
+            fotos: [...updated[aterramentoCercaIndex].fotos, photoData]
+          };
           return updated;
         });
       } else if (tipo === 'doc_materiais_previsto') {
@@ -1815,13 +1846,19 @@ export default function NovaObra() {
     } else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) {
       setFotosSeccionamentos(prev => {
         const updated = [...prev];
-        updated[seccionamentoIndex] = [...updated[seccionamentoIndex], photoData];
+        updated[seccionamentoIndex] = {
+          ...updated[seccionamentoIndex],
+          fotos: [...updated[seccionamentoIndex].fotos, photoData]
+        };
         return updated;
       });
     } else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) {
       setFotosAterramentosCerca(prev => {
         const updated = [...prev];
-        updated[aterramentoCercaIndex] = [...updated[aterramentoCercaIndex], photoData];
+        updated[aterramentoCercaIndex] = {
+          ...updated[aterramentoCercaIndex],
+          fotos: [...updated[aterramentoCercaIndex].fotos, photoData]
+        };
         return updated;
       });
     }
@@ -2160,13 +2197,19 @@ export default function NovaObra() {
     } else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) {
       setFotosSeccionamentos(prev => {
         const updated = [...prev];
-        updated[seccionamentoIndex] = updated[seccionamentoIndex].filter((_, i) => i !== index);
+        updated[seccionamentoIndex] = {
+          ...updated[seccionamentoIndex],
+          fotos: updated[seccionamentoIndex].fotos.filter((_, i) => i !== index)
+        };
         return updated;
       });
     } else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) {
       setFotosAterramentosCerca(prev => {
         const updated = [...prev];
-        updated[aterramentoCercaIndex] = updated[aterramentoCercaIndex].filter((_, i) => i !== index);
+        updated[aterramentoCercaIndex] = {
+          ...updated[aterramentoCercaIndex],
+          fotos: updated[aterramentoCercaIndex].fotos.filter((_, i) => i !== index)
+        };
         return updated;
       });
     } else if (tipo === 'doc_cadastro_medidor') {
@@ -2440,7 +2483,7 @@ export default function NovaObra() {
         if (!poste.status) {
           Alert.alert(
             'Status Obrigatório',
-            `Selecione o status (Instalado ou Retirado) para o Poste ${i + 1}`
+            `Selecione o status (Instalado, Retirado ou Existente) para o Poste ${i + 1}`
           );
           return;
         }
@@ -2480,6 +2523,22 @@ export default function NovaObra() {
           }
           if (poste.menorEsforco.length < 2) {
             Alert.alert('Fotos Obrigatórias', `Poste ${i + 1}: Adicione 2 fotos do Menor Esforço (${poste.menorEsforco.length}/2)`);
+            return;
+          }
+        }
+
+        // Se EXISTENTE: fotos obrigatórias (poste inteiro, conexão 1 e 2)
+        if (poste.status === 'existente') {
+          if (poste.posteInteiro.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1} (Existente): Adicione foto do Poste Inteiro`);
+            return;
+          }
+          if (poste.conexao1.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1} (Existente): Adicione foto da Conexão 1`);
+            return;
+          }
+          if (poste.conexao2.length < 1) {
+            Alert.alert('Fotos Obrigatórias', `Poste ${i + 1} (Existente): Adicione foto da Conexão 2`);
             return;
           }
         }
@@ -2621,8 +2680,8 @@ export default function NovaObra() {
           ...extractPhotoData(poste.maiorEsforco),
           ...extractPhotoData(poste.menorEsforco),
         ]),
-        checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => extractPhotoData(sec)),
-        checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => extractPhotoData(aterr)),
+        checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => extractPhotoData(sec.fotos)),
+        checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => extractPhotoData(aterr.fotos)),
         // Documentação
         doc_apr: extractPhotoData(docApr) as string[],
         doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[],
@@ -2676,6 +2735,7 @@ export default function NovaObra() {
             id: `poste_${index + 1}`,
             numero: poste.numero,
             status: poste.status,
+            isAditivo: poste.isAditivo || false,
             posteInteiro: extractPhotoData(poste.posteInteiro),
             engaste: extractPhotoData(poste.engaste),
             conexao1: extractPhotoData(poste.conexao1),
@@ -2685,11 +2745,13 @@ export default function NovaObra() {
           })),
           checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
             id: `seccionamento_${index + 1}`,
-            fotos: extractPhotoData(sec),
+            numero: parseInt(sec.numero) || (index + 1),
+            fotos: extractPhotoData(sec.fotos),
           })),
           checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
             id: `aterramento_${index + 1}`,
-            fotos: extractPhotoData(aterr),
+            numero: parseInt(aterr.numero) || (index + 1),
+            fotos: extractPhotoData(aterr.fotos),
           })),
         }),
       };
@@ -3410,6 +3472,7 @@ export default function NovaObra() {
                 id: `poste_${index + 1}`,
                 numero: poste.numero,
                 status: poste.status,
+                isAditivo: poste.isAditivo || false,
                 posteInteiro: poste.posteInteiro.map(f => f.photoId).filter(Boolean),
                 engaste: poste.engaste.map(f => f.photoId).filter(Boolean),
                 conexao1: poste.conexao1.map(f => f.photoId).filter(Boolean),
@@ -3419,11 +3482,13 @@ export default function NovaObra() {
               })),
               checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
                 id: `seccionamento_${index + 1}`,
-                fotos: sec.map(f => f.photoId).filter(Boolean),
+                numero: parseInt(sec.numero) || (index + 1),
+                fotos: sec.fotos.map(f => f.photoId).filter(Boolean),
               })),
               checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
                 id: `aterramento_${index + 1}`,
-                fotos: aterr.map(f => f.photoId).filter(Boolean),
+                numero: parseInt(aterr.numero) || (index + 1),
+                fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
               })),
             }),
           })
@@ -3802,7 +3867,7 @@ export default function NovaObra() {
         fotos_checklist_croqui: extractPhotoData(fotosChecklistCroqui) as string[],
         fotos_checklist_panoramica_inicial: extractPhotoData(fotosChecklistPanoramicaInicial) as string[],
         fotos_checklist_chede: extractPhotoData(fotosChecklistChaveComponente) as string[],
-        fotos_checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => aterr.map(f => f.photoId).filter(Boolean) as string[]),
+        fotos_checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => aterr.fotos.map(f => f.photoId).filter(Boolean) as string[]),
         fotos_checklist_padrao_geral: extractPhotoData(fotosChecklistPadraoGeral) as string[],
         fotos_checklist_padrao_interno: extractPhotoData(fotosChecklistPadraoInterno) as string[],
         fotos_checklist_panoramica_final: extractPhotoData(fotosChecklistPanoramicaFinal) as string[],
@@ -3814,7 +3879,7 @@ export default function NovaObra() {
           ...poste.maiorEsforco.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.menorEsforco.map(f => f.photoId).filter(Boolean) as string[],
         ]),
-        fotos_checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => sec.map(f => f.photoId).filter(Boolean) as string[]),
+        fotos_checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => sec.fotos.map(f => f.photoId).filter(Boolean) as string[]),
         // Documentação - sempre salvar o que tiver no estado
         doc_apr: extractPhotoData(docApr) as string[],
         doc_cadastro_medidor: extractPhotoData(docCadastroMedidor) as string[],
@@ -3902,6 +3967,7 @@ export default function NovaObra() {
             id: `poste_${index + 1}`,
             numero: poste.numero,
             status: poste.status,
+            isAditivo: poste.isAditivo || false,
             posteInteiro: poste.posteInteiro.map(f => f.photoId).filter(Boolean),
             engaste: poste.engaste.map(f => f.photoId).filter(Boolean),
             conexao1: poste.conexao1.map(f => f.photoId).filter(Boolean),
@@ -3911,11 +3977,13 @@ export default function NovaObra() {
           })),
           checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
             id: `seccionamento_${index + 1}`,
-            fotos: sec.map(f => f.photoId).filter(Boolean),
+            numero: parseInt(sec.numero) || (index + 1),
+            fotos: sec.fotos.map(f => f.photoId).filter(Boolean),
           })),
           checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
             id: `aterramento_${index + 1}`,
-            fotos: aterr.map(f => f.photoId).filter(Boolean),
+            numero: parseInt(aterr.numero) || (index + 1),
+            fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
           })),
         }),
       };
@@ -6660,16 +6728,18 @@ export default function NovaObra() {
 
                 {/* 1. Croqui da Obra */}
                 <View style={styles.checklistSection}>
-                  <Text style={styles.checklistSectionTitle}>1️⃣ Croqui da Obra {fotosChecklistCroqui.length >= 1 && '✓'}</Text>
-                  <Text style={styles.checklistHint}>Croqui atualizado da obra (opcional)</Text>
+                  <Text style={styles.checklistSectionTitle}>
+                    1️⃣ Croqui da Obra {fotosChecklistCroqui.length > 0 && `(${fotosChecklistCroqui.length})`}
+                  </Text>
+                  <Text style={styles.checklistHint}>Croqui atualizado da obra - pode adicionar várias fotos (opcional)</Text>
 
                   <TouchableOpacity
                     style={styles.photoButtonSmall}
                     onPress={() => takePicture('checklist_croqui')}
-                    disabled={loading || uploadingPhoto || fotosChecklistCroqui.length >= 1}
+                    disabled={loading || uploadingPhoto}
                   >
                     <Text style={styles.photoButtonTextSmall}>
-                      {fotosChecklistCroqui.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto do Croqui'}
+                      {fotosChecklistCroqui.length > 0 ? '+ Adicionar Mais Fotos do Croqui' : '+ Adicionar Foto do Croqui'}
                     </Text>
                   </TouchableOpacity>
 
@@ -6807,6 +6877,7 @@ export default function NovaObra() {
                         setFotosPostes([...fotosPostes, {
                           numero: '', // Novo poste sem número
                           status: '', // Novo poste sem status
+                          isAditivo: false, // Não é aditivo por padrão
                           posteInteiro: [],
                           engaste: [],
                           conexao1: [],
@@ -6823,11 +6894,13 @@ export default function NovaObra() {
                   {fotosPostes.map((poste, posteIndex) => (
                     <View key={posteIndex} style={styles.posteCard}>
                       <Text style={styles.posteTitle}>
-                        Poste {posteIndex + 1}{poste.numero ? ` - P${poste.numero}` : ''}
+                        Poste {posteIndex + 1}{poste.numero ? ` - ${poste.isAditivo ? 'AD-' : ''}P${poste.numero}` : ''}
                         {poste.status === 'instalado' && poste.posteInteiro.length > 0 && poste.engaste.length > 0 &&
                          poste.conexao1.length > 0 && poste.conexao2.length > 0 &&
                          poste.maiorEsforco.length >= 2 && poste.menorEsforco.length >= 2 && ' ✓'}
                         {poste.status === 'retirado' && poste.posteInteiro.length >= 2 && ' ✓'}
+                        {poste.status === 'existente' && poste.posteInteiro.length > 0 &&
+                         poste.conexao1.length > 0 && poste.conexao2.length > 0 && ' ✓'}
                       </Text>
 
                       {/* Campo para identificar o número do poste */}
@@ -6849,6 +6922,27 @@ export default function NovaObra() {
                           <Text style={styles.hint}>Informe o número do poste para identificação</Text>
                         )}
                       </View>
+
+                      {/* Checkbox: Poste Aditivo */}
+                      <TouchableOpacity
+                        style={styles.posteAditivoCheckbox}
+                        onPress={() => {
+                          const newPostes = [...fotosPostes];
+                          newPostes[posteIndex].isAditivo = !poste.isAditivo;
+                          setFotosPostes(newPostes);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.checkbox, poste.isAditivo && styles.checkboxChecked]}>
+                          {poste.isAditivo && <Text style={styles.checkboxCheck}>✓</Text>}
+                        </View>
+                        <Text style={styles.posteAditivoLabel}>
+                          🔧 Poste Aditivo (não previsto no croqui)
+                        </Text>
+                      </TouchableOpacity>
+                      {poste.isAditivo && (
+                        <Text style={styles.hint}>Este poste será identificado como AD-P{poste.numero || '?'}</Text>
+                      )}
 
                       {/* Seleção de Status: Instalado ou Retirado */}
                       <View style={styles.posteStatusSection}>
@@ -6891,6 +6985,25 @@ export default function NovaObra() {
                               🔨 Retirado
                             </Text>
                           </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.posteStatusButton,
+                              poste.status === 'existente' && styles.posteStatusButtonActive
+                            ]}
+                            onPress={() => {
+                              const newPostes = [...fotosPostes];
+                              newPostes[posteIndex].status = 'existente';
+                              setFotosPostes(newPostes);
+                            }}
+                          >
+                            <Text style={[
+                              styles.posteStatusButtonText,
+                              poste.status === 'existente' && styles.posteStatusButtonTextActive
+                            ]}>
+                              📍 Existente
+                            </Text>
+                          </TouchableOpacity>
                         </View>
                         {!poste.status && (
                           <Text style={styles.hint}>Selecione o status antes de adicionar fotos</Text>
@@ -6904,6 +7017,7 @@ export default function NovaObra() {
                             📸 Poste Inteiro ({poste.posteInteiro.length}/{poste.status === 'retirado' ? '2' : '1'})
                             {poste.status === 'retirado' && poste.posteInteiro.length >= 2 && ' ✓'}
                             {poste.status === 'instalado' && poste.posteInteiro.length >= 1 && ' ✓'}
+                            {poste.status === 'existente' && poste.posteInteiro.length >= 1 && ' ✓'}
                           </Text>
                           <TouchableOpacity
                             style={styles.photoButtonSmall}
@@ -6949,53 +7063,55 @@ export default function NovaObra() {
                         </View>
                       )}
 
-                      {/* Seções exclusivas para INSTALADO */}
+                      {/* Engaste - apenas para INSTALADO */}
                       {poste.status === 'instalado' && (
-                        <>
-                      {/* Engaste */}
-                      <View style={styles.postePhotoSection}>
-                        <Text style={styles.postePhotoLabel}>
-                          📸 Engaste e Descrição {poste.engaste.length > 0 && '✓'}
-                        </Text>
-                        <TouchableOpacity
-                          style={styles.photoButtonSmall}
-                          onPress={() => takePicture('checklist_poste_engaste', posteIndex)}
-                          disabled={loading || uploadingPhoto || poste.engaste.length >= 1}
-                        >
-                          <Text style={styles.photoButtonTextSmall}>
-                            {poste.engaste.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                        <View style={styles.postePhotoSection}>
+                          <Text style={styles.postePhotoLabel}>
+                            📸 Engaste e Descrição {poste.engaste.length > 0 && '✓'}
                           </Text>
-                        </TouchableOpacity>
-                        {poste.engaste.length > 0 && (
-                          <View style={styles.photoGrid}>
-                            {poste.engaste.map((foto, fotoIndex) => (
-                              <View key={fotoIndex} style={styles.photoCard}>
-                                <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                  <PhotoWithPlaca
-                                    uri={foto.uri}
-                                    obraNumero={obra}
-                                    tipoServico={tipoServico}
-                                    equipe={isCompUser ? equipeExecutora : equipe}
-                                    latitude={foto.latitude}
-                                    longitude={foto.longitude}
-                                    utmX={foto.utmX}
-                                    utmY={foto.utmY}
-                                    utmZone={foto.utmZone}
-                                    style={styles.photoThumbnail}
-                                  />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  style={styles.photoRemoveButton}
-                                  onPress={() => removePhoto('checklist_poste_engaste', fotoIndex, posteIndex)}
-                                >
-                                  <Text style={styles.photoRemoveText}>×</Text>
-                                </TouchableOpacity>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                      </View>
+                          <TouchableOpacity
+                            style={styles.photoButtonSmall}
+                            onPress={() => takePicture('checklist_poste_engaste', posteIndex)}
+                            disabled={loading || uploadingPhoto || poste.engaste.length >= 1}
+                          >
+                            <Text style={styles.photoButtonTextSmall}>
+                              {poste.engaste.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                            </Text>
+                          </TouchableOpacity>
+                          {poste.engaste.length > 0 && (
+                            <View style={styles.photoGrid}>
+                              {poste.engaste.map((foto, fotoIndex) => (
+                                <View key={fotoIndex} style={styles.photoCard}>
+                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                    <PhotoWithPlaca
+                                      uri={foto.uri}
+                                      obraNumero={obra}
+                                      tipoServico={tipoServico}
+                                      equipe={isCompUser ? equipeExecutora : equipe}
+                                      latitude={foto.latitude}
+                                      longitude={foto.longitude}
+                                      utmX={foto.utmX}
+                                      utmY={foto.utmY}
+                                      utmZone={foto.utmZone}
+                                      style={styles.photoThumbnail}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.photoRemoveButton}
+                                    onPress={() => removePhoto('checklist_poste_engaste', fotoIndex, posteIndex)}
+                                  >
+                                    <Text style={styles.photoRemoveText}>×</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      )}
 
+                      {/* Conexões - para INSTALADO e EXISTENTE */}
+                      {(poste.status === 'instalado' || poste.status === 'existente') && (
+                        <>
                       {/* Conexão 1 */}
                       <View style={styles.postePhotoSection}>
                         <Text style={styles.postePhotoLabel}>
@@ -7083,7 +7199,12 @@ export default function NovaObra() {
                           </View>
                         )}
                       </View>
+                        </>
+                      )}
 
+                      {/* Esforços - apenas para INSTALADO */}
+                      {poste.status === 'instalado' && (
+                        <>
                       {/* Maior Esforço */}
                       <View style={styles.postePhotoSection}>
                         <Text style={styles.postePhotoLabel}>
@@ -7199,7 +7320,7 @@ export default function NovaObra() {
                       style={styles.posteAddButton}
                       onPress={() => {
                         setNumSeccionamentos(numSeccionamentos + 1);
-                        setFotosSeccionamentos([...fotosSeccionamentos, []]);
+                        setFotosSeccionamentos([...fotosSeccionamentos, { numero: '', fotos: [] }]);
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -7209,20 +7330,41 @@ export default function NovaObra() {
                   {fotosSeccionamentos.map((sec, secIndex) => (
                     <View key={secIndex} style={styles.seccionamentoCard}>
                       <Text style={styles.seccionamentoTitle}>
-                        Seccionamento {secIndex + 1} {sec.length > 0 && '✓'}
+                        S{sec.numero || (secIndex + 1)} {sec.fotos.length > 0 && '✓'}
                       </Text>
+
+                      {/* Campo para digitar o número do seccionamento */}
+                      <View style={styles.posteNumeroSection}>
+                        <Text style={styles.posteNumeroLabel}>🔢 Número do Seccionamento *</Text>
+                        <TextInput
+                          style={styles.posteNumeroInput}
+                          placeholder="Ex: 1, 4, 7..."
+                          placeholderTextColor="#999"
+                          keyboardType="numeric"
+                          value={sec.numero}
+                          onChangeText={(text) => {
+                            const newSecs = [...fotosSeccionamentos];
+                            newSecs[secIndex].numero = text.replace(/[^0-9]/g, '');
+                            setFotosSeccionamentos(newSecs);
+                          }}
+                        />
+                        {!sec.numero && (
+                          <Text style={styles.hint}>Informe o número para exibir como S1, S4, etc.</Text>
+                        )}
+                      </View>
+
                       <TouchableOpacity
                         style={styles.photoButtonSmall}
                         onPress={() => takePicture('checklist_seccionamento', undefined, secIndex)}
-                        disabled={loading || uploadingPhoto || sec.length >= 1}
+                        disabled={loading || uploadingPhoto || sec.fotos.length >= 1}
                       >
                         <Text style={styles.photoButtonTextSmall}>
-                          {sec.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto'}
+                          {sec.fotos.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto'}
                         </Text>
                       </TouchableOpacity>
-                      {sec.length > 0 && (
+                      {sec.fotos.length > 0 && (
                         <View style={styles.photoGrid}>
-                          {sec.map((foto, fotoIndex) => (
+                          {sec.fotos.map((foto, fotoIndex) => (
                             <View key={fotoIndex} style={styles.photoCard}>
                               <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                 <PhotoWithPlaca
@@ -7272,32 +7414,52 @@ export default function NovaObra() {
                       style={styles.posteAddButton}
                       onPress={() => {
                         setNumAterramentosCerca(prev => prev + 1);
-                        setFotosAterramentosCerca(prev => [...prev, []]);
+                        setFotosAterramentosCerca(prev => [...prev, { numero: '', fotos: [] }]);
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {fotosAterramentosCerca.map((aterrFotos, aterrIndex) => (
+                  {fotosAterramentosCerca.map((aterr, aterrIndex) => (
                     <View key={aterrIndex} style={styles.seccionamentoCard}>
                       <Text style={styles.seccionamentoTitle}>
-                        Aterramento {aterrIndex + 1} {aterrFotos.length > 0 && '✓'}
+                        A{aterr.numero || (aterrIndex + 1)} {aterr.fotos.length > 0 && '✓'}
                       </Text>
+
+                      {/* Campo para digitar o número do aterramento */}
+                      <View style={styles.posteNumeroSection}>
+                        <Text style={styles.posteNumeroLabel}>🔢 Número do Aterramento *</Text>
+                        <TextInput
+                          style={styles.posteNumeroInput}
+                          placeholder="Ex: 1, 3, 5..."
+                          placeholderTextColor="#999"
+                          keyboardType="numeric"
+                          value={aterr.numero}
+                          onChangeText={(text) => {
+                            const newAterrs = [...fotosAterramentosCerca];
+                            newAterrs[aterrIndex].numero = text.replace(/[^0-9]/g, '');
+                            setFotosAterramentosCerca(newAterrs);
+                          }}
+                        />
+                        {!aterr.numero && (
+                          <Text style={styles.hint}>Informe o número para exibir como A1, A3, etc.</Text>
+                        )}
+                      </View>
 
                       <TouchableOpacity
                         style={styles.photoButtonSmall}
                         onPress={() => takePicture('checklist_aterramento_cerca', undefined, undefined, aterrIndex)}
-                        disabled={loading || uploadingPhoto || aterrFotos.length >= 1}
+                        disabled={loading || uploadingPhoto || aterr.fotos.length >= 1}
                       >
                         <Text style={styles.photoButtonTextSmall}>
-                          {aterrFotos.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto'}
+                          {aterr.fotos.length > 0 ? '✓ Adicionada' : '+ Adicionar Foto'}
                         </Text>
                       </TouchableOpacity>
 
-                      {aterrFotos.length > 0 && (
+                      {aterr.fotos.length > 0 && (
                         <View style={styles.photoGrid}>
-                          {aterrFotos.map((foto, fotoIndex) => (
+                          {aterr.fotos.map((foto, fotoIndex) => (
                             <View key={fotoIndex} style={styles.photoCard}>
                               <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                 <PhotoWithPlaca
@@ -9287,6 +9449,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#15803d',
     textAlign: 'center',
+  },
+  posteAditivoCheckbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  posteAditivoLabel: {
+    fontSize: 14,
+    color: '#555',
+    marginLeft: 10,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  checkboxChecked: {
+    backgroundColor: '#ff6b6b',
+    borderColor: '#ff6b6b',
+  },
+  checkboxCheck: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   posteStatusSection: {
     marginBottom: 16,

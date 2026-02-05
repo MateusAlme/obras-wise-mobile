@@ -35,10 +35,12 @@ export default function PhotoWithPlaca({
   const [address, setAddress] = useState<string>('')
   const [loading, setLoading] = useState(false)
 
-  // Geocodificação assíncrona
+  // Geocodificação assíncrona (somente em modo fullscreen)
   useEffect(() => {
-    loadAddress()
-  }, [latitude, longitude])
+    if (isFullscreen) {
+      loadAddress()
+    }
+  }, [latitude, longitude, isFullscreen])
 
   async function loadAddress() {
     if (!latitude || !longitude) return

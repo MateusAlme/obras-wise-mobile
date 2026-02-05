@@ -99,6 +99,7 @@ export interface PendingObra {
     id: string;
     numero: string;
     status: string;
+    isAditivo?: boolean; // Indica se é um poste aditivo (não previsto no croqui)
     posteInteiro: string[];
     engaste: string[];
     conexao1: string[];
@@ -108,10 +109,12 @@ export interface PendingObra {
   }>;
   checklist_seccionamentos_data?: Array<{
     id: string;
+    numero: number; // Número do seccionamento (1, 2, 3...) para mostrar como S1, S2, S3...
     fotos: string[];
   }>;
   checklist_aterramentos_cerca_data?: Array<{
     id: string;
+    numero: number; // Número do aterramento (1, 2, 3...) para mostrar como A1, A2, A3...
     fotos: string[];
   }>;
   // Identificação do criador
@@ -1863,6 +1866,177 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
 
     console.log(`📊 [syncAllPendingObras] Resultado: ${success} sucesso, ${failed} falhas`);
     return { success, failed };
+  } finally {
+    syncInProgress = false;
+  }
+};
+
+/**
+ * Callback de progresso para sincronização com detalhes em tempo real
+ */
+export interface SyncProgressCallback {
+  (progress: {
+    currentObraIndex: number;
+    totalObras: number;
+    currentObraName: string;
+    photoProgress: {
+      completed: number;
+      total: number;
+    };
+    status: 'syncing' | 'completed' | 'error';
+  }): void;
+}
+
+/**
+ * Token para cancelar sincronização em andamento
+ */
+export interface CancellationToken {
+  cancelled: boolean;
+}
+
+/**
+ * Sincroniza todas as obras pendentes com suporte a progresso detalhado e cancelamento
+ * @param onProgress - Callback chamado a cada atualização de progresso
+ * @param cancellationToken - Token para cancelar a sincronização
+ * @returns Resultado com contadores e lista de erros
+ */
+export const syncAllPendingObrasWithProgress = async (
+  onProgress?: SyncProgressCallback,
+  cancellationToken?: CancellationToken
+): Promise<{
+  success: number;
+  failed: number;
+  errors: Array<{ obraName: string; error: string }>;
+}> => {
+  if (syncInProgress) {
+    return { success: 0, failed: 0, errors: [] };
+  }
+
+  syncInProgress = true;
+
+  try {
+    const isOnline = await checkInternetConnection();
+
+    if (!isOnline) {
+      console.log('📵 [syncAllPendingObrasWithProgress] Sem conexão, abortando');
+      return { success: 0, failed: 0, errors: [] };
+    }
+
+    let success = 0;
+    let failed = 0;
+    const errors: Array<{ obraName: string; error: string }> = [];
+
+    // 1. Obter todas as obras pendentes
+    const pendingObras = await getPendingObras();
+    const obrasToSyncPending = pendingObras.filter(
+      o => o.sync_status === 'pending' || o.sync_status === 'failed'
+    );
+
+    const localObras = await getLocalObras();
+    const obrasToSyncLocal = localObras.filter(
+      o => !o.synced && o.sync_status !== 'syncing'
+    );
+
+    // Combinar todas as obras que precisam sincronizar
+    const allObrasToSync = [
+      ...obrasToSyncPending,
+      ...obrasToSyncLocal.map(o => ({
+        ...o,
+        sync_status: 'pending' as const,
+        photos_uploaded: false,
+      }))
+    ];
+
+    const totalObras = allObrasToSync.length;
+    console.log(`📊 [syncAllPendingObrasWithProgress] Total de obras para sincronizar: ${totalObras}`);
+
+    // 2. Loop através de cada obra
+    for (let i = 0; i < allObrasToSync.length; i++) {
+      // Verificar se foi cancelado
+      if (cancellationToken?.cancelled) {
+        console.log('⏸️ [syncAllPendingObrasWithProgress] Sincronização cancelada pelo usuário');
+        break;
+      }
+
+      const obra = allObrasToSync[i];
+
+      try {
+        console.log(`🔄 [syncAllPendingObrasWithProgress] Sincronizando obra ${i + 1}/${totalObras}: ${obra.obra}`);
+
+        // Sincronizar obra com callback de progresso de fotos
+        const result = await syncObra(obra, (photoProgress) => {
+          // Notificar progresso ao callback principal
+          onProgress?.({
+            currentObraIndex: i,
+            totalObras,
+            currentObraName: obra.obra,
+            photoProgress: {
+              completed: photoProgress.completed,
+              total: photoProgress.total,
+            },
+            status: 'syncing',
+          });
+        });
+
+        if (result.success) {
+          // Se era obra local, marcar como sincronizada
+          const isLocalObra = obrasToSyncLocal.find(o => o.id === obra.id);
+          if (isLocalObra) {
+            const updatedLocalObras = await getLocalObras();
+            const index = updatedLocalObras.findIndex(o => o.id === obra.id);
+            if (index !== -1) {
+              updatedLocalObras[index].synced = true;
+              updatedLocalObras[index].serverId = result.newId;
+              await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(updatedLocalObras));
+            }
+          }
+
+          success++;
+          console.log(`✅ [syncAllPendingObrasWithProgress] Obra ${obra.obra} sincronizada com sucesso`);
+        } else {
+          failed++;
+          errors.push({
+            obraName: obra.obra,
+            error: obra.error_message || 'Erro desconhecido ao sincronizar',
+          });
+          console.error(`❌ [syncAllPendingObrasWithProgress] Falha ao sincronizar obra ${obra.obra}`);
+        }
+      } catch (error) {
+        failed++;
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+        errors.push({
+          obraName: obra.obra,
+          error: translateErrorMessage(errorMessage),
+        });
+        console.error(`❌ [syncAllPendingObrasWithProgress] Exceção ao sincronizar obra ${obra.obra}:`, error);
+      }
+    }
+
+    // 🧹 Limpeza automática de cache após sincronização bem-sucedida
+    if (success > 0) {
+      try {
+        console.log('🧹 Iniciando limpeza automática de cache após sincronização...');
+        const { cleanupUploadedPhotos } = await import('./photo-backup');
+        const deletedCount = await cleanupUploadedPhotos();
+        console.log(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
+      } catch (error) {
+        console.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
+      }
+    }
+
+    // Notificar conclusão
+    if (onProgress && !cancellationToken?.cancelled) {
+      onProgress({
+        currentObraIndex: totalObras,
+        totalObras,
+        currentObraName: '',
+        photoProgress: { completed: 0, total: 0 },
+        status: 'completed',
+      });
+    }
+
+    console.log(`📊 [syncAllPendingObrasWithProgress] Resultado: ${success} sucesso, ${failed} falhas`);
+    return { success, failed, errors };
   } finally {
     syncInProgress = false;
   }

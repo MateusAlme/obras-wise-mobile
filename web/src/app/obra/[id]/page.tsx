@@ -43,6 +43,27 @@ function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
   return galeriasPermitidas.includes(nomeGaleria)
 }
 
+// Função helper para obter aterramentos de cerca (suporta formato novo e antigo)
+function getAterramentosFotos(obra: Obra): { titulo: string; fotos: FotoInfo[] }[] {
+  // Tentar usar formato novo (estruturado)
+  if (obra.checklist_aterramentos_cerca_data && Array.isArray(obra.checklist_aterramentos_cerca_data) && obra.checklist_aterramentos_cerca_data.length > 0) {
+    return obra.checklist_aterramentos_cerca_data.map((aterr: any, index: number) => ({
+      titulo: `Checklist - Aterramento de Cerca A${aterr.numero || (index + 1)}`,
+      fotos: aterr.fotos || []
+    }))
+  }
+
+  // Fallback: usar formato antigo (coluna única)
+  if (obra.fotos_checklist_aterramento_cerca && Array.isArray(obra.fotos_checklist_aterramento_cerca) && obra.fotos_checklist_aterramento_cerca.length > 0) {
+    return [{
+      titulo: 'Aterramento de Cerca',
+      fotos: obra.fotos_checklist_aterramento_cerca
+    }]
+  }
+
+  return []
+}
+
 // Lista de atipicidades reais
 const ATIPICIDADES = [
   { id: 3, titulo: 'Obra em locais sem acesso que necessitam de transporte especial de equipamento (guindaste, trator, carroça) ou BANDOLAGEA', descricao: 'Existem obras que precisam de um transporte especial como guindaste, trator ou até mesmo bandolagem (que significa deslocar postes e transformadores sem auxílio de guindaste), devido às características do terreno tornando os necessário o transporte não usual dos equipamentos necessários para os atendimentos.' },
@@ -102,6 +123,24 @@ export default function ObraDetailPage() {
     }
 
     return []
+  }
+
+  // Função para converter estruturas JSONB do checklist
+  function convertChecklistJSONBPhotos(jsonbData: any): any {
+    if (!jsonbData || !Array.isArray(jsonbData)) return jsonbData
+
+    return jsonbData.map((item: any) => {
+      const converted = { ...item }
+
+      // Converter todos os campos que são arrays de IDs de fotos
+      Object.keys(converted).forEach(key => {
+        if (Array.isArray(converted[key])) {
+          converted[key] = convertPhotoIdsToFotoInfo(converted[key])
+        }
+      })
+
+      return converted
+    })
   }
 
   async function loadObra(id: string) {
@@ -165,6 +204,10 @@ export default function ObraDetailPage() {
         fotos_vazamento_tombamento_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_tombamento_instalado),
         fotos_vazamento_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_instalado),
         fotos_vazamento_instalacao: convertPhotoIdsToFotoInfo(data.fotos_vazamento_instalacao),
+        // Converter estruturas JSONB do checklist (formato novo)
+        checklist_postes_data: convertChecklistJSONBPhotos(data.checklist_postes_data),
+        checklist_seccionamentos_data: convertChecklistJSONBPhotos(data.checklist_seccionamentos_data),
+        checklist_aterramentos_cerca_data: convertChecklistJSONBPhotos(data.checklist_aterramentos_cerca_data),
       }
 
       setObra(obraComFotos)
@@ -827,13 +870,24 @@ export default function ObraDetailPage() {
             ) : null}
 
             {/* Checklist de Fiscalização */}
-            {(obra.fotos_checklist_croqui?.length || obra.fotos_checklist_panoramica_inicial?.length || obra.fotos_checklist_chede?.length || obra.fotos_checklist_aterramento_cerca?.length || obra.fotos_checklist_padrao_geral?.length || obra.fotos_checklist_padrao_interno?.length || obra.fotos_checklist_panoramica_final?.length || obra.fotos_checklist_postes?.length || obra.fotos_checklist_seccionamentos?.length) ? (
+            {(obra.fotos_checklist_croqui?.length || obra.fotos_checklist_panoramica_inicial?.length || obra.fotos_checklist_chede?.length || obra.fotos_checklist_aterramento_cerca?.length || getAterramentosFotos(obra).length > 0 || obra.fotos_checklist_padrao_geral?.length || obra.fotos_checklist_padrao_interno?.length || obra.fotos_checklist_panoramica_final?.length || obra.fotos_checklist_postes?.length || obra.fotos_checklist_seccionamentos?.length) ? (
               <div className="mt-8 pt-8 border-t border-gray-200">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Checklist de Fiscalização</h3>
                 <PhotoGallery photos={obra.fotos_checklist_croqui || []} title="Croqui" sectionKey="fotos_checklist_croqui" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_panoramica_inicial || []} title="Panorâmica Inicial" sectionKey="fotos_checklist_panoramica_inicial" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_chede || []} title="CHEDE" sectionKey="fotos_checklist_chede" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_aterramento_cerca || []} title="Aterramento de Cerca" sectionKey="fotos_checklist_aterramento_cerca" {...galleryProps} />
+
+                {/* Aterramentos - suporta formato novo (estruturado) e antigo */}
+                {getAterramentosFotos(obra).map((aterramento, index) => (
+                  <PhotoGallery
+                    key={`aterramento_${index}`}
+                    photos={aterramento.fotos}
+                    title={aterramento.titulo}
+                    sectionKey={`fotos_aterramento_${index}`}
+                    {...galleryProps}
+                  />
+                ))}
+
                 <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="Padrão Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="Padrão Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />

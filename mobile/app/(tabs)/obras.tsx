@@ -1,12 +1,13 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, TextInput } from 'react-native';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras } from '../../lib/offline-sync';
+import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, syncAllPendingObrasWithProgress, type CancellationToken } from '../../lib/offline-sync';
 import type { PendingObra, LocalObra } from '../../lib/offline-sync';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SyncProgressModal, type ObraSyncProgress } from '../../components/SyncProgressModal';
 
 const LOCAL_OBRAS_KEY = '@obras_local';
 
@@ -28,6 +29,7 @@ interface Obra {
   status?: 'em_aberto' | 'finalizada' | 'rascunho';
   finalizada_em?: string | null;
   synced?: boolean;
+  serverId?: string;
   origem?: 'online' | 'offline';
   fotos_antes?: string[] | FotoInfo[];
   fotos_durante?: string[] | FotoInfo[];
@@ -60,6 +62,11 @@ export default function Obras() {
   const [searchTerm, setSearchTerm] = useState('');
   const [equipeLogada, setEquipeLogada] = useState<string>('');
   const insets = useSafeAreaInsets();
+
+  // Estado para modal de progresso de sincronização
+  const [syncModalVisible, setSyncModalVisible] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<ObraSyncProgress | null>(null);
+  const cancellationTokenRef = useRef<CancellationToken>({ cancelled: false });
 
   // Carregar equipe logada do AsyncStorage
   useEffect(() => {
@@ -366,6 +373,11 @@ export default function Obras() {
       return null;
     }
 
+    // ✅ CORREÇÃO: Não mostrar badge se já foi sincronizada (tem serverId)
+    if (obra.serverId && obra.synced !== false) {
+      return null;
+    }
+
     const badgeStyle =
       obra.sync_status === 'failed'
         ? styles.syncBadgeFailed
@@ -486,6 +498,57 @@ export default function Obras() {
     );
   };
 
+  const handleManualSync = async () => {
+    if (pendingObrasState.length === 0) return;
+
+    // Resetar token de cancelamento
+    cancellationTokenRef.current = { cancelled: false };
+
+    // Inicializar estado de progresso
+    setSyncProgress({
+      currentObraIndex: 0,
+      totalObras: pendingObrasState.length,
+      currentObraName: '',
+      photoProgress: { completed: 0, total: 0 },
+      overallStatus: 'syncing',
+      results: { success: 0, failed: 0 },
+      errors: [],
+    });
+
+    // Mostrar modal
+    setSyncModalVisible(true);
+
+    // Iniciar sincronização com progresso
+    const result = await syncAllPendingObrasWithProgress(
+      (progress) => {
+        setSyncProgress(prev => ({
+          ...prev!,
+          currentObraIndex: progress.currentObraIndex,
+          currentObraName: progress.currentObraName,
+          photoProgress: progress.photoProgress,
+          overallStatus: progress.status === 'completed' ? 'completed' : 'syncing',
+        }));
+      },
+      cancellationTokenRef.current
+    );
+
+    // Atualizar com resultados finais
+    setSyncProgress(prev => ({
+      ...prev!,
+      overallStatus: cancellationTokenRef.current.cancelled ? 'cancelled' : 'completed',
+      results: { success: result.success, failed: result.failed },
+      errors: result.errors.map(e => ({ obraName: e.obraName, errorMessage: e.error })),
+    }));
+
+    // Recarregar dados
+    await loadPendingObras();
+    if (result.success > 0) await carregarObras();
+  };
+
+  const handleCancelSync = () => {
+    cancellationTokenRef.current.cancelled = true;
+  };
+
   const handleLogout = async () => {
     Alert.alert('Sair', 'Deseja sair do aplicativo?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -551,6 +614,23 @@ export default function Obras() {
           <Text style={styles.novaObraButtonLabel}>Nova Obra</Text>
         </TouchableOpacity>
 
+        {/* Botão Sincronizar Obras (só aparece quando há obras pendentes) */}
+        {pendingObrasState.length > 0 && (
+          <TouchableOpacity
+            style={[
+              styles.syncManualButton,
+              !isOnline && styles.syncManualButtonDisabled
+            ]}
+            onPress={handleManualSync}
+            disabled={!isOnline}
+          >
+            <Text style={styles.syncManualButtonIcon}>☁️</Text>
+            <Text style={styles.syncManualButtonLabel}>
+              Sincronizar {pendingObrasState.length} obra{pendingObrasState.length > 1 ? 's' : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
@@ -577,13 +657,15 @@ export default function Obras() {
                 styles.syncBannerButton,
                 (!isOnline || syncingPending) && styles.syncBannerButtonDisabled,
               ]}
-              onPress={handleSyncPendingObras}
+              onPress={handleManualSync}
               disabled={!isOnline || syncingPending}
             >
               {syncingPending ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.syncBannerButtonText}>Sincronizar</Text>
+                <Text style={styles.syncBannerButtonText}>
+                  Sincronizar ({pendingObrasState.length})
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -612,7 +694,8 @@ export default function Obras() {
             const isAberta = obra.status === 'em_aberto' || !obra.status;
             const isFinalizada = obra.status === 'finalizada';
             const isRascunho = obra.status === 'rascunho';
-            const isSynced = obra.synced === true;
+            // ✅ CORREÇÃO: Considerar sincronizada se tem serverId
+            const isSynced = obra.serverId && obra.synced !== false;
 
             return (
               <TouchableOpacity
@@ -697,6 +780,14 @@ export default function Obras() {
         )}
       </View>
       </ScrollView>
+
+      {/* Modal de Progresso de Sincronização */}
+      <SyncProgressModal
+        visible={syncModalVisible}
+        progress={syncProgress}
+        onClose={() => setSyncModalVisible(false)}
+        onCancel={handleCancelSync}
+      />
     </SafeAreaView>
   );
 }
@@ -801,6 +892,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontWeight: '700',
+  },
+  syncManualButton: {
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+    shadowColor: '#2563eb',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  syncManualButtonDisabled: {
+    backgroundColor: '#94a3b8',
+    opacity: 0.6,
+  },
+  syncManualButtonIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  syncManualButtonLabel: {
+    fontSize: 15,
+    color: '#fff',
+    fontWeight: '600',
   },
   headerButtons: {
     flexDirection: 'row',

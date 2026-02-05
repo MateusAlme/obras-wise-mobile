@@ -61,12 +61,16 @@ export interface Obra {
   fotos_checklist_croqui?: FotoInfo[]
   fotos_checklist_panoramica_inicial?: FotoInfo[]
   fotos_checklist_chede?: FotoInfo[]
-  fotos_checklist_aterramento_cerca?: FotoInfo[]
+  fotos_checklist_aterramento_cerca?: FotoInfo[] // Formato antigo (compatibilidade)
   fotos_checklist_padrao_geral?: FotoInfo[]
   fotos_checklist_padrao_interno?: FotoInfo[]
   fotos_checklist_panoramica_final?: FotoInfo[]
   fotos_checklist_postes?: FotoInfo[]
   fotos_checklist_seccionamentos?: FotoInfo[]
+  // CHECKLIST - Dados estruturados (novo formato JSONB)
+  checklist_postes_data?: any[]
+  checklist_seccionamentos_data?: any[]
+  checklist_aterramentos_cerca_data?: any[]
   // ALTIMETRIA - 4 fotos
   fotos_altimetria_lado_fonte?: FotoInfo[]
   fotos_altimetria_medicao_fonte?: FotoInfo[]
