@@ -22,6 +22,7 @@ export default function ReportsPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [exportingId, setExportingId] = useState<string | null>(null)
   const [exportingXlsx, setExportingXlsx] = useState(false)
+  const [exportingAllPdf, setExportingAllPdf] = useState(false)
   const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -149,11 +150,62 @@ export default function ReportsPage() {
 
   function getTotalPhotosCount(obra: Obra): number {
     let count = 0
+    // Fotos básicas
     if (obra.fotos_antes?.length) count += obra.fotos_antes.length
     if (obra.fotos_durante?.length) count += obra.fotos_durante.length
     if (obra.fotos_depois?.length) count += obra.fotos_depois.length
     if (obra.fotos_abertura?.length) count += obra.fotos_abertura.length
     if (obra.fotos_fechamento?.length) count += obra.fotos_fechamento.length
+    // DITAIS
+    if (obra.fotos_ditais_abertura?.length) count += obra.fotos_ditais_abertura.length
+    if (obra.fotos_ditais_impedir?.length) count += obra.fotos_ditais_impedir.length
+    if (obra.fotos_ditais_testar?.length) count += obra.fotos_ditais_testar.length
+    if (obra.fotos_ditais_aterrar?.length) count += obra.fotos_ditais_aterrar.length
+    if (obra.fotos_ditais_sinalizar?.length) count += obra.fotos_ditais_sinalizar.length
+    // Aterramento
+    if (obra.fotos_aterramento_vala_aberta?.length) count += obra.fotos_aterramento_vala_aberta.length
+    if (obra.fotos_aterramento_hastes?.length) count += obra.fotos_aterramento_hastes.length
+    if (obra.fotos_aterramento_vala_fechada?.length) count += obra.fotos_aterramento_vala_fechada.length
+    if (obra.fotos_aterramento_medicao?.length) count += obra.fotos_aterramento_medicao.length
+    // Checklist de Fiscalização
+    if (obra.fotos_checklist_croqui?.length) count += obra.fotos_checklist_croqui.length
+    if (obra.fotos_checklist_panoramica_inicial?.length) count += obra.fotos_checklist_panoramica_inicial.length
+    if (obra.fotos_checklist_chede?.length) count += obra.fotos_checklist_chede.length
+    if (obra.fotos_checklist_aterramento_cerca?.length) count += obra.fotos_checklist_aterramento_cerca.length
+    if (obra.fotos_checklist_padrao_geral?.length) count += obra.fotos_checklist_padrao_geral.length
+    if (obra.fotos_checklist_padrao_interno?.length) count += obra.fotos_checklist_padrao_interno.length
+    if (obra.fotos_checklist_panoramica_final?.length) count += obra.fotos_checklist_panoramica_final.length
+    if (obra.fotos_checklist_postes?.length) count += obra.fotos_checklist_postes.length
+    if (obra.fotos_checklist_seccionamentos?.length) count += obra.fotos_checklist_seccionamentos.length
+    // Altimetria
+    if (obra.fotos_altimetria_lado_fonte?.length) count += obra.fotos_altimetria_lado_fonte.length
+    if (obra.fotos_altimetria_medicao_fonte?.length) count += obra.fotos_altimetria_medicao_fonte.length
+    if (obra.fotos_altimetria_lado_carga?.length) count += obra.fotos_altimetria_lado_carga.length
+    if (obra.fotos_altimetria_medicao_carga?.length) count += obra.fotos_altimetria_medicao_carga.length
+    // Vazamento
+    if (obra.fotos_vazamento_evidencia?.length) count += obra.fotos_vazamento_evidencia.length
+    if (obra.fotos_vazamento_equipamentos_limpeza?.length) count += obra.fotos_vazamento_equipamentos_limpeza.length
+    if (obra.fotos_vazamento_tombamento_retirado?.length) count += obra.fotos_vazamento_tombamento_retirado.length
+    if (obra.fotos_vazamento_placa_retirado?.length) count += obra.fotos_vazamento_placa_retirado.length
+    if (obra.fotos_vazamento_tombamento_instalado?.length) count += obra.fotos_vazamento_tombamento_instalado.length
+    if (obra.fotos_vazamento_placa_instalado?.length) count += obra.fotos_vazamento_placa_instalado.length
+    if (obra.fotos_vazamento_instalacao?.length) count += obra.fotos_vazamento_instalacao.length
+    // Medidor
+    if (obra.fotos_medidor_padrao?.length) count += obra.fotos_medidor_padrao.length
+    if (obra.fotos_medidor_leitura?.length) count += obra.fotos_medidor_leitura.length
+    if (obra.fotos_medidor_selo_born?.length) count += obra.fotos_medidor_selo_born.length
+    if (obra.fotos_medidor_selo_caixa?.length) count += obra.fotos_medidor_selo_caixa.length
+    if (obra.fotos_medidor_identificador_fase?.length) count += obra.fotos_medidor_identificador_fase.length
+    // Transformador
+    if (obra.fotos_transformador_laudo?.length) count += obra.fotos_transformador_laudo.length
+    if (obra.fotos_transformador_componente_instalado?.length) count += obra.fotos_transformador_componente_instalado.length
+    if (obra.fotos_transformador_tombamento_instalado?.length) count += obra.fotos_transformador_tombamento_instalado.length
+    if (obra.fotos_transformador_tape?.length) count += obra.fotos_transformador_tape.length
+    if (obra.fotos_transformador_placa_instalado?.length) count += obra.fotos_transformador_placa_instalado.length
+    if (obra.fotos_transformador_instalado?.length) count += obra.fotos_transformador_instalado.length
+    if (obra.fotos_transformador_antes_retirar?.length) count += obra.fotos_transformador_antes_retirar.length
+    if (obra.fotos_transformador_tombamento_retirado?.length) count += obra.fotos_transformador_tombamento_retirado.length
+    if (obra.fotos_transformador_placa_retirado?.length) count += obra.fotos_transformador_placa_retirado.length
     return count
   }
 
@@ -229,6 +281,34 @@ export default function ReportsPage() {
       alert('Erro ao exportar XLSX')
     } finally {
       setExportingXlsx(false)
+    }
+  }
+
+  async function exportAllToPdf() {
+    if (selectedObras.size === 0) {
+      alert('Selecione pelo menos uma obra para exportar')
+      return
+    }
+
+    setExportingAllPdf(true)
+    try {
+      const obrasToExport = filteredObras.filter(o => selectedObras.has(o.id))
+
+      for (let i = 0; i < obrasToExport.length; i++) {
+        const obra = obrasToExport[i]
+        await generatePDF(obra)
+        // Pequeno delay entre downloads para evitar bloqueio do navegador
+        if (i < obrasToExport.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+
+      alert(`${obrasToExport.length} PDF(s) exportado(s) com sucesso!`)
+    } catch (error) {
+      console.error('Erro ao exportar PDFs:', error)
+      alert('Erro ao exportar PDFs')
+    } finally {
+      setExportingAllPdf(false)
     }
   }
 
@@ -402,14 +482,14 @@ export default function ReportsPage() {
           {/* Botão Exportar */}
           <div className="flex justify-end mb-6">
             <button
-              onClick={exportToExcel}
-              disabled={selectedObras.size === 0 || exportingXlsx}
-              className="px-6 py-3.5 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={exportAllToPdf}
+              disabled={selectedObras.size === 0 || exportingAllPdf}
+              className="px-6 py-3.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
-              {exportingXlsx ? 'Exportando...' : 'Exportar Tudo (XLSX)'}
+              {exportingAllPdf ? `Exportando PDFs...` : 'Exportar Tudo (PDF)'}
             </button>
           </div>
 
