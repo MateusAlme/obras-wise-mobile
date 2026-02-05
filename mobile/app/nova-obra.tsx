@@ -197,20 +197,14 @@ export default function NovaObra() {
     fotos: FotoData[];
   }>>([]);
 
-  // Estados dinâmicos para Hastes Aplicadas (cada haste tem 1 foto) - OPCIONAL
-  const [numHastesAplicadas, setNumHastesAplicadas] = useState(0);
-  const [fotosHastesAplicadas, setFotosHastesAplicadas] = useState<Array<{
-    numero: string; // Número da haste (ex: "1", "2") para exibir como Haste 1, Haste 2
+  // Estados dinâmicos para Hastes e Termômetros (estrutura unificada por ponto) - OPCIONAL
+  // Cada ponto (P1, P2, P3...) contém 1 foto de haste + 1 foto de termômetro
+  const [numPontosHastesTermometros, setNumPontosHastesTermometros] = useState(0);
+  const [pontosHastesTermometros, setPontosHastesTermometros] = useState<Array<{
+    numero: string; // Número do ponto (ex: "1", "2", "3") para exibir como P1, P2, P3
     isAditivo: boolean; // Se é aditivo (não previsto no croqui)
-    fotos: FotoData[];
-  }>>([]);
-
-  // Estados dinâmicos para Medição do Termômetro (cada medição tem 1 foto) - OPCIONAL
-  const [numMedicaoTermometro, setNumMedicaoTermometro] = useState(0);
-  const [fotosMedicaoTermometro, setFotosMedicaoTermometro] = useState<Array<{
-    numero: string; // Número da medição (ex: "1", "2") para exibir como Termômetro 1, Termômetro 2
-    isAditivo: boolean; // Se é aditivo (não previsto no croqui)
-    fotos: FotoData[];
+    fotoHaste: FotoData[]; // 1 foto da haste aplicada
+    fotoTermometro: FotoData[]; // 1 foto da medição do termômetro
   }>>([]);
 
   // Fotos ALTIMETRIA (4 campos)
@@ -846,6 +840,36 @@ export default function NovaObra() {
               }));
               setFotosAterramentosCerca(aterramentosCarregados);
               setNumAterramentosCerca(aterramentosCarregados.length);
+            }
+
+            // Carregar estrutura das hastes aplicadas do Checklist
+            if (obraData.checklist_hastes_aplicadas_data?.length) {
+              console.log('✅ Carregando', obraData.checklist_hastes_aplicadas_data.length, 'haste(s) aplicada(s) do checklist');
+              const hastesCarregadas = obraData.checklist_hastes_aplicadas_data.map((haste: any) => ({
+                numero: String(haste.numero || ''),
+                isAditivo: haste.isAditivo || false,
+                fotos: mapPhotos(haste.fotos || [], 'checklist_haste_aplicada')
+              }));
+              setFotosHastesAplicadas(hastesCarregadas);
+              setNumHastesAplicadas(hastesCarregadas.length);
+              console.log('✅ Hastes aplicadas carregadas:', hastesCarregadas);
+            } else {
+              console.log('⚠️ Nenhuma haste encontrada em checklist_hastes_aplicadas_data');
+            }
+
+            // Carregar estrutura das medições de termômetro do Checklist
+            if (obraData.checklist_medicao_termometro_data?.length) {
+              console.log('✅ Carregando', obraData.checklist_medicao_termometro_data.length, 'medição(ões) de termômetro do checklist');
+              const medicoesCarregadas = obraData.checklist_medicao_termometro_data.map((term: any) => ({
+                numero: String(term.numero || ''),
+                isAditivo: term.isAditivo || false,
+                fotos: mapPhotos(term.fotos || [], 'checklist_medicao_termometro')
+              }));
+              setFotosMedicaoTermometro(medicoesCarregadas);
+              setNumMedicaoTermometro(medicoesCarregadas.length);
+              console.log('✅ Medições de termômetro carregadas:', medicoesCarregadas);
+            } else {
+              console.log('⚠️ Nenhuma medição de termômetro encontrada em checklist_medicao_termometro_data');
             }
           } catch (err) {
             console.error('❌ Erro ao carregar fotos do checklist:', err);

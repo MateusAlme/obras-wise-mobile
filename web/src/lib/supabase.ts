@@ -75,8 +75,7 @@ export interface Obra {
   checklist_postes_data?: any[]
   checklist_seccionamentos_data?: any[]
   checklist_aterramentos_cerca_data?: any[]
-  checklist_hastes_aplicadas_data?: any[]
-  checklist_medicao_termometro_data?: any[]
+  checklist_hastes_termometros_data?: any[] // Estrutura unificada: cada ponto (P1, P2...) tem fotoHaste + fotoTermometro
   // ALTIMETRIA - 4 fotos
   fotos_altimetria_lado_fonte?: FotoInfo[]
   fotos_altimetria_medicao_fonte?: FotoInfo[]
