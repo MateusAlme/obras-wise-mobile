@@ -94,6 +94,26 @@ export interface PendingObra {
     fotos_depois: string[];
     observacao?: string;
   }>;
+  // Checklist de Fiscalização - Dados estruturados dos postes e seccionamentos
+  checklist_postes_data?: Array<{
+    id: string;
+    numero: string;
+    status: string;
+    posteInteiro: string[];
+    engaste: string[];
+    conexao1: string[];
+    conexao2: string[];
+    maiorEsforco: string[];
+    menorEsforco: string[];
+  }>;
+  checklist_seccionamentos_data?: Array<{
+    id: string;
+    fotos: string[];
+  }>;
+  checklist_aterramentos_cerca_data?: Array<{
+    id: string;
+    fotos: string[];
+  }>;
   // Identificação do criador
   creator_role?: 'compressor' | 'equipe'; // Identificador permanente de quem criou
   created_at: string;
@@ -1486,6 +1506,10 @@ export const syncObra = async (
           postes_data: obra.postes_data || existingObra.postes_data || null,
           observacoes: (obra as any).observacoes || existingObra.observacoes || null,
           creator_role: (obra as any).creator_role || existingObra.creator_role || null,
+          // Dados estruturados do Checklist de Fiscalização
+          checklist_postes_data: (obra as any).checklist_postes_data || existingObra.checklist_postes_data || null,
+          checklist_seccionamentos_data: (obra as any).checklist_seccionamentos_data || existingObra.checklist_seccionamentos_data || null,
+          checklist_aterramentos_cerca_data: (obra as any).checklist_aterramentos_cerca_data || existingObra.checklist_aterramentos_cerca_data || null,
         };
 
         // Executar update
@@ -1601,6 +1625,10 @@ export const syncObra = async (
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
           postes_data: obra.postes_data || null,
           observacoes: (obra as any).observacoes || null,
+          // Dados estruturados do Checklist de Fiscalização
+          checklist_postes_data: (obra as any).checklist_postes_data || null,
+          checklist_seccionamentos_data: (obra as any).checklist_seccionamentos_data || null,
+          checklist_aterramentos_cerca_data: (obra as any).checklist_aterramentos_cerca_data || null,
         })
         .eq('id', existingByNumero.id);
 
@@ -1711,6 +1739,10 @@ export const syncObra = async (
           postes_data: obra.postes_data || null,
           observacoes: (obra as any).observacoes || null,
           creator_role: (obra as any).creator_role || null,
+          // Dados estruturados do Checklist de Fiscalização
+          checklist_postes_data: (obra as any).checklist_postes_data || null,
+          checklist_seccionamentos_data: (obra as any).checklist_seccionamentos_data || null,
+          checklist_aterramentos_cerca_data: (obra as any).checklist_aterramentos_cerca_data || null,
           // user_id removido - Login por equipe não usa Supabase Auth
           created_at: obra.created_at || new Date().toISOString(),
         },
