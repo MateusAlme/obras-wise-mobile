@@ -546,7 +546,7 @@ export const syncLocalObra = async (
           // ✅ CRÍTICO: Manter o ID local mas adicionar serverId para futuras sincronizações
           // NÃO remover a entrada - apenas atualizar com os dados do servidor
           console.log(`🔄 Atualizando obra local ${obraId} com serverId: ${finalId}`);
-          
+
           localObras[index] = {
             ...localObras[index], // Manter dados locais
             ...syncedObra, // Sobrescrever com dados do servidor
@@ -558,7 +558,7 @@ export const syncLocalObra = async (
             last_modified: syncedObra.updated_at || syncedObra.created_at,
             created_at: syncedObra.created_at,
           } as LocalObra;
-          
+
           console.log(`✅ Obra atualizada - ID local: ${obraId}, serverId: ${finalId}`);
         } else {
           // Fallback: apenas marcar como sincronizada (mantém IDs)
@@ -1370,7 +1370,7 @@ export const syncObra = async (
     // 1. `obra.isEdited` é true e há um `originalId`
     // 2. ou quando o id não é um temp_/local_
     // 3. ✅ NOVO: ou quando a obra tem serverId (já foi sincronizada antes)
-    const idToUpdate = obra.originalId 
+    const idToUpdate = obra.originalId
       ?? (obra as any).serverId  // ✅ Se tem serverId, usar para UPDATE
       ?? (obra.id && !obra.id.startsWith('temp_') && !obra.id.startsWith('local_') ? obra.id : null);
 
@@ -1401,7 +1401,7 @@ export const syncObra = async (
         console.error(`❌ [syncObra] Abortando para evitar duplicação. A obra pode ter sido deletada do servidor.`);
         throw new Error(`Não foi possível encontrar obra ${idToUpdate} no servidor para atualização. Verifique se a obra ainda existe.`);
       }
-      
+
       if (existingObra) {
         // ✅ CORRIGIDO: Substituir fotos se houver novas, caso contrário manter existentes
         // Isso evita duplicação ao sincronizar múltiplas vezes
@@ -1509,7 +1509,133 @@ export const syncObra = async (
       throw new Error(`Situação inesperada ao atualizar obra ${idToUpdate}`);
     }
 
-    // Se não fizemos update e chegamos aqui, inserir nova obra no servidor
+    // ✅ CORREÇÃO DUPLICAÇÃO: Antes de inserir, verificar se já existe obra com mesmo número no servidor
+    // Isso previne duplicação quando o serverId é perdido ou não foi salvo corretamente
+    console.log(`🔍 [syncObra] Verificando duplicata no servidor para obra: ${obra.obra}`);
+
+    const { data: existingByNumero, error: checkError } = await supabase
+      .from('obras')
+      .select('id')
+      .eq('obra', obra.obra)
+      .eq('equipe', obra.equipe)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error(`⚠️ [syncObra] Erro ao verificar duplicata:`, checkError);
+      // Continua com INSERT se não conseguiu verificar
+    }
+
+    if (existingByNumero) {
+      // ✅ ENCONTROU DUPLICATA! Fazer UPDATE em vez de INSERT
+      console.log(`⚠️ [syncObra] Obra ${obra.obra} já existe no servidor (ID: ${existingByNumero.id}). Fazendo UPDATE em vez de INSERT.`);
+
+      const { error: updateError } = await supabase
+        .from('obras')
+        .update({
+          data: obra.data,
+          responsavel: obra.responsavel,
+          tipo_servico: obra.tipo_servico,
+          status: obra.status || 'em_aberto',
+          fotos_antes: fotosAntesData,
+          fotos_durante: fotosDuranteData,
+          fotos_depois: fotosDepoisData,
+          fotos_abertura: fotosAberturaData,
+          fotos_fechamento: fotosFechamentoData,
+          fotos_ditais_abertura: fotosDitaisAberturaData,
+          fotos_ditais_impedir: fotosDitaisImpedirData,
+          fotos_ditais_testar: fotosDitaisTestarData,
+          fotos_ditais_aterrar: fotosDitaisAterrarData,
+          fotos_ditais_sinalizar: fotosDitaisSinalizarData,
+          fotos_aterramento_vala_aberta: fotosAterramentoValaAbertaData,
+          fotos_aterramento_hastes: fotosAterramentoHastesData,
+          fotos_aterramento_vala_fechada: fotosAterramentoValaFechadaData,
+          fotos_aterramento_medicao: fotosAterramentoMedicaoData,
+          transformador_status: obra.transformador_status,
+          fotos_transformador_laudo: fotosTransformadorLaudoData,
+          fotos_transformador_componente_instalado: fotosTransformadorComponenteInstaladoData,
+          fotos_transformador_tombamento_instalado: fotosTransformadorTombamentoInstaladoData,
+          fotos_transformador_tape: fotosTransformadorTapeData,
+          fotos_transformador_placa_instalado: fotosTransformadorPlacaInstaladoData,
+          fotos_transformador_instalado: fotosTransformadorInstaladoData,
+          fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarData,
+          fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoData,
+          fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoData,
+          fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstaladoData,
+          fotos_transformador_conexoes_secundarias_instalado: fotosTransformadorConexoesSecundariasInstaladoData,
+          fotos_transformador_conexoes_primarias_retirado: fotosTransformadorConexoesPrimariasRetiradoData,
+          fotos_transformador_conexoes_secundarias_retirado: fotosTransformadorConexoesSecundariasRetiradoData,
+          fotos_medidor_padrao: fotosMedidorPadraoData,
+          fotos_medidor_leitura: fotosMedidorLeituraData,
+          fotos_medidor_selo_born: fotosMedidorSeloBornData,
+          fotos_medidor_selo_caixa: fotosMedidorSeloCaixaData,
+          fotos_medidor_identificador_fase: fotosMedidorIdentificadorFaseData,
+          fotos_checklist_croqui: fotosChecklistCroquiData,
+          fotos_checklist_panoramica_inicial: fotosChecklistPanoramicaInicialData,
+          fotos_checklist_chede: fotosChecklistChedeData,
+          fotos_checklist_aterramento_cerca: fotosChecklistAterramentoCercaData,
+          fotos_checklist_padrao_geral: fotosChecklistPadraoGeralData,
+          fotos_checklist_padrao_interno: fotosChecklistPadraoInternoData,
+          fotos_checklist_panoramica_final: fotosChecklistPanoramicaFinalData,
+          fotos_checklist_postes: fotosChecklistPostesData,
+          fotos_checklist_seccionamentos: fotosChecklistSeccionamentosData,
+          doc_cadastro_medidor: docCadastroMedidorData,
+          doc_laudo_transformador: docLaudoTransformadorData,
+          doc_laudo_regulador: docLaudoReguladorData,
+          doc_laudo_religador: docLaudoReligadorData,
+          doc_apr: docAprData,
+          doc_fvbt: docFvbtData,
+          doc_termo_desistencia_lpt: docTermoDesistenciaLptData,
+          doc_autorizacao_passagem: docAutorizacaoPassagemData,
+          fotos_altimetria_lado_fonte: fotosAltimetriaLadoFonteData,
+          fotos_altimetria_medicao_fonte: fotosAltimetriaMedicaoFonteData,
+          fotos_altimetria_lado_carga: fotosAltimetriaLadoCargaData,
+          fotos_altimetria_medicao_carga: fotosAltimetriaMedicaoCargaData,
+          fotos_vazamento_evidencia: fotosVazamentoEvidenciaData,
+          fotos_vazamento_equipamentos_limpeza: fotosVazamentoEquipamentosLimpezaData,
+          fotos_vazamento_tombamento_retirado: fotosVazamentoTombamentoRetiradoData,
+          fotos_vazamento_placa_retirado: fotosVazamentoPlacaRetiradoData,
+          fotos_vazamento_tombamento_instalado: fotosVazamentoTombamentoInstaladoData,
+          fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstaladoData,
+          fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
+          postes_data: obra.postes_data || null,
+          observacoes: (obra as any).observacoes || null,
+        })
+        .eq('id', existingByNumero.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      console.log(`✅ [syncObra] Obra atualizada via detecção de duplicata: ${existingByNumero.id}`);
+
+      // Atualizar fotos com o ID correto do servidor
+      try {
+        await updatePhotosObraId(obra.id, existingByNumero.id);
+      } catch (photoError) {
+        console.error('Erro ao atualizar obraId das fotos (não crítico):', photoError);
+      }
+
+      // Atualizar serverId na obra local para evitar futuras duplicações
+      try {
+        const localObras = await getLocalObras();
+        const localObraIndex = localObras.findIndex(o => o.id === obra.id);
+        if (localObraIndex !== -1) {
+          localObras[localObraIndex].serverId = existingByNumero.id;
+          localObras[localObraIndex].synced = true;
+          await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+          console.log(`✅ [syncObra] serverId atualizado na obra local: ${existingByNumero.id}`);
+        }
+      } catch (localUpdateError) {
+        console.error('Erro ao atualizar serverId local (não crítico):', localUpdateError);
+      }
+
+      await removePendingObra(obra.id);
+      return { success: true, newId: existingByNumero.id };
+    }
+
+    // Se não existe duplicata, inserir nova obra no servidor
     const { data: insertedObra, error } = await supabase
       .from('obras')
       .insert([
