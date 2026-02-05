@@ -197,6 +197,22 @@ export default function NovaObra() {
     fotos: FotoData[];
   }>>([]);
 
+  // Estados dinâmicos para Hastes Aplicadas (cada haste tem 1 foto) - OPCIONAL
+  const [numHastesAplicadas, setNumHastesAplicadas] = useState(0);
+  const [fotosHastesAplicadas, setFotosHastesAplicadas] = useState<Array<{
+    numero: string; // Número da haste (ex: "1", "2") para exibir como Haste 1, Haste 2
+    isAditivo: boolean; // Se é aditivo (não previsto no croqui)
+    fotos: FotoData[];
+  }>>([]);
+
+  // Estados dinâmicos para Medição do Termômetro (cada medição tem 1 foto) - OPCIONAL
+  const [numMedicaoTermometro, setNumMedicaoTermometro] = useState(0);
+  const [fotosMedicaoTermometro, setFotosMedicaoTermometro] = useState<Array<{
+    numero: string; // Número da medição (ex: "1", "2") para exibir como Termômetro 1, Termômetro 2
+    isAditivo: boolean; // Se é aditivo (não previsto no croqui)
+    fotos: FotoData[];
+  }>>([]);
+
   // Fotos ALTIMETRIA (4 campos)
   const [fotosAltimetriaLadoFonte, setFotosAltimetriaLadoFonte] = useState<FotoData[]>([]);
   const [fotosAltimetriaMedicaoFonte, setFotosAltimetriaMedicaoFonte] = useState<FotoData[]>([]);
@@ -1260,7 +1276,8 @@ export default function NovaObra() {
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
     'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
-    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' | 'checklist_panoramica_final' |
+    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' |
+    'checklist_haste_aplicada' | 'checklist_medicao_termometro' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
@@ -1270,7 +1287,9 @@ export default function NovaObra() {
     'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem',
     posteIndex?: number,
     seccionamentoIndex?: number,
-    aterramentoCercaIndex?: number
+    aterramentoCercaIndex?: number,
+    hasteAplicadaIndex?: number,
+    medicaoTermometroIndex?: number
   ) => {
     const hasPermission = await requestPermissions();
     if (!hasPermission) return;
@@ -1427,6 +1446,10 @@ export default function NovaObra() {
       else if (tipo === 'checklist_seccionamento' && seccionamentoIndex !== undefined) index = fotosSeccionamentos[seccionamentoIndex].fotos.length;
       // Checklist - aterramento de cerca
       else if (tipo === 'checklist_aterramento_cerca' && aterramentoCercaIndex !== undefined) index = fotosAterramentosCerca[aterramentoCercaIndex].fotos.length;
+      // Checklist - hastes aplicadas
+      else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) index = fotosHastesAplicadas[hasteAplicadaIndex].fotos.length;
+      // Checklist - medição do termômetro
+      else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) index = fotosMedicaoTermometro[medicaoTermometroIndex].fotos.length;
       // Documentos - Materiais
       else if (tipo === 'doc_materiais_previsto') index = docMateriaisPrevisto.length;
       else if (tipo === 'doc_materiais_realizado') index = docMateriaisRealizado.length;
@@ -1634,6 +1657,24 @@ export default function NovaObra() {
           updated[aterramentoCercaIndex] = {
             ...updated[aterramentoCercaIndex],
             fotos: [...updated[aterramentoCercaIndex].fotos, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) {
+        setFotosHastesAplicadas(prev => {
+          const updated = [...prev];
+          updated[hasteAplicadaIndex] = {
+            ...updated[hasteAplicadaIndex],
+            fotos: [...updated[hasteAplicadaIndex].fotos, photoData]
+          };
+          return updated;
+        });
+      } else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) {
+        setFotosMedicaoTermometro(prev => {
+          const updated = [...prev];
+          updated[medicaoTermometroIndex] = {
+            ...updated[medicaoTermometroIndex],
+            fotos: [...updated[medicaoTermometroIndex].fotos, photoData]
           };
           return updated;
         });
@@ -1871,6 +1912,24 @@ export default function NovaObra() {
         };
         return updated;
       });
+    } else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) {
+      setFotosHastesAplicadas(prev => {
+        const updated = [...prev];
+        updated[hasteAplicadaIndex] = {
+          ...updated[hasteAplicadaIndex],
+          fotos: [...updated[hasteAplicadaIndex].fotos, photoData]
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) {
+      setFotosMedicaoTermometro(prev => {
+        const updated = [...prev];
+        updated[medicaoTermometroIndex] = {
+          ...updated[medicaoTermometroIndex],
+          fotos: [...updated[medicaoTermometroIndex].fotos, photoData]
+        };
+        return updated;
+      });
     }
 
     // Limpar estado e fechar overlay
@@ -2032,7 +2091,8 @@ export default function NovaObra() {
     'vazamento_evidencia' | 'vazamento_equipamentos_limpeza' | 'vazamento_tombamento_retirado' | 'vazamento_placa_retirado' |
     'vazamento_tombamento_instalado' | 'vazamento_placa_instalado' | 'vazamento_instalacao' |
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' |
-    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' | 'checklist_panoramica_final' |
+    'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' |
+    'checklist_haste_aplicada' | 'checklist_medicao_termometro' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' | 'checklist_aterramento_cerca' |
@@ -2042,7 +2102,9 @@ export default function NovaObra() {
     index: number,
     posteIndex?: number,
     seccionamentoIndex?: number,
-    aterramentoCercaIndex?: number
+    aterramentoCercaIndex?: number,
+    hasteAplicadaIndex?: number,
+    medicaoTermometroIndex?: number
   ) => {
     try {
       // PROTEÇÃO: Validar parâmetros antes de remover
@@ -2223,6 +2285,24 @@ export default function NovaObra() {
         updated[aterramentoCercaIndex] = {
           ...updated[aterramentoCercaIndex],
           fotos: updated[aterramentoCercaIndex].fotos.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_haste_aplicada' && hasteAplicadaIndex !== undefined) {
+      setFotosHastesAplicadas(prev => {
+        const updated = [...prev];
+        updated[hasteAplicadaIndex] = {
+          ...updated[hasteAplicadaIndex],
+          fotos: updated[hasteAplicadaIndex].fotos.filter((_, i) => i !== index)
+        };
+        return updated;
+      });
+    } else if (tipo === 'checklist_medicao_termometro' && medicaoTermometroIndex !== undefined) {
+      setFotosMedicaoTermometro(prev => {
+        const updated = [...prev];
+        updated[medicaoTermometroIndex] = {
+          ...updated[medicaoTermometroIndex],
+          fotos: updated[medicaoTermometroIndex].fotos.filter((_, i) => i !== index)
         };
         return updated;
       });
@@ -2583,6 +2663,8 @@ export default function NovaObra() {
       fotosPostes.reduce((acc, p) => acc + p.posteInteiro.length + p.engaste.length + p.conexao1.length + p.conexao2.length + p.maiorEsforco.length + p.menorEsforco.length, 0) +
       fotosSeccionamentos.reduce((acc, s) => acc + s.fotos.length, 0) +
       fotosAterramentosCerca.reduce((acc, a) => acc + a.fotos.length, 0) +
+      fotosHastesAplicadas.reduce((acc, h) => acc + h.fotos.length, 0) +
+      fotosMedicaoTermometro.reduce((acc, t) => acc + t.fotos.length, 0) +
       fotosAltimetriaLadoFonte.length + fotosAltimetriaMedicaoFonte.length +
       fotosAltimetriaLadoCarga.length + fotosAltimetriaMedicaoCarga.length +
       fotosVazamentoEvidencia.length + fotosVazamentoEquipamentosLimpeza.length +
@@ -2771,6 +2853,18 @@ export default function NovaObra() {
             id: `aterramento_${index + 1}`,
             numero: parseInt(aterr.numero) || (index + 1),
             fotos: extractPhotoData(aterr.fotos),
+          })),
+          checklist_hastes_aplicadas_data: fotosHastesAplicadas.map((haste, index) => ({
+            id: `haste_${index + 1}`,
+            numero: haste.numero || `${index + 1}`,
+            isAditivo: haste.isAditivo || false,
+            fotos: extractPhotoData(haste.fotos),
+          })),
+          checklist_medicao_termometro_data: fotosMedicaoTermometro.map((term, index) => ({
+            id: `termometro_${index + 1}`,
+            numero: term.numero || `${index + 1}`,
+            isAditivo: term.isAditivo || false,
+            fotos: extractPhotoData(term.fotos),
           })),
         }),
       };
@@ -3485,6 +3579,8 @@ export default function NovaObra() {
             fotos_checklist_postes: mergePhotos(obraAtual.fotos_checklist_postes, fotosChecklistPostesUploaded),
             fotos_checklist_seccionamentos: mergePhotos(obraAtual.fotos_checklist_seccionamentos, fotosChecklistSeccionamentosUploaded),
             fotos_checklist_aterramento_cerca: mergePhotos(obraAtual.fotos_checklist_aterramento_cerca, fotosChecklistAterramentoCercaUploaded),
+            fotos_checklist_hastes_aplicadas: fotosHastesAplicadas.flatMap(haste => haste.fotos.map(f => f.photoId).filter(Boolean) as string[]),
+            fotos_checklist_medicao_termometro: fotosMedicaoTermometro.flatMap(term => term.fotos.map(f => f.photoId).filter(Boolean) as string[]),
             // Estrutura dos postes, seccionamentos e aterramentos do Checklist
             ...(isServicoChecklist && {
               checklist_postes_data: fotosPostes.map((poste, index) => ({
@@ -3508,6 +3604,18 @@ export default function NovaObra() {
                 id: `aterramento_${index + 1}`,
                 numero: parseInt(aterr.numero) || (index + 1),
                 fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
+              })),
+              checklist_hastes_aplicadas_data: fotosHastesAplicadas.map((haste, index) => ({
+                id: `haste_${index + 1}`,
+                numero: haste.numero || `${index + 1}`,
+                isAditivo: haste.isAditivo || false,
+                fotos: haste.fotos.map(f => f.photoId).filter(Boolean),
+              })),
+              checklist_medicao_termometro_data: fotosMedicaoTermometro.map((term, index) => ({
+                id: `termometro_${index + 1}`,
+                numero: term.numero || `${index + 1}`,
+                isAditivo: term.isAditivo || false,
+                fotos: term.fotos.map(f => f.photoId).filter(Boolean),
               })),
             }),
           })
@@ -3892,6 +4000,8 @@ export default function NovaObra() {
         fotos_checklist_frying: extractPhotoData(fotosChecklistFrying) as string[],
         fotos_checklist_abertura_fechamento_pulo: extractPhotoData(fotosChecklistAberturaFechamentoPulo) as string[],
         fotos_checklist_panoramica_final: extractPhotoData(fotosChecklistPanoramicaFinal) as string[],
+        fotos_checklist_hastes_aplicadas: fotosHastesAplicadas.flatMap(haste => haste.fotos.map(f => f.photoId).filter(Boolean) as string[]),
+        fotos_checklist_medicao_termometro: fotosMedicaoTermometro.flatMap(term => term.fotos.map(f => f.photoId).filter(Boolean) as string[]),
         fotos_checklist_postes: fotosPostes.flatMap((poste, index) => [
           ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
@@ -4005,6 +4115,18 @@ export default function NovaObra() {
             id: `aterramento_${index + 1}`,
             numero: parseInt(aterr.numero) || (index + 1),
             fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
+          })),
+          checklist_hastes_aplicadas_data: fotosHastesAplicadas.map((haste, index) => ({
+            id: `haste_${index + 1}`,
+            numero: haste.numero || `${index + 1}`,
+            isAditivo: haste.isAditivo || false,
+            fotos: haste.fotos.map(f => f.photoId).filter(Boolean),
+          })),
+          checklist_medicao_termometro_data: fotosMedicaoTermometro.map((term, index) => ({
+            id: `termometro_${index + 1}`,
+            numero: term.numero || `${index + 1}`,
+            isAditivo: term.isAditivo || false,
+            fotos: term.fotos.map(f => f.photoId).filter(Boolean),
           })),
         }),
       };

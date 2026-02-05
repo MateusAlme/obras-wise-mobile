@@ -66,6 +66,8 @@ export interface Obra {
   fotos_checklist_padrao_interno?: FotoInfo[]
   fotos_checklist_frying?: FotoInfo[]
   fotos_checklist_abertura_fechamento_pulo?: FotoInfo[]
+  fotos_checklist_hastes_aplicadas?: FotoInfo[]
+  fotos_checklist_medicao_termometro?: FotoInfo[]
   fotos_checklist_panoramica_final?: FotoInfo[]
   fotos_checklist_postes?: FotoInfo[]
   fotos_checklist_seccionamentos?: FotoInfo[]
@@ -73,6 +75,8 @@ export interface Obra {
   checklist_postes_data?: any[]
   checklist_seccionamentos_data?: any[]
   checklist_aterramentos_cerca_data?: any[]
+  checklist_hastes_aplicadas_data?: any[]
+  checklist_medicao_termometro_data?: any[]
   // ALTIMETRIA - 4 fotos
   fotos_altimetria_lado_fonte?: FotoInfo[]
   fotos_altimetria_medicao_fonte?: FotoInfo[]
