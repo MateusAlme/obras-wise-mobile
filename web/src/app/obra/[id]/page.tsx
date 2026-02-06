@@ -1072,12 +1072,36 @@ export default function ObraDetailPage() {
                       })}
                     </>
                   ) : (
-                    <div className="p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center">
-                      <p className="text-gray-500">Nenhuma foto adicionada ainda.</p>
-                    </div>
+                    <>
+                      {/* Fallback: tentar campos flat antigos */}
+                      {((obra as any).fotos_checklist_hastes_aplicadas?.length > 0 || (obra as any).fotos_checklist_medicao_termometro?.length > 0) ? (
+                        <>
+                          {(obra as any).fotos_checklist_hastes_aplicadas?.length > 0 && (
+                            <PhotoGallery
+                              photos={(obra as any).fotos_checklist_hastes_aplicadas || []}
+                              title="Hastes Aplicadas"
+                              sectionKey="fotos_checklist_hastes_aplicadas"
+                              {...galleryProps}
+                            />
+                          )}
+                          {(obra as any).fotos_checklist_medicao_termometro?.length > 0 && (
+                            <PhotoGallery
+                              photos={(obra as any).fotos_checklist_medicao_termometro || []}
+                              title="Medição do Termômetro"
+                              sectionKey="fotos_checklist_medicao_termometro"
+                              {...galleryProps}
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <div className="p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center">
+                          <p className="text-gray-500">Nenhuma foto adicionada ainda.</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-                
+
                 {/* 12. Panorâmica Final */}
                 <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="12. Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
               </div>
