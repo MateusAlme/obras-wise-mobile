@@ -424,7 +424,15 @@ export default function ObraDetalhe() {
             });
           };
 
+          // Verificar se arrays estruturados estão vazios mas há fotos flat
+          const temArraysVazios = (localObra.tipo_servico === 'Checklist de Fiscalização' && (
+            (!hasRealPhotos(localObra.checklist_postes_data) && (localObra as any).fotos_checklist_postes?.length > 0) ||
+            (!hasRealPhotos(localObra.checklist_seccionamentos_data) && (localObra as any).fotos_checklist_seccionamentos?.length > 0) ||
+            (!hasRealPhotos(localObra.checklist_aterramentos_cerca_data) && (localObra as any).fotos_checklist_aterramento_cerca?.length > 0)
+          ));
+
           const precisaCorrecao = !localObra.origem || !localObra.status ||
+            temArraysVazios ||
             (localObra.tipo_servico === 'Checklist de Fiscalização' && (
               localObra.checklist_postes_data === undefined ||
               localObra.checklist_seccionamentos_data === undefined ||
@@ -1744,6 +1752,15 @@ export default function ObraDetalhe() {
             const photos = getPhotosForSection(section.key);
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA POSTES DO CHECKLIST
+            if (section.key === 'fotos_checklist_postes') {
+              const temFotosReais = hasRealPhotos(obra.checklist_postes_data);
+              console.log('🔍 [DEBUG POSTES]', {
+                temEstrutura: !!obra.checklist_postes_data,
+                qtdItens: obra.checklist_postes_data?.length || 0,
+                temFotosReais,
+                primeiroItem: obra.checklist_postes_data?.[0]
+              });
+            }
             if (section.key === 'fotos_checklist_postes' && hasRealPhotos(obra.checklist_postes_data)) {
               return (
                 <View key={section.key} style={styles.infoCard}>
