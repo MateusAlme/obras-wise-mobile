@@ -44,9 +44,28 @@ function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
 }
 
 // Função helper para obter aterramentos de cerca (suporta formato novo e antigo)
+/**
+ * Verifica se um campo estruturado tem fotos reais
+ */
+function hasRealPhotos(structuredData: any[] | undefined): boolean {
+  if (!structuredData || !Array.isArray(structuredData) || structuredData.length === 0) {
+    return false
+  }
+  // Verificar se algum item tem fotos reais em seus arrays
+  return structuredData.some((item: any) => {
+    if (!item) return false
+    // Verificar todos os campos que podem conter fotos
+    const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
+    return photoFields.some(field => {
+      const value = item[field]
+      return Array.isArray(value) && value.length > 0
+    })
+  })
+}
+
 function getAterramentosFotos(obra: Obra): { titulo: string; fotos: FotoInfo[] }[] {
-  // Tentar usar formato novo (estruturado)
-  if (obra.checklist_aterramentos_cerca_data && Array.isArray(obra.checklist_aterramentos_cerca_data) && obra.checklist_aterramentos_cerca_data.length > 0) {
+  // Tentar usar formato novo (estruturado) - mas só se tiver fotos reais
+  if (hasRealPhotos(obra.checklist_aterramentos_cerca_data)) {
     return obra.checklist_aterramentos_cerca_data.map((aterr: any, index: number) => ({
       titulo: `Checklist - Aterramento de Cerca A${aterr.numero || (index + 1)}`,
       fotos: aterr.fotos || []
@@ -919,11 +938,11 @@ export default function ObraDetailPage() {
                 {/* 3. CHEDE */}
                 <PhotoGallery photos={obra.fotos_checklist_chede || []} title="3. Foto da Chave com Componente (CHEDE)" sectionKey="fotos_checklist_chede" {...galleryProps} />
                 
-                {/* 4. Postes - Exibição estruturada */}
-                {obra.checklist_postes_data && obra.checklist_postes_data.length > 0 && (
+                {/* 4. Postes - Exibição estruturada (só se tiver fotos reais) */}
+                {hasRealPhotos(obra.checklist_postes_data) && (
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-gray-800 mb-3">4. Registro dos Postes</h4>
-                    {obra.checklist_postes_data.map((poste: any, posteIndex: number) => {
+                    {obra.checklist_postes_data?.map((poste: any, posteIndex: number) => {
                       const prefixo = poste.isAditivo ? 'AD-P' : 'P';
                       const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
                       const status = poste.status || 'N/A';
@@ -963,11 +982,11 @@ export default function ObraDetailPage() {
                   <PhotoGallery photos={obra.fotos_checklist_postes || []} title="4. Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
                 )}
                 
-                {/* 5. Seccionamentos - Exibição estruturada */}
-                {obra.checklist_seccionamentos_data && obra.checklist_seccionamentos_data.length > 0 && (
+                {/* 5. Seccionamentos - Exibição estruturada (só se tiver fotos reais) */}
+                {hasRealPhotos(obra.checklist_seccionamentos_data) && (
                   <div className="mb-6">
                     <h4 className="text-lg font-semibold text-gray-800 mb-3">5. Seccionamentos</h4>
-                    {obra.checklist_seccionamentos_data.map((secc: any, seccIndex: number) => {
+                    {obra.checklist_seccionamentos_data?.map((secc: any, seccIndex: number) => {
                       const label = secc.numero ? `S${secc.numero}` : `Seccionamento ${seccIndex + 1}`;
                       return (
                         <div key={seccIndex} className="mb-4 p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
@@ -1018,9 +1037,9 @@ export default function ObraDetailPage() {
                 {/* 11. Hastes Aplicadas e Medição do Termômetro */}
                 <div className="mb-6">
                   <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 11. Hastes Aplicadas e Medição do Termômetro</h4>
-                  {obra.checklist_hastes_termometros_data && obra.checklist_hastes_termometros_data.length > 0 ? (
+                  {hasRealPhotos(obra.checklist_hastes_termometros_data) ? (
                     <>
-                      {obra.checklist_hastes_termometros_data.map((ponto: any, pontoIndex: number) => {
+                      {obra.checklist_hastes_termometros_data?.map((ponto: any, pontoIndex: number) => {
                         const prefixo = ponto.isAditivo ? 'AD-P' : 'P';
                         const label = ponto.numero ? `${prefixo}${ponto.numero}` : `Ponto ${pontoIndex + 1}`;
 
