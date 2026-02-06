@@ -978,7 +978,7 @@ export default function ObraDetailPage() {
                   </div>
                 )}
                 {/* Fallback para formato antigo de postes */}
-                {(!obra.checklist_postes_data || obra.checklist_postes_data.length === 0) && (obra.fotos_checklist_postes?.length ?? 0) > 0 && (
+                {!hasRealPhotos(obra.checklist_postes_data) && (obra.fotos_checklist_postes?.length ?? 0) > 0 && (
                   <PhotoGallery photos={obra.fotos_checklist_postes || []} title="4. Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
                 )}
                 
@@ -1002,7 +1002,7 @@ export default function ObraDetailPage() {
                   </div>
                 )}
                 {/* Fallback para formato antigo de seccionamentos */}
-                {(!obra.checklist_seccionamentos_data || obra.checklist_seccionamentos_data.length === 0) && (obra.fotos_checklist_seccionamentos?.length ?? 0) > 0 && (
+                {!hasRealPhotos(obra.checklist_seccionamentos_data) && (obra.fotos_checklist_seccionamentos?.length ?? 0) > 0 && (
                   <PhotoGallery photos={obra.fotos_checklist_seccionamentos || []} title="5. Seccionamentos" sectionKey="fotos_checklist_seccionamentos" {...galleryProps} />
                 )}
 
