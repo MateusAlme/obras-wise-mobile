@@ -709,6 +709,23 @@ export default function ObraDetalhe() {
     }
   };
 
+  // Helper para verificar se campos estruturados têm fotos reais
+  const hasRealPhotos = (structuredData: any[] | undefined): boolean => {
+    if (!structuredData || !Array.isArray(structuredData) || structuredData.length === 0) {
+      return false;
+    }
+    // Verificar se algum item tem fotos reais em seus arrays
+    return structuredData.some((item: any) => {
+      if (!item) return false;
+      // Verificar todos os campos que podem conter fotos
+      const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro'];
+      return photoFields.some(field => {
+        const value = item[field];
+        return Array.isArray(value) && value.length > 0;
+      });
+    });
+  };
+
   // Helper para buscar fotos pelos IDs (aceita strings ou objetos com {id, url})
   const getPhotosByIds = (photoIds: (string | any)[]): FotoInfo[] => {
     if (!photoIds || photoIds.length === 0) return [];
@@ -1727,7 +1744,7 @@ export default function ObraDetalhe() {
             const photos = getPhotosForSection(section.key);
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA POSTES DO CHECKLIST
-            if (section.key === 'fotos_checklist_postes' && obra.checklist_postes_data?.length) {
+            if (section.key === 'fotos_checklist_postes' && hasRealPhotos(obra.checklist_postes_data)) {
               return (
                 <View key={section.key} style={styles.infoCard}>
                   <Text style={styles.photoSectionTitle}>{section.label}</Text>
@@ -1788,7 +1805,7 @@ export default function ObraDetalhe() {
             }
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA SECCIONAMENTOS DO CHECKLIST
-            if (section.key === 'fotos_checklist_seccionamentos' && obra.checklist_seccionamentos_data?.length) {
+            if (section.key === 'fotos_checklist_seccionamentos' && hasRealPhotos(obra.checklist_seccionamentos_data)) {
               return (
                 <View key={section.key} style={styles.infoCard}>
                   <Text style={styles.photoSectionTitle}>{section.label}</Text>
@@ -1828,7 +1845,7 @@ export default function ObraDetalhe() {
             }
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA ATERRAMENTOS DE CERCA DO CHECKLIST
-            if (section.key === 'fotos_checklist_aterramento_cerca' && obra.checklist_aterramentos_cerca_data?.length) {
+            if (section.key === 'fotos_checklist_aterramento_cerca' && hasRealPhotos(obra.checklist_aterramentos_cerca_data)) {
               return (
                 <View key={section.key} style={styles.infoCard}>
                   <Text style={styles.photoSectionTitle}>{section.label}</Text>
@@ -1868,7 +1885,7 @@ export default function ObraDetalhe() {
             }
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA HASTES APLICADAS E MEDIÇÃO DO TERMÔMETRO
-            if (section.key === 'fotos_checklist_hastes_termometros' && obra.checklist_hastes_termometros_data?.length) {
+            if (section.key === 'fotos_checklist_hastes_termometros' && hasRealPhotos(obra.checklist_hastes_termometros_data)) {
               return (
                 <View key={section.key} style={styles.infoCard}>
                   <Text style={styles.photoSectionTitle}>{section.label}</Text>
