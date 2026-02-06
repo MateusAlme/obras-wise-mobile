@@ -445,7 +445,10 @@ export default function ObraDetalhe() {
 
           if (precisaCorrecao && localObra.synced) {
             console.log('⚠️ Obra sincronizada mas com problemas nos dados - buscando do Supabase...');
-            const corrigida = await forceUpdateObraFromSupabase(parsed.id);
+            // Usar serverId se disponível, caso contrário usar o ID local
+            const idParaBuscar = (localObra as any).serverId || parsed.id;
+            console.log('🔍 Buscando obra do Supabase com ID:', idParaBuscar);
+            const corrigida = await forceUpdateObraFromSupabase(idParaBuscar);
 
             if (corrigida) {
               console.log('✅ Obra corrigida automaticamente');
