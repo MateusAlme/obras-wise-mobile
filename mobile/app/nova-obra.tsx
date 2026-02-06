@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  BackHandler,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -235,8 +236,13 @@ export default function NovaObra() {
   const [docMateriaisRealizado, setDocMateriaisRealizado] = useState<FotoData[]>([]);
 
   // Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial)
+  type PosteIdentificado = {
+    numero: number;
+    isAditivo: boolean;
+  };
   const [posteNumeroInput, setPosteNumeroInput] = useState('');
-  const [postesIdentificados, setPostesIdentificados] = useState<number[]>([]);
+  const [posteIsAditivo, setPosteIsAditivo] = useState(false);
+  const [postesIdentificados, setPostesIdentificados] = useState<PosteIdentificado[]>([]);
 
   // Estados para CAVA EM ROCHA - Sistema de Múltiplos Postes
   type Poste = {
@@ -299,11 +305,15 @@ export default function NovaObra() {
     posteIndex?: number;
     seccionamentoIndex?: number;
     aterramentoCercaIndex?: number;
+    pontoIndex?: number;
   } | null>(null);
 
   // Modal de visualização de foto em tela cheia
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedPhotoForView, setSelectedPhotoForView] = useState<FotoData | null>(null);
+
+  // Modal de confirmação de saída
+  const [exitModalVisible, setExitModalVisible] = useState(false);
 
   // Formatar data para exibição (DD/MM/AAAA)
   const formatDateForDisplay = (dateString: string): string => {
@@ -450,7 +460,7 @@ export default function NovaObra() {
           setObra(obraData.obra);
           setResponsavel(obraData.responsavel);
           setTipoServico(obraData.tipo_servico);
-          
+
           // ✅ CRÍTICO: Guardar serverId para não criar duplicatas ao salvar
           if (obraData.serverId) {
             setCurrentServerId(obraData.serverId);
@@ -458,15 +468,31 @@ export default function NovaObra() {
           }
 
           if (['Linha Viva', 'Book de Aterramento', 'Fundação Especial'].includes(obraData.tipo_servico) && Array.isArray(obraData.postes_data)) {
-            const numeros = obraData.postes_data
+            const postes = obraData.postes_data
               .map((poste: any) => {
-                if (typeof poste?.numero === 'number') return poste.numero;
-                const id = String(poste?.id || '').replace(/[^0-9]/g, '');
-                return id ? parseInt(id, 10) : null;
+                let numero: number | null = null;
+                if (typeof poste?.numero === 'number') {
+                  numero = poste.numero;
+                } else {
+                  const id = String(poste?.id || '').replace(/[^0-9]/g, '');
+                  numero = id ? parseInt(id, 10) : null;
+                }
+                if (!numero || numero <= 0) return null;
+                return {
+                  numero,
+                  isAditivo: poste?.isAditivo || false,
+                };
               })
-              .filter((n: number | null) => !!n && n > 0) as number[];
-            if (numeros.length > 0) {
-              setPostesIdentificados(Array.from(new Set(numeros)).sort((a, b) => a - b));
+              .filter((p: PosteIdentificado | null): p is PosteIdentificado => p !== null);
+            if (postes.length > 0) {
+              // Remover duplicatas baseado no número
+              const uniquePostes = postes.reduce((acc: PosteIdentificado[], curr: PosteIdentificado) => {
+                if (!acc.find(p => p.numero === curr.numero)) {
+                  acc.push(curr);
+                }
+                return acc;
+              }, []).sort((a: PosteIdentificado, b: PosteIdentificado) => a.numero - b.numero);
+              setPostesIdentificados(uniquePostes);
             }
           }
 
@@ -991,6 +1017,56 @@ export default function NovaObra() {
     };
   }, []);
 
+  // 🔙 Interceptar botão de voltar nativo (Android)
+  useEffect(() => {
+    const backAction = () => {
+      // Verificar se há dados não salvos (obra iniciada)
+      const hasData = obra.trim() !== '' || 
+                      fotosAntes.length > 0 || 
+                      fotosDurante.length > 0 || 
+                      fotosDepois.length > 0 ||
+                      fotosAbertura.length > 0 ||
+                      fotosFechamento.length > 0 ||
+                      fotosPostes.length > 0 ||
+                      fotosSeccionamentos.length > 0 ||
+                      fotosAterramentosCerca.length > 0 ||
+                      pontosHastesTermometros.length > 0 ||
+                      fotosChecklistCroqui.length > 0 ||
+                      fotosChecklistPanoramicaInicial.length > 0 ||
+                      fotosChecklistPanoramicaFinal.length > 0;
+      
+      if (hasData) {
+        setExitModalVisible(true);
+        return true; // Previne o comportamento padrão do back
+      }
+      
+      return false; // Permite o comportamento padrão se não houver dados
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [obra, fotosAntes, fotosDurante, fotosDepois, fotosAbertura, fotosFechamento, fotosPostes, fotosSeccionamentos, fotosAterramentosCerca, pontosHastesTermometros, fotosChecklistCroqui, fotosChecklistPanoramicaInicial, fotosChecklistPanoramicaFinal]);
+
+  // Função para sair descartando
+  const handleExitDiscard = () => {
+    setExitModalVisible(false);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+
+  // Função para salvar e sair
+  const handleExitSave = () => {
+    setExitModalVisible(false);
+    handlePausar();
+  };
+
 
   const requestPermissions = async () => {
     try {
@@ -1107,16 +1183,27 @@ export default function NovaObra() {
       Alert.alert('Atenção', 'Informe apenas o número do poste. Ex: 3');
       return;
     }
-    if (postesIdentificados.includes(numero)) {
-      Alert.alert('Atenção', `O poste P${numero} já foi adicionado.`);
+    // Verificar duplicatas considerando numero + isAditivo
+    if (postesIdentificados.find(p => p.numero === numero && p.isAditivo === posteIsAditivo)) {
+      const prefixo = posteIsAditivo ? 'AD-P' : 'P';
+      Alert.alert('Atenção', `O poste ${prefixo}${numero} já foi adicionado.`);
       return;
     }
-    setPostesIdentificados(prev => [...prev, numero].sort((a, b) => a - b));
+    const novoPoste: PosteIdentificado = {
+      numero,
+      isAditivo: posteIsAditivo,
+    };
+    setPostesIdentificados(prev => [...prev, novoPoste].sort((a, b) => {
+      // Ordenar: primeiro por número, depois por aditivo (não-aditivo primeiro)
+      if (a.numero !== b.numero) return a.numero - b.numero;
+      return a.isAditivo === b.isAditivo ? 0 : a.isAditivo ? 1 : -1;
+    }));
     setPosteNumeroInput('');
+    setPosteIsAditivo(false); // Reset checkbox após adicionar
   };
 
-  const removerPosteIdentificado = (numero: number) => {
-    setPostesIdentificados(prev => prev.filter(n => n !== numero));
+  const removerPosteIdentificado = (numero: number, isAditivo: boolean) => {
+    setPostesIdentificados(prev => prev.filter(p => !(p.numero === numero && p.isAditivo === isAditivo)));
   };
 
   const removerPoste = (posteId: string) => {
@@ -1754,7 +1841,7 @@ export default function NovaObra() {
   const handlePlacaConfirm = () => {
     if (!pendingPhoto) return;
 
-    const { tipo, location, photoMetadata, posteIndex, seccionamentoIndex, aterramentoCercaIndex } = pendingPhoto;
+    const { tipo, location, photoMetadata, posteIndex, seccionamentoIndex, aterramentoCercaIndex, pontoIndex } = pendingPhoto;
 
     const photoData: FotoData = {
       uri: pendingPhoto.uri,
@@ -1952,7 +2039,7 @@ export default function NovaObra() {
   const handlePlacaRetake = () => {
     if (!pendingPhoto) return;
 
-    const { tipo, posteIndex, seccionamentoIndex, aterramentoCercaIndex } = pendingPhoto;
+    const { tipo, posteIndex, seccionamentoIndex, aterramentoCercaIndex, pontoIndex } = pendingPhoto;
 
     // Fechar overlay
     setShowPlacaOverlay(false);
@@ -1960,7 +2047,7 @@ export default function NovaObra() {
 
     // Tirar nova foto
     setTimeout(() => {
-      takePicture(tipo as any, posteIndex, seccionamentoIndex, aterramentoCercaIndex);
+      takePicture(tipo as any, posteIndex, seccionamentoIndex, aterramentoCercaIndex, pontoIndex);
     }, 300);
   };
 
@@ -2717,6 +2804,26 @@ export default function NovaObra() {
         }).filter(Boolean);
       };
 
+      // Helper: extrair dados completos da foto (para estruturas JSONB)
+      const extractPhotoDataFull = (fotos: FotoData[]) => {
+        return fotos.map(f => {
+          // Se tem _originalData, é foto sincronizada - manter objeto completo
+          if ((f as any)._originalData) {
+            return (f as any)._originalData;
+          }
+          // Foto local - salvar apenas o ID
+          // O processo de sync converterá para URL pública quando necessário
+          return {
+            id: f.photoId,
+            latitude: f.latitude,
+            longitude: f.longitude,
+            utmX: f.utmX,
+            utmY: f.utmY,
+            utmZone: f.utmZone
+          };
+        }).filter(Boolean);
+      };
+
       // ✅ CORREÇÃO CRÍTICA: Salvar TODAS as fotos que estão no estado
       // Removidas as condicionais (isServicoPadrao, isServicoChave, etc.)
       // O estado só terá fotos se o usuário tirou fotos naquela seção
@@ -2828,9 +2935,10 @@ export default function NovaObra() {
           observacoes: observacaoGeralCavaRocha,
         }),
         ...(isServicoPostesIdentificacao && {
-          postes_data: postesIdentificados.map(numero => ({
-            id: `P${numero}`,
-            numero,
+          postes_data: postesIdentificados.map(poste => ({
+            id: poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`,
+            numero: poste.numero,
+            isAditivo: poste.isAditivo,
             fotos_antes: [],
             fotos_durante: [],
             fotos_depois: [],
@@ -2844,29 +2952,29 @@ export default function NovaObra() {
             numero: poste.numero,
             status: poste.status,
             isAditivo: poste.isAditivo || false,
-            posteInteiro: extractPhotoData(poste.posteInteiro),
-            engaste: extractPhotoData(poste.engaste),
-            conexao1: extractPhotoData(poste.conexao1),
-            conexao2: extractPhotoData(poste.conexao2),
-            maiorEsforco: extractPhotoData(poste.maiorEsforco),
-            menorEsforco: extractPhotoData(poste.menorEsforco),
+            posteInteiro: extractPhotoDataFull(poste.posteInteiro),
+            engaste: extractPhotoDataFull(poste.engaste),
+            conexao1: extractPhotoDataFull(poste.conexao1),
+            conexao2: extractPhotoDataFull(poste.conexao2),
+            maiorEsforco: extractPhotoDataFull(poste.maiorEsforco),
+            menorEsforco: extractPhotoDataFull(poste.menorEsforco),
           })),
           checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
             id: `seccionamento_${index + 1}`,
             numero: parseInt(sec.numero) || (index + 1),
-            fotos: extractPhotoData(sec.fotos),
+            fotos: extractPhotoDataFull(sec.fotos),
           })),
           checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
             id: `aterramento_${index + 1}`,
             numero: parseInt(aterr.numero) || (index + 1),
-            fotos: extractPhotoData(aterr.fotos),
+            fotos: extractPhotoDataFull(aterr.fotos),
           })),
           checklist_hastes_termometros_data: pontosHastesTermometros.map((ponto, index) => ({
             id: `ponto_${index + 1}`,
             numero: ponto.numero || `${index + 1}`,
             isAditivo: ponto.isAditivo || false,
-            fotoHaste: extractPhotoData(ponto.fotoHaste),
-            fotoTermometro: extractPhotoData(ponto.fotoTermometro),
+            fotoHaste: extractPhotoDataFull(ponto.fotoHaste),
+            fotoTermometro: extractPhotoDataFull(ponto.fotoTermometro),
           })),
         }),
       };
@@ -3581,8 +3689,6 @@ export default function NovaObra() {
             fotos_checklist_postes: mergePhotos(obraAtual.fotos_checklist_postes, fotosChecklistPostesUploaded),
             fotos_checklist_seccionamentos: mergePhotos(obraAtual.fotos_checklist_seccionamentos, fotosChecklistSeccionamentosUploaded),
             fotos_checklist_aterramento_cerca: mergePhotos(obraAtual.fotos_checklist_aterramento_cerca, fotosChecklistAterramentoCercaUploaded),
-            fotos_checklist_hastes_aplicadas: pontosHastesTermometros.flatMap(p => p.fotoHaste.map(f => f.photoId).filter(Boolean) as string[]),
-            fotos_checklist_medicao_termometro: pontosHastesTermometros.flatMap(p => p.fotoTermometro.map(f => f.photoId).filter(Boolean) as string[]),
             // Estrutura dos postes, seccionamentos e aterramentos do Checklist
             ...(isServicoChecklist && {
               checklist_postes_data: fotosPostes.map((poste, index) => ({
@@ -3930,6 +4036,26 @@ export default function NovaObra() {
         }).filter(Boolean);
       };
 
+      // Helper: extrair dados completos da foto (para estruturas JSONB)
+      const extractPhotoDataFull = (fotos: FotoData[]) => {
+        return fotos.map(f => {
+          // Se tem _originalData, é foto sincronizada - manter objeto completo
+          if ((f as any)._originalData) {
+            return (f as any)._originalData;
+          }
+          // Foto local - salvar apenas o ID
+          // O processo de sync converterá para URL pública quando necessário
+          return {
+            id: f.photoId,
+            latitude: f.latitude,
+            longitude: f.longitude,
+            utmX: f.utmX,
+            utmY: f.utmY,
+            utmZone: f.utmZone
+          };
+        }).filter(Boolean);
+      };
+
       // ✅ CORREÇÃO CRÍTICA: Salvar TODAS as fotos que estão no estado
       // Removidas as condicionais (isServicoPadrao, isServicoChave, etc.)
       // O estado só terá fotos se o usuário tirou fotos naquela seção
@@ -3997,8 +4123,6 @@ export default function NovaObra() {
         fotos_checklist_frying: extractPhotoData(fotosChecklistFrying) as string[],
         fotos_checklist_abertura_fechamento_pulo: extractPhotoData(fotosChecklistAberturaFechamentoPulo) as string[],
         fotos_checklist_panoramica_final: extractPhotoData(fotosChecklistPanoramicaFinal) as string[],
-        fotos_checklist_hastes_aplicadas: fotosHastesAplicadas.flatMap(haste => haste.fotos.map(f => f.photoId).filter(Boolean) as string[]),
-        fotos_checklist_medicao_termometro: fotosMedicaoTermometro.flatMap(term => term.fotos.map(f => f.photoId).filter(Boolean) as string[]),
         fotos_checklist_postes: fotosPostes.flatMap((poste, index) => [
           ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
           ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
@@ -4031,9 +4155,10 @@ export default function NovaObra() {
         }),
         // Linha Viva, Book de Aterramento, Fundação Especial - Identificação de Postes
         ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
-          postes_data: postesIdentificados.map(numero => ({
-            id: `P${numero}`,
-            numero,
+          postes_data: postesIdentificados.map(poste => ({
+            id: poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`,
+            numero: poste.numero,
+            isAditivo: poste.isAditivo,
             fotos_antes: [],
             fotos_durante: [],
             fotos_depois: [],
@@ -4068,9 +4193,10 @@ export default function NovaObra() {
         ...photoIds,
         // Postes identificados (Linha Viva, Book de Aterramento, Fundação Especial)
         ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
-          postes_data: postesIdentificados.map(numero => ({
-            id: `P${numero}`,
-            numero,
+          postes_data: postesIdentificados.map(poste => ({
+            id: poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`,
+            numero: poste.numero,
+            isAditivo: poste.isAditivo,
             fotos_antes: [],
             fotos_durante: [],
             fotos_depois: [],
@@ -4096,34 +4222,29 @@ export default function NovaObra() {
             numero: poste.numero,
             status: poste.status,
             isAditivo: poste.isAditivo || false,
-            posteInteiro: poste.posteInteiro.map(f => f.photoId).filter(Boolean),
-            engaste: poste.engaste.map(f => f.photoId).filter(Boolean),
-            conexao1: poste.conexao1.map(f => f.photoId).filter(Boolean),
-            conexao2: poste.conexao2.map(f => f.photoId).filter(Boolean),
-            maiorEsforco: poste.maiorEsforco.map(f => f.photoId).filter(Boolean),
-            menorEsforco: poste.menorEsforco.map(f => f.photoId).filter(Boolean),
+            posteInteiro: extractPhotoDataFull(poste.posteInteiro),
+            engaste: extractPhotoDataFull(poste.engaste),
+            conexao1: extractPhotoDataFull(poste.conexao1),
+            conexao2: extractPhotoDataFull(poste.conexao2),
+            maiorEsforco: extractPhotoDataFull(poste.maiorEsforco),
+            menorEsforco: extractPhotoDataFull(poste.menorEsforco),
           })),
           checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
             id: `seccionamento_${index + 1}`,
             numero: parseInt(sec.numero) || (index + 1),
-            fotos: sec.fotos.map(f => f.photoId).filter(Boolean),
+            fotos: extractPhotoDataFull(sec.fotos),
           })),
           checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
             id: `aterramento_${index + 1}`,
             numero: parseInt(aterr.numero) || (index + 1),
-            fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
+            fotos: extractPhotoDataFull(aterr.fotos),
           })),
-          checklist_hastes_aplicadas_data: fotosHastesAplicadas.map((haste, index) => ({
-            id: `haste_${index + 1}`,
-            numero: haste.numero || `${index + 1}`,
-            isAditivo: haste.isAditivo || false,
-            fotos: haste.fotos.map(f => f.photoId).filter(Boolean),
-          })),
-          checklist_medicao_termometro_data: fotosMedicaoTermometro.map((term, index) => ({
-            id: `termometro_${index + 1}`,
-            numero: term.numero || `${index + 1}`,
-            isAditivo: term.isAditivo || false,
-            fotos: term.fotos.map(f => f.photoId).filter(Boolean),
+          checklist_hastes_termometros_data: pontosHastesTermometros.map((ponto, index) => ({
+            id: `ponto_${index + 1}`,
+            numero: ponto.numero || `${index + 1}`,
+            isAditivo: ponto.isAditivo || false,
+            fotoHaste: extractPhotoDataFull(ponto.fotoHaste),
+            fotoTermometro: extractPhotoDataFull(ponto.fotoTermometro),
           })),
         }),
       };
@@ -4621,12 +4742,28 @@ export default function NovaObra() {
                 <View style={styles.posteIdentificacaoSection}>
                   <Text style={styles.sectionTitle}>🪧 Identificação de Postes</Text>
                   <Text style={styles.sectionSubtitle}>
-                    Digite apenas o número. O prefixo "P" é automático.
+                    Digite o número do poste. O prefixo é adicionado automaticamente.
                   </Text>
 
+                  {/* Checkbox Aditivo - Acima do input */}
+                  <TouchableOpacity
+                    style={styles.posteAditivoRow}
+                    onPress={() => setPosteIsAditivo(!posteIsAditivo)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.posteAditivoCheckbox, posteIsAditivo && styles.posteAditivoCheckboxChecked]}>
+                      {posteIsAditivo && <Text style={styles.posteAditivoCheckmark}>✓</Text>}
+                    </View>
+                    <Text style={[styles.posteAditivoLabel, posteIsAditivo && styles.posteAditivoLabelActive]}>
+                      Poste de Aditivo (AD-)
+                    </Text>
+                  </TouchableOpacity>
+
                   <View style={styles.posteInputRow}>
-                    <View style={styles.postePrefixBox}>
-                      <Text style={styles.postePrefixText}>P</Text>
+                    <View style={[styles.postePrefixBox, posteIsAditivo && styles.postePrefixBoxAditivo]}>
+                      <Text style={[styles.postePrefixText, posteIsAditivo && styles.postePrefixTextAditivo]}>
+                        {posteIsAditivo ? 'AD-P' : 'P'}
+                      </Text>
                     </View>
                     <TextInput
                       style={styles.posteNumeroInput}
@@ -4637,7 +4774,7 @@ export default function NovaObra() {
                       maxLength={4}
                     />
                     <TouchableOpacity
-                      style={styles.posteAddButton}
+                      style={[styles.posteAddButton, !posteNumeroInput.trim() && styles.posteAddButtonDisabled]}
                       onPress={adicionarPosteIdentificado}
                       disabled={!posteNumeroInput.trim()}
                     >
@@ -4647,12 +4784,14 @@ export default function NovaObra() {
 
                   {postesIdentificados.length > 0 && (
                     <View style={styles.posteTagsContainer}>
-                      {postesIdentificados.map((numero) => (
-                        <View key={numero} style={styles.posteTag}>
-                          <Text style={styles.posteTagText}>P{numero}</Text>
+                      {postesIdentificados.map((poste) => (
+                        <View key={`${poste.isAditivo ? 'AD-' : ''}P${poste.numero}`} style={[styles.posteTag, poste.isAditivo && styles.posteTagAditivo]}>
+                          <Text style={[styles.posteTagText, poste.isAditivo && styles.posteTagTextAditivo]}>
+                            {poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`}
+                          </Text>
                           <TouchableOpacity
-                            style={styles.posteTagRemove}
-                            onPress={() => removerPosteIdentificado(numero)}
+                            style={[styles.posteTagRemove, poste.isAditivo && styles.posteTagRemoveAditivo]}
+                            onPress={() => removerPosteIdentificado(poste.numero, poste.isAditivo)}
                           >
                             <Text style={styles.posteTagRemoveText}>×</Text>
                           </TouchableOpacity>
@@ -7819,9 +7958,179 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 11. Panorâmica Final */}
+                {/* 11. Hastes Aplicadas e Medição do Termômetro - Seção Dinâmica */}
                 <View style={styles.checklistSection}>
-                  <Text style={styles.checklistSectionTitle}>1️⃣1️⃣ Panorâmica Final {fotosChecklistPanoramicaFinal.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistSectionTitle}>1️⃣1️⃣ Hastes Aplicadas e Medição do Termômetro (Opcional)</Text>
+                  <Text style={styles.checklistHint}>Cada ponto (P1, P2...) contém 1 foto de haste aplicada + 1 foto de medição do termômetro</Text>
+
+                  <View style={styles.posteControls}>
+                    <Text style={styles.posteCount}>Pontos: {numPontosHastesTermometros}</Text>
+                    <TouchableOpacity
+                      style={styles.posteAddButton}
+                      onPress={() => {
+                        setNumPontosHastesTermometros(numPontosHastesTermometros + 1);
+                        setPontosHastesTermometros([...pontosHastesTermometros, {
+                          numero: '',
+                          isAditivo: false,
+                          fotoHaste: [],
+                          fotoTermometro: [],
+                        }]);
+                      }}
+                    >
+                      <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {pontosHastesTermometros.map((ponto, pontoIndex) => (
+                    <View key={pontoIndex} style={styles.posteCard}>
+                      <Text style={styles.posteTitle}>
+                        Ponto {pontoIndex + 1}{ponto.numero ? ` - ${ponto.isAditivo ? 'AD-' : ''}P${ponto.numero}` : ''}
+                        {ponto.fotoHaste.length > 0 && ponto.fotoTermometro.length > 0 && ' ✓'}
+                      </Text>
+
+                      {/* Campo para identificar o número do ponto */}
+                      <View style={styles.posteNumeroSection}>
+                        <Text style={styles.posteNumeroLabel}>🪧 Número do Ponto *</Text>
+                        <TextInput
+                          style={styles.posteNumeroInput}
+                          placeholder="Ex: 1, 2, 3..."
+                          placeholderTextColor="#999"
+                          keyboardType="numeric"
+                          value={ponto.numero}
+                          onChangeText={(text) => {
+                            const newPontos = [...pontosHastesTermometros];
+                            newPontos[pontoIndex].numero = text.replace(/[^0-9]/g, '');
+                            setPontosHastesTermometros(newPontos);
+                          }}
+                        />
+                      </View>
+
+                      {/* Checkbox Aditivo */}
+                      <TouchableOpacity
+                        style={styles.aditivoCheckboxContainer}
+                        onPress={() => {
+                          const newPontos = [...pontosHastesTermometros];
+                          newPontos[pontoIndex].isAditivo = !newPontos[pontoIndex].isAditivo;
+                          setPontosHastesTermometros(newPontos);
+                        }}
+                      >
+                        <View style={[styles.aditivoCheckbox, ponto.isAditivo && styles.aditivoCheckboxChecked]}>
+                          {ponto.isAditivo && <Text style={styles.aditivoCheckmark}>✓</Text>}
+                        </View>
+                        <Text style={styles.aditivoCheckboxLabel}>
+                          Este ponto é de Aditivo (será marcado como AD-P{ponto.numero || '?'})
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Botões de Fotos */}
+                      <View style={styles.pontoFotosContainer}>
+                        {/* Foto da Haste */}
+                        <View style={styles.pontoFotoSection}>
+                          <Text style={styles.pontoFotoLabel}>
+                            📸 Haste Aplicada {ponto.fotoHaste.length > 0 && '✓'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.pontoFotoButton}
+                            onPress={() => takePicture('checklist_ponto_haste', undefined, undefined, undefined, pontoIndex)}
+                            disabled={loading || uploadingPhoto || ponto.fotoHaste.length >= 1}
+                          >
+                            <Text style={styles.pontoFotoButtonText}>
+                              {ponto.fotoHaste.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                            </Text>
+                          </TouchableOpacity>
+                          {ponto.fotoHaste.length > 0 && (
+                            <View style={styles.pontoPhotoPreview}>
+                              {ponto.fotoHaste.map((foto, fotoIndex) => (
+                                <View key={fotoIndex} style={styles.photoCard}>
+                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                    <PhotoWithPlaca
+                                      uri={foto.uri}
+                                      obraNumero={obra}
+                                      tipoServico={tipoServico}
+                                      equipe={isCompUser ? equipeExecutora : equipe}
+                                      latitude={foto.latitude}
+                                      longitude={foto.longitude}
+                                      utmX={foto.utmX}
+                                      utmY={foto.utmY}
+                                      utmZone={foto.utmZone}
+                                      style={styles.photoThumbnailSmall}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.photoRemoveButton}
+                                    onPress={() => removePhoto('checklist_ponto_haste', fotoIndex, undefined, undefined, undefined, pontoIndex)}
+                                  >
+                                    <Text style={styles.photoRemoveText}>×</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Foto do Termômetro */}
+                        <View style={styles.pontoFotoSection}>
+                          <Text style={styles.pontoFotoLabel}>
+                            🌡️ Medição do Termômetro {ponto.fotoTermometro.length > 0 && '✓'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.pontoFotoButton}
+                            onPress={() => takePicture('checklist_ponto_termometro', undefined, undefined, undefined, pontoIndex)}
+                            disabled={loading || uploadingPhoto || ponto.fotoTermometro.length >= 1}
+                          >
+                            <Text style={styles.pontoFotoButtonText}>
+                              {ponto.fotoTermometro.length > 0 ? '✓ Adicionada' : '+ Adicionar'}
+                            </Text>
+                          </TouchableOpacity>
+                          {ponto.fotoTermometro.length > 0 && (
+                            <View style={styles.pontoPhotoPreview}>
+                              {ponto.fotoTermometro.map((foto, fotoIndex) => (
+                                <View key={fotoIndex} style={styles.photoCard}>
+                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                    <PhotoWithPlaca
+                                      uri={foto.uri}
+                                      obraNumero={obra}
+                                      tipoServico={tipoServico}
+                                      equipe={isCompUser ? equipeExecutora : equipe}
+                                      latitude={foto.latitude}
+                                      longitude={foto.longitude}
+                                      utmX={foto.utmX}
+                                      utmY={foto.utmY}
+                                      utmZone={foto.utmZone}
+                                      style={styles.photoThumbnailSmall}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.photoRemoveButton}
+                                    onPress={() => removePhoto('checklist_ponto_termometro', fotoIndex, undefined, undefined, undefined, pontoIndex)}
+                                  >
+                                    <Text style={styles.photoRemoveText}>×</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Botão para remover ponto */}
+                      <TouchableOpacity
+                        style={styles.posteRemoveButton}
+                        onPress={() => {
+                          const newPontos = pontosHastesTermometros.filter((_, i) => i !== pontoIndex);
+                          setPontosHastesTermometros(newPontos);
+                          setNumPontosHastesTermometros(numPontosHastesTermometros - 1);
+                        }}
+                      >
+                        <Text style={styles.posteRemoveText}>🗑️ Remover Ponto</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+
+                {/* 12. Panorâmica Final */}
+                <View style={styles.checklistSection}>
+                  <Text style={styles.checklistSectionTitle}>1️⃣2️⃣ Panorâmica Final {fotosChecklistPanoramicaFinal.length >= 2 && '✓'}</Text>
                   <Text style={styles.checklistHint}>Recomendado: 2 fotos - Obra finalizada e limpa</Text>
 
                   <TouchableOpacity
@@ -8714,6 +9023,63 @@ export default function NovaObra() {
               style={styles.photoModalImage}
             />
           )}
+        </View>
+      </Modal>
+
+      {/* Modal de Confirmação de Saída */}
+      <Modal
+        visible={exitModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExitModalVisible(false)}
+      >
+        <View style={styles.exitModalOverlay}>
+          <View style={styles.exitModalContainer}>
+            {/* Ícone de aviso */}
+            <View style={styles.exitModalIconContainer}>
+              <Text style={styles.exitModalIcon}>⚠️</Text>
+            </View>
+
+            {/* Título */}
+            <Text style={styles.exitModalTitle}>Sair da Obra?</Text>
+
+            {/* Descrição */}
+            <Text style={styles.exitModalDescription}>
+              Você tem dados não salvos. O que deseja fazer com as alterações?
+            </Text>
+
+            {/* Botões */}
+            <View style={styles.exitModalButtons}>
+              {/* Botão Salvar */}
+              <TouchableOpacity
+                style={styles.exitModalButtonSave}
+                onPress={handleExitSave}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.exitModalButtonSaveIcon}>💾</Text>
+                <Text style={styles.exitModalButtonSaveText}>Salvar</Text>
+              </TouchableOpacity>
+
+              {/* Botão Descartar */}
+              <TouchableOpacity
+                style={styles.exitModalButtonDiscard}
+                onPress={handleExitDiscard}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.exitModalButtonDiscardIcon}>🗑️</Text>
+                <Text style={styles.exitModalButtonDiscardText}>Descartar</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Botão Cancelar */}
+            <TouchableOpacity
+              style={styles.exitModalButtonCancel}
+              onPress={() => setExitModalVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.exitModalButtonCancelText}>Continuar Editando</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -9623,6 +9989,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
+    marginTop: 16,
     shadowColor: '#ef4444',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
@@ -9670,26 +10037,61 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   posteNumeroInput: {
+    flex: 1,
     backgroundColor: '#fff',
     borderWidth: 2,
-    borderColor: '#22c55e',
+    borderColor: '#e2e8f0',
     borderRadius: 10,
     padding: 14,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#15803d',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#334155',
     textAlign: 'center',
+  },
+  posteAditivoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   posteAditivoCheckbox: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#fef2f2',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecaca',
     marginTop: 8,
+    marginBottom: 4,
+  },
+  posteAditivoCheckboxChecked: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  posteAditivoCheckmark: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   posteAditivoLabel: {
     fontSize: 14,
-    color: '#555',
+    color: '#dc2626',
     marginLeft: 10,
+    fontWeight: '500',
+    flex: 1,
+  },
+  posteAditivoLabelActive: {
+    color: '#dc2626',
+    fontWeight: '600',
+  },
+  posteAddButtonDisabled: {
+    backgroundColor: '#94a3b8',
+  },
+  posteTagRemoveAditivo: {
+    backgroundColor: '#dc2626',
   },
   checkbox: {
     width: 24,
@@ -9797,6 +10199,91 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#075985',
     marginBottom: 12,
+  },
+  // Estilos dos Pontos de Hastes/Termômetros
+  pontoFotosContainer: {
+    flexDirection: 'column',
+    gap: 12,
+    marginTop: 12,
+  },
+  pontoFotoSection: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  pontoFotoLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  pontoFotoButton: {
+    backgroundColor: '#3b82f6',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pontoFotoButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pontoPhotoPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  photoThumbnailSmall: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  aditivoCheckboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#fef3c7',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  aditivoCheckbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: '#d97706',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  aditivoCheckboxChecked: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  aditivoCheckmark: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  aditivoCheckboxLabel: {
+    fontSize: 14,
+    color: '#78350f',
+    marginLeft: 10,
+    flex: 1,
+    fontWeight: '500',
+  },
+  posteRemoveText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
   },
   // Estilos do Documentação
   docHint: {
@@ -9990,20 +10477,22 @@ const styles = StyleSheet.create({
   posteInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
+    gap: 10,
   },
   postePrefixBox: {
-    width: 44,
-    height: 44,
+    minWidth: 44,
+    height: 48,
+    paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
     justifyContent: 'center',
     alignItems: 'center',
   },
   postePrefixText: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#334155',
   },
   posteAddButtonText: {
@@ -10015,20 +10504,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 12,
+    marginTop: 16,
   },
   posteTag: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#e0f2fe',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 2,
+    borderColor: '#bae6fd',
   },
   posteTagText: {
     color: '#0369a1',
     fontWeight: '700',
-    marginRight: 6,
+    fontSize: 14,
+    marginRight: 8,
   },
   posteTagRemove: {
     width: 18,
@@ -10043,6 +10535,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 16,
     fontWeight: '700',
+  },
+  // Estilos para Aditivo em Postes Identificação
+  posteTagAditivo: {
+    backgroundColor: '#fef2f2',
+    borderWidth: 2,
+    borderColor: '#ef4444',
+  },
+  posteTagTextAditivo: {
+    color: '#dc2626',
+  },
+  postePrefixBoxAditivo: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#ef4444',
+    borderWidth: 2,
+  },
+  postePrefixTextAditivo: {
+    color: '#dc2626',
   },
   // Estilos adicionais para Cava em Rocha - Sistema de Múltiplos Postes
   posteHeader: {
@@ -10112,10 +10621,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  photoThumbnailSmall: {
-    width: '100%',
-    height: '100%',
-  },
   photoRemoveButtonSmall: {
     position: 'absolute',
     top: 4,
@@ -10163,6 +10668,115 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  // Estilos do Modal de Confirmação de Saída
+  exitModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  exitModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  exitModalIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#fef3c7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  exitModalIcon: {
+    fontSize: 36,
+  },
+  exitModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  exitModalDescription: {
+    fontSize: 15,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  exitModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+    width: '100%',
+  },
+  exitModalButtonSave: {
+    flex: 1,
+    backgroundColor: '#10b981',
+    paddingVertical: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  exitModalButtonSaveIcon: {
+    fontSize: 18,
+  },
+  exitModalButtonSaveText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  exitModalButtonDiscard: {
+    flex: 1,
+    backgroundColor: '#fee2e2',
+    paddingVertical: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  exitModalButtonDiscardIcon: {
+    fontSize: 18,
+  },
+  exitModalButtonDiscardText: {
+    color: '#dc2626',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  exitModalButtonCancel: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+    width: '100%',
+  },
+  exitModalButtonCancelText: {
+    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: '600',
     textAlign: 'center',
   },
 });

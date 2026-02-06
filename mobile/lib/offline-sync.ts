@@ -117,6 +117,16 @@ export interface PendingObra {
     numero: number; // Número do aterramento (1, 2, 3...) para mostrar como A1, A2, A3...
     fotos: string[];
   }>;
+  checklist_hastes_termometros_data?: Array<{
+    id: string;
+    numero: string; // Número do ponto (pode ser texto: P1, P2, etc.)
+    isAditivo?: boolean; // Indica se é aditivo
+    fotoHaste: string[]; // Fotos das hastes aplicadas
+    fotoTermometro: string[]; // Fotos da medição do termômetro
+  }>;
+  // Novos campos opcionais do Checklist de Fiscalização
+  fotos_checklist_frying?: string[];
+  fotos_checklist_abertura_fechamento_pulo?: string[];
   // Identificação do criador
   creator_role?: 'compressor' | 'equipe'; // Identificador permanente de quem criou
   created_at: string;
@@ -1178,6 +1188,115 @@ const convertPhotosToData = (metadata: PhotoMetadata[]) => {
   }));
 };
 
+/**
+ * Converte arrays de IDs de fotos em arrays de objetos com URLs
+ * Usado para converter fotos dentro de estruturas JSONB do checklist
+ */
+const convertPhotoIdsToUrls = async (photoIds: any[]): Promise<any[]> => {
+  if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
+    return [];
+  }
+
+  const result: any[] = [];
+
+  for (const item of photoIds) {
+    // Se já é objeto com URL, manter como está
+    if (typeof item === 'object' && item !== null && item.url) {
+      result.push(item);
+      continue;
+    }
+
+    // Se é string, buscar o metadata e converter para objeto com URL
+    if (typeof item === 'string') {
+      const metadataList = await getPhotoMetadatasByIds([item]);
+      if (metadataList.length > 0 && metadataList[0].uploaded && metadataList[0].uploadUrl) {
+        result.push({
+          url: metadataList[0].uploadUrl,
+          latitude: metadataList[0].latitude,
+          longitude: metadataList[0].longitude,
+          utm_x: metadataList[0].utmX,
+          utm_y: metadataList[0].utmY,
+          utm_zone: metadataList[0].utmZone,
+        });
+      } else {
+        console.warn(`⚠️ [convertPhotoIdsToUrls] Foto ${item} não tem URL, será ignorada`);
+      }
+    }
+  }
+
+  return result;
+};
+
+/**
+ * Converte estruturas do checklist_postes_data para ter URLs nas fotos
+ */
+const convertChecklistPostesData = async (postesData: any[]): Promise<any[]> => {
+  if (!postesData || !Array.isArray(postesData)) return postesData;
+
+  const result = [];
+  for (const poste of postesData) {
+    result.push({
+      ...poste,
+      posteInteiro: await convertPhotoIdsToUrls(poste.posteInteiro || []),
+      engaste: await convertPhotoIdsToUrls(poste.engaste || []),
+      conexao1: await convertPhotoIdsToUrls(poste.conexao1 || []),
+      conexao2: await convertPhotoIdsToUrls(poste.conexao2 || []),
+      maiorEsforco: await convertPhotoIdsToUrls(poste.maiorEsforco || []),
+      menorEsforco: await convertPhotoIdsToUrls(poste.menorEsforco || []),
+    });
+  }
+  return result;
+};
+
+/**
+ * Converte estruturas do checklist_seccionamentos_data para ter URLs nas fotos
+ */
+const convertChecklistSeccionamentosData = async (secData: any[]): Promise<any[]> => {
+  if (!secData || !Array.isArray(secData)) return secData;
+
+  const result = [];
+  for (const sec of secData) {
+    result.push({
+      ...sec,
+      fotos: await convertPhotoIdsToUrls(sec.fotos || []),
+    });
+  }
+  return result;
+};
+
+/**
+ * Converte estruturas do checklist_aterramentos_cerca_data para ter URLs nas fotos
+ */
+const convertChecklistAterramentosData = async (aterrData: any[]): Promise<any[]> => {
+  if (!aterrData || !Array.isArray(aterrData)) return aterrData;
+
+  const result = [];
+  for (const aterr of aterrData) {
+    result.push({
+      ...aterr,
+      fotos: await convertPhotoIdsToUrls(aterr.fotos || []),
+    });
+  }
+  return result;
+};
+
+/**
+ * Converte estruturas do checklist_hastes_termometros_data para ter URLs nas fotos
+ */
+const convertChecklistHastesTermometrosData = async (hastesData: any[]): Promise<any[]> => {
+  if (!hastesData || !Array.isArray(hastesData)) return hastesData;
+
+  const result = [];
+  for (const ponto of hastesData) {
+    result.push({
+      ...ponto,
+      fotoHaste: await convertPhotoIdsToUrls(ponto.fotoHaste || []),
+      fotoTermometro: await convertPhotoIdsToUrls(ponto.fotoTermometro || []),
+    });
+  }
+  return result;
+};
+
 const translateErrorMessage = (message?: string): string => {
   if (!message) {
     return 'Erro desconhecido. Tente novamente.';
@@ -1388,6 +1507,12 @@ export const syncObra = async (
     const fotosVazamentoPlacaInstaladoData = convertPhotosToData(fotosVazamentoPlacaInstaladoMetadata);
     const fotosVazamentoInstalacaoData = convertPhotosToData(fotosVazamentoInstalacaoMetadata);
 
+    // ✅ NOVO: Converter estruturas JSONB do checklist para ter URLs nas fotos
+    const checklistPostesDataConverted = await convertChecklistPostesData((obra as any).checklist_postes_data);
+    const checklistSeccionamentosDataConverted = await convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data);
+    const checklistAterramentosDataConverted = await convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data);
+    const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
+
     // Se a obra pendente representa a edição de uma obra já existente no servidor,
     // devemos atualizar (UPDATE) em vez de inserir (INSERT). Detectamos isso quando:
     // 1. `obra.isEdited` é true e há um `originalId`
@@ -1509,10 +1634,11 @@ export const syncObra = async (
           postes_data: obra.postes_data || existingObra.postes_data || null,
           observacoes: (obra as any).observacoes || existingObra.observacoes || null,
           creator_role: (obra as any).creator_role || existingObra.creator_role || null,
-          // Dados estruturados do Checklist de Fiscalização
-          checklist_postes_data: (obra as any).checklist_postes_data || existingObra.checklist_postes_data || null,
-          checklist_seccionamentos_data: (obra as any).checklist_seccionamentos_data || existingObra.checklist_seccionamentos_data || null,
-          checklist_aterramentos_cerca_data: (obra as any).checklist_aterramentos_cerca_data || existingObra.checklist_aterramentos_cerca_data || null,
+          // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
+          checklist_postes_data: checklistPostesDataConverted || existingObra.checklist_postes_data || null,
+          checklist_seccionamentos_data: checklistSeccionamentosDataConverted || existingObra.checklist_seccionamentos_data || null,
+          checklist_aterramentos_cerca_data: checklistAterramentosDataConverted || existingObra.checklist_aterramentos_cerca_data || null,
+          checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || existingObra.checklist_hastes_termometros_data || null,
         };
 
         // Executar update
@@ -1628,10 +1754,11 @@ export const syncObra = async (
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
           postes_data: obra.postes_data || null,
           observacoes: (obra as any).observacoes || null,
-          // Dados estruturados do Checklist de Fiscalização
-          checklist_postes_data: (obra as any).checklist_postes_data || null,
-          checklist_seccionamentos_data: (obra as any).checklist_seccionamentos_data || null,
-          checklist_aterramentos_cerca_data: (obra as any).checklist_aterramentos_cerca_data || null,
+          // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
+          checklist_postes_data: checklistPostesDataConverted || null,
+          checklist_seccionamentos_data: checklistSeccionamentosDataConverted || null,
+          checklist_aterramentos_cerca_data: checklistAterramentosDataConverted || null,
+          checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || null,
         })
         .eq('id', existingByNumero.id);
 
@@ -1742,10 +1869,11 @@ export const syncObra = async (
           postes_data: obra.postes_data || null,
           observacoes: (obra as any).observacoes || null,
           creator_role: (obra as any).creator_role || null,
-          // Dados estruturados do Checklist de Fiscalização
-          checklist_postes_data: (obra as any).checklist_postes_data || null,
-          checklist_seccionamentos_data: (obra as any).checklist_seccionamentos_data || null,
-          checklist_aterramentos_cerca_data: (obra as any).checklist_aterramentos_cerca_data || null,
+          // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
+          checklist_postes_data: checklistPostesDataConverted || null,
+          checklist_seccionamentos_data: checklistSeccionamentosDataConverted || null,
+          checklist_aterramentos_cerca_data: checklistAterramentosDataConverted || null,
+          checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || null,
           // user_id removido - Login por equipe não usa Supabase Auth
           created_at: obra.created_at || new Date().toISOString(),
         },

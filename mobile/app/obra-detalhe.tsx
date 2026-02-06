@@ -109,28 +109,35 @@ type OnlineObra = {
     fotos_depois: any[];
     observacao?: string;
   }>;
-  // CHECKLIST DE FISCALIZAÇÃO - Structured Data
+  // CHECKLIST DE FISCALIZAÇÃO - Structured Data (aceita strings ou objetos com {id, url})
   checklist_postes_data?: Array<{
     id: string;
     numero: string;
     status: string;
     isAditivo?: boolean;
-    posteInteiro: string[];
-    engaste: string[];
-    conexao1: string[];
-    conexao2: string[];
-    maiorEsforco: string[];
-    menorEsforco: string[];
+    posteInteiro: (string | any)[];
+    engaste: (string | any)[];
+    conexao1: (string | any)[];
+    conexao2: (string | any)[];
+    maiorEsforco: (string | any)[];
+    menorEsforco: (string | any)[];
   }>;
   checklist_seccionamentos_data?: Array<{
     id: string;
     numero: number;
-    fotos: string[];
+    fotos: (string | any)[];
   }>;
   checklist_aterramentos_cerca_data?: Array<{
     id: string;
     numero: number;
-    fotos: string[];
+    fotos: (string | any)[];
+  }>;
+  checklist_hastes_termometros_data?: Array<{
+    id: string;
+    numero: string;
+    isAditivo?: boolean;
+    fotoHaste: (string | any)[];
+    fotoTermometro: (string | any)[];
   }>;
   origem?: 'online';
 };
@@ -219,6 +226,14 @@ type ObraPayload = (PendingObra & {
     fotos_depois: any[];
     observacao?: string;
   }>;
+  // HASTES E TERMÔMETROS DATA (aceita strings ou objetos com {id, url})
+  checklist_hastes_termometros_data?: Array<{
+    id: string;
+    numero: string;
+    isAditivo?: boolean;
+    fotoHaste: (string | any)[];
+    fotoTermometro: (string | any)[];
+  }>;
 });
 
 type ObraDetalheData = (OnlineObra | ObraPayload) & {
@@ -280,7 +295,8 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_checklist_padrao_interno', label: '8️⃣ Padrão de Ligação - Interno' },
   { key: 'fotos_checklist_frying', label: '9️⃣ Frying' },
   { key: 'fotos_checklist_abertura_fechamento_pulo', label: '🔟 Abertura e Fechamento de Pulo' },
-  { key: 'fotos_checklist_panoramica_final', label: '1️⃣1️⃣ Panorâmica Final' },
+  { key: 'fotos_checklist_hastes_termometros', label: '1️⃣1️⃣ Hastes Aplicadas e Medição do Termômetro' },
+  { key: 'fotos_checklist_panoramica_final', label: '1️⃣2️⃣ Panorâmica Final' },
   { key: 'fotos_altimetria_lado_fonte', label: 'Altimetria - Lado Fonte' },
   { key: 'fotos_altimetria_medicao_fonte', label: 'Altimetria - Medição Fonte' },
   { key: 'fotos_altimetria_lado_carga', label: 'Altimetria - Lado Carga' },
@@ -390,15 +406,37 @@ export default function ObraDetalhe() {
           // Obra encontrada no AsyncStorage (fonte primária)
           console.log('📱 Carregando obra do AsyncStorage:', parsed.id);
 
-          // ✅ AUTO-CORREÇÃO: Se campos críticos estão faltando, buscar do Supabase
+          // ✅ AUTO-CORREÇÃO: Se campos críticos estão faltando ou têm URLs locais, buscar do Supabase
+          const hasLocalUrls = (data: any): boolean => {
+            if (!data || !Array.isArray(data)) return false;
+            return data.some((item: any) => {
+              if (!item) return false;
+              // Verificar todos os campos que são arrays de fotos
+              const photoFields = Object.keys(item).filter(key => Array.isArray(item[key]));
+              return photoFields.some(field => {
+                const photos = item[field];
+                return photos.some((photo: any) => {
+                  if (typeof photo === 'string') return photo.startsWith('file:///');
+                  if (typeof photo === 'object' && photo?.url) return photo.url.startsWith('file:///');
+                  return false;
+                });
+              });
+            });
+          };
+
           const precisaCorrecao = !localObra.origem || !localObra.status ||
-            (localObra.tipo_servico === 'Checklist de Fiscalização' &&
-             localObra.checklist_postes_data === undefined &&
-             localObra.checklist_seccionamentos_data === undefined &&
-             localObra.checklist_aterramentos_cerca_data === undefined);
+            (localObra.tipo_servico === 'Checklist de Fiscalização' && (
+              localObra.checklist_postes_data === undefined ||
+              localObra.checklist_seccionamentos_data === undefined ||
+              localObra.checklist_aterramentos_cerca_data === undefined ||
+              hasLocalUrls(localObra.checklist_postes_data) ||
+              hasLocalUrls(localObra.checklist_seccionamentos_data) ||
+              hasLocalUrls(localObra.checklist_aterramentos_cerca_data) ||
+              hasLocalUrls(localObra.checklist_hastes_termometros_data)
+            ));
 
           if (precisaCorrecao && localObra.synced) {
-            console.log('⚠️ Obra sincronizada mas campos faltando - buscando do Supabase...');
+            console.log('⚠️ Obra sincronizada mas com problemas nos dados - buscando do Supabase...');
             const corrigida = await forceUpdateObraFromSupabase(parsed.id);
 
             if (corrigida) {
@@ -578,7 +616,29 @@ export default function ObraDetalhe() {
           ...(poste.fotos_durante || []),
           ...(poste.fotos_depois || []),
         ]),
-      ].filter(id => typeof id === 'string') : [];
+        // Adicionar photoIds de checklist_postes_data
+        ...(sourceObra.checklist_postes_data || []).flatMap((poste: any) => [
+          ...(poste.posteInteiro || []),
+          ...(poste.engaste || []),
+          ...(poste.conexao1 || []),
+          ...(poste.conexao2 || []),
+          ...(poste.maiorEsforco || []),
+          ...(poste.menorEsforco || []),
+        ]),
+        // Adicionar photoIds de checklist_seccionamentos_data
+        ...(sourceObra.checklist_seccionamentos_data || []).flatMap((sec: any) => [
+          ...(sec.fotos || []),
+        ]),
+        // Adicionar photoIds de checklist_aterramentos_cerca_data
+        ...(sourceObra.checklist_aterramentos_cerca_data || []).flatMap((aterr: any) => [
+          ...(aterr.fotos || []),
+        ]),
+        // Adicionar photoIds de checklist_hastes_termometros_data
+        ...(sourceObra.checklist_hastes_termometros_data || []).flatMap((ponto: any) => [
+          ...(ponto.fotoHaste || []),
+          ...(ponto.fotoTermometro || []),
+        ]),
+      ].map(item => typeof item === 'string' ? item : item?.id).filter(id => typeof id === 'string') : [];
 
       // Usar função com fallback para encontrar fotos mesmo quando obraId mudou
       // IMPORTANTE: Passar serverId para buscar fotos que foram atualizadas após sync
@@ -586,17 +646,92 @@ export default function ObraDetalhe() {
       const photos = await getPhotosByObraWithFallback(obraId, allPhotoIds, serverId);
       console.log(`📸 [loadLocalPhotos] Carregou ${photos.length} foto(s) para obra ${obraId} (serverId: ${serverId || 'nenhum'})`);
       setLocalPhotos(photos);
+
+      // 🔧 AUTO-CORREÇÃO: Reconstruir checklist_hastes_termometros_data se estiver vazio mas tiver fotos
+      if (sourceObra?.tipo_servico === 'Checklist de Fiscalização' && 
+          (!sourceObra.checklist_hastes_termometros_data || sourceObra.checklist_hastes_termometros_data.length === 0)) {
+        
+        // Buscar fotos de hastes e termômetros pelo tipo
+        const hastePhotos = photos.filter(p => p.type?.includes('checklist_ponto_haste'));
+        const termometroPhotos = photos.filter(p => p.type?.includes('checklist_ponto_termometro'));
+        
+        if (hastePhotos.length > 0 || termometroPhotos.length > 0) {
+          console.log(`🔧 [loadLocalPhotos] Reconstruindo checklist_hastes_termometros_data: ${hastePhotos.length} hastes, ${termometroPhotos.length} termômetros`);
+          
+          // Agrupar fotos por pontoIndex (baseado no padrão do ID: ..._checklist_ponto_haste_{pontoIndex}_...)
+          const pontosMap = new Map<number, { fotoHaste: string[], fotoTermometro: string[], isAditivo: boolean, numero: string }>();
+          
+          // Processar fotos de haste
+          hastePhotos.forEach(foto => {
+            // Extrair pontoIndex do ID (ex: temp_xxx_checklist_ponto_haste_0_xxx)
+            const match = foto.id?.match(/checklist_ponto_haste_(\d+)_/);
+            const pontoIndex = match ? parseInt(match[1]) : 0;
+            
+            if (!pontosMap.has(pontoIndex)) {
+              pontosMap.set(pontoIndex, { fotoHaste: [], fotoTermometro: [], isAditivo: false, numero: `${pontoIndex + 1}` });
+            }
+            if (foto.id) pontosMap.get(pontoIndex)!.fotoHaste.push(foto.id);
+          });
+          
+          // Processar fotos de termômetro
+          termometroPhotos.forEach(foto => {
+            const match = foto.id?.match(/checklist_ponto_termometro_(\d+)_/);
+            const pontoIndex = match ? parseInt(match[1]) : 0;
+            
+            if (!pontosMap.has(pontoIndex)) {
+              pontosMap.set(pontoIndex, { fotoHaste: [], fotoTermometro: [], isAditivo: false, numero: `${pontoIndex + 1}` });
+            }
+            if (foto.id) pontosMap.get(pontoIndex)!.fotoTermometro.push(foto.id);
+          });
+          
+          // Converter para array e atualizar obra
+          const reconstruido = Array.from(pontosMap.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([index, data]) => ({
+              id: `ponto_${index + 1}`,
+              numero: data.numero,
+              isAditivo: data.isAditivo,
+              fotoHaste: data.fotoHaste,
+              fotoTermometro: data.fotoTermometro,
+            }));
+          
+          console.log(`✅ [loadLocalPhotos] Reconstruído ${reconstruido.length} ponto(s) de hastes/termômetros`);
+          
+          // Atualizar o estado da obra com os dados reconstruídos
+          setObra(prev => prev ? {
+            ...prev,
+            checklist_hastes_termometros_data: reconstruido,
+          } as ObraDetalheData : prev);
+        }
+      }
     } catch (error) {
       console.error('Erro ao carregar fotos locais:', error);
     }
   };
 
-  // Helper para buscar fotos pelos IDs
-  const getPhotosByIds = (photoIds: string[]): FotoInfo[] => {
+  // Helper para buscar fotos pelos IDs (aceita strings ou objetos com {id, url})
+  const getPhotosByIds = (photoIds: (string | any)[]): FotoInfo[] => {
     if (!photoIds || photoIds.length === 0) return [];
 
     const fotos: FotoInfo[] = [];
-    for (const photoId of photoIds) {
+    for (const item of photoIds) {
+      // Se já é um objeto com url (formato do banco após correção)
+      if (typeof item === 'object' && item !== null && item.url) {
+        fotos.push({
+          url: item.url,
+          latitude: item.latitude || null,
+          longitude: item.longitude || null,
+          utmX: item.utmX || null,
+          utmY: item.utmY || null,
+          utmZone: item.utmZone || null,
+        });
+        continue;
+      }
+
+      // Se é uma string (ID ou URL)
+      const photoId = typeof item === 'string' ? item : item?.id;
+      if (!photoId) continue;
+
       // Buscar nos metadados locais
       const metadata = localPhotos.find(p => p.id === photoId);
       if (metadata) {
@@ -952,7 +1087,7 @@ export default function ObraDetalhe() {
               const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
               const LOCAL_OBRAS_KEY = '@obras_local';
               const obrasJson = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
-              
+
               if (obrasJson) {
                 const obras = JSON.parse(obrasJson);
                 const obraAtualizada = obras.find((o: any) => o.id === obra.id);
@@ -965,7 +1100,7 @@ export default function ObraDetalhe() {
               console.log('✅ Obra sincronizada com sucesso!');
               Alert.alert(
                 'Sucesso',
-                isReSync 
+                isReSync
                   ? 'Alterações enviadas para o servidor com sucesso!'
                   : 'Obra sincronizada! Agora ela pode ser acompanhada no sistema web.\n\nQuando terminar, clique em "Finalizar" para concluir.',
                 [{ text: 'OK' }]
@@ -1033,7 +1168,7 @@ export default function ObraDetalhe() {
 
               // Determinar qual ID usar (serverId se for local sincronizado, ou id direto)
               const idParaFinalizar = (isLocalDraft && obra.serverId) ? obra.serverId : obra.id;
-              
+
               console.log('📤 Finalizando obra:', idParaFinalizar);
 
               const { error } = await supabase
@@ -1203,10 +1338,10 @@ export default function ObraDetalhe() {
           const isLocalDraft = obra.id.startsWith('local_');
           // ✅ CORRIGIDO: Verificar serverId (indica que já foi sincronizado com Supabase)
           const jaSincronizada = !isLocalDraft || !!obra.serverId;
-          
+
           // Finalizar: só habilitado se já sincronizada E sem fotos faltantes E online
           const podeFinalizar = jaSincronizada && isOnline && fotosFaltantes === 0;
-          
+
           // ✅ CORRIGIDO: Sincronizar aparece se:
           // 1. É rascunho local E NÃO tem serverId (primeira sync)
           // 2. OU tem serverId MAS synced=false (foi editada após sync)
@@ -1299,10 +1434,10 @@ export default function ObraDetalhe() {
                         color="#fff"
                       />
                       <Text style={styles.finalizarButtonText}>
-                        {!jaSincronizada 
-                          ? '⏳ Sincronize primeiro' 
-                          : fotosFaltantes > 0 
-                            ? `Faltam ${fotosFaltantes} foto(s)` 
+                        {!jaSincronizada
+                          ? '⏳ Sincronize primeiro'
+                          : fotosFaltantes > 0
+                            ? `Faltam ${fotosFaltantes} foto(s)`
                             : '✅ Finalizar Obra'}
                       </Text>
                     </>
@@ -1341,10 +1476,12 @@ export default function ObraDetalhe() {
                         const numero = typeof poste?.numero === 'number'
                           ? poste.numero
                           : parseInt(String(poste?.id || '').replace(/[^0-9]/g, ''), 10);
-                        const label = numero ? `P${numero}` : String(poste?.id || `P${index + 1}`);
+                        const isAditivo = poste?.isAditivo === true;
+                        const prefixo = isAditivo ? 'AD-P' : 'P';
+                        const label = numero ? `${prefixo}${numero}` : String(poste?.id || `P${index + 1}`);
                         return (
-                          <View key={`${label}-${index}`} style={styles.posteIdentificacaoItem}>
-                            <Text style={styles.posteIdentificacaoText}>{label}</Text>
+                          <View key={`${label}-${index}`} style={[styles.posteIdentificacaoItem, isAditivo && styles.posteIdentificacaoItemAditivo]}>
+                            <Text style={[styles.posteIdentificacaoText, isAditivo && styles.posteIdentificacaoTextAditivo]}>{label}</Text>
                           </View>
                         );
                       })}
@@ -1723,6 +1860,64 @@ export default function ObraDetalhe() {
                             );
                           })}
                         </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            }
+
+            // 🎯 RENDERIZAÇÃO ESPECIAL PARA HASTES APLICADAS E MEDIÇÃO DO TERMÔMETRO
+            if (section.key === 'fotos_checklist_hastes_termometros' && obra.checklist_hastes_termometros_data?.length) {
+              return (
+                <View key={section.key} style={styles.infoCard}>
+                  <Text style={styles.photoSectionTitle}>{section.label}</Text>
+                  {obra.checklist_hastes_termometros_data.map((ponto, pontoIndex) => {
+                    const categoriasHaste = [
+                      { label: '📸 Haste Aplicada', fotos: ponto.fotoHaste || [] },
+                      { label: '🌡️ Medição do Termômetro', fotos: ponto.fotoTermometro || [] },
+                    ];
+
+                    const totalFotos = categoriasHaste.reduce((sum, cat) => sum + cat.fotos.length, 0);
+                    if (totalFotos === 0) return null;
+
+                    return (
+                      <View key={ponto.id || pontoIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: ponto.isAditivo ? '#ff6b6b' : '#17a2b8' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                          {ponto.isAditivo ? 'AD-' : ''}P{ponto.numero} ({totalFotos} fotos)
+                          {ponto.isAditivo && <Text style={{ fontSize: 12, color: '#ff6b6b', marginLeft: 8 }}> (Aditivo)</Text>}
+                        </Text>
+                        {categoriasHaste.map((categoria, catIndex) => {
+                          const fotosCarregadas = getPhotosByIds(categoria.fotos);
+                          if (fotosCarregadas.length === 0) return null;
+
+                          return (
+                            <View key={catIndex} style={{ marginBottom: 12 }}>
+                              <Text style={{ fontSize: 14, color: '#666', marginBottom: 6, marginLeft: 8 }}>
+                                {categoria.label} ({fotosCarregadas.length})
+                              </Text>
+                              <View style={styles.photoGrid}>
+                                {fotosCarregadas.map((foto, fotoIndex) => {
+                                  const source = getPhotoSource(foto);
+                                  if (!source) return null;
+
+                                  return (
+                                    <TouchableOpacity
+                                      key={`${ponto.id}-${catIndex}-${fotoIndex}`}
+                                      onPress={() => openPhotoModal(foto, section.key)}
+                                      activeOpacity={0.8}
+                                    >
+                                      <Image
+                                        source={source}
+                                        style={styles.photoThumb}
+                                      />
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          );
+                        })}
                       </View>
                     );
                   })}
@@ -2307,9 +2502,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
   },
+  posteIdentificacaoItemAditivo: {
+    backgroundColor: '#dc2626',
+  },
   posteIdentificacaoText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  posteIdentificacaoTextAditivo: {
+    color: '#fff',
   },
 });

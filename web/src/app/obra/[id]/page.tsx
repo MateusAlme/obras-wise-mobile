@@ -98,31 +98,66 @@ export default function ObraDetailPage() {
   // Função para converter IDs de fotos em objetos FotoInfo com URLs
   function convertPhotoIdsToFotoInfo(photoField: any): FotoInfo[] {
     if (!photoField) return []
+    if (!Array.isArray(photoField)) return []
+    if (photoField.length === 0) return []
 
-    // Se já é array de objetos com URL, retornar como está
-    if (Array.isArray(photoField) && photoField.length > 0 && typeof photoField[0] === 'object' && photoField[0].url) {
-      return photoField as FotoInfo[]
-    }
-
-    // Se é array de strings (IDs), converter para objetos com URL do storage
-    if (Array.isArray(photoField) && photoField.length > 0 && typeof photoField[0] === 'string') {
-      return photoField.map((photoId: string) => {
-        // Gerar URL do Supabase Storage a partir do photo ID
-        // Formato: obra-photos/{obraId}/{photoId}.jpg
-        const { data } = supabase.storage
-          .from('obra-photos')
-          .getPublicUrl(`${photoId}`)
-
+    return photoField.map((item: any) => {
+      // CASO 1: Já é objeto com URL (dados sincronizados corretamente)
+      if (typeof item === 'object' && item !== null && item.url) {
+        // Filtrar URLs locais (file:///)
+        if (item.url.startsWith('file:///')) {
+          console.warn('⚠️ [convertPhotoIdsToFotoInfo] URL local ignorada:', item.url.substring(0, 60))
+          return null
+        }
         return {
-          url: data.publicUrl,
+          url: item.url,
+          latitude: item.latitude || null,
+          longitude: item.longitude || null,
+          placaData: item.placaData || item.placa_data || null
+        } as FotoInfo
+      }
+
+      // CASO 2: String que já é URL completa (começa com http)
+      if (typeof item === 'string' && item.startsWith('http')) {
+        return {
+          url: item,
           latitude: null,
           longitude: null,
           placaData: null
-        }
-      })
-    }
+        } as FotoInfo
+      }
 
-    return []
+      // CASO 3: String que é um photo ID (formato: obraId_type_index_timestamp ou local_timestamp_type_index_timestamp)
+      // Tentar reconstruir a URL do storage
+      if (typeof item === 'string') {
+        // Tentar buscar a foto no storage usando o ID como nome do arquivo
+        // O storage usa o padrão: obra-photos/{obraId}/{photoId}
+        const photoId = item
+
+        // Se começa com "local_" ou tem padrão de ID temporário, não conseguimos reconstruir
+        if (photoId.startsWith('temp_') || photoId.startsWith('local_')) {
+          console.warn('⚠️ [convertPhotoIdsToFotoInfo] PhotoID temporário encontrado:', photoId)
+          console.warn('   Esta foto nunca foi sincronizada corretamente.')
+          return null
+        }
+
+        // Tentar reconstruir a URL usando o padrão do Supabase Storage
+        // Formato: https://{project}.supabase.co/storage/v1/object/public/obra-photos/{photoId}
+        const storageUrl = `${supabase.storage.from('obra-photos').getPublicUrl(photoId).data.publicUrl}`
+
+        console.log('ℹ️ [convertPhotoIdsToFotoInfo] Reconstruindo URL para photoID:', photoId)
+        console.log('   URL reconstruída:', storageUrl)
+
+        return {
+          url: storageUrl,
+          latitude: null,
+          longitude: null,
+          placaData: null
+        } as FotoInfo
+      }
+
+      return null
+    }).filter(Boolean) as FotoInfo[]
   }
 
   // Função para converter estruturas JSONB do checklist
@@ -208,6 +243,7 @@ export default function ObraDetailPage() {
         checklist_postes_data: convertChecklistJSONBPhotos(data.checklist_postes_data),
         checklist_seccionamentos_data: convertChecklistJSONBPhotos(data.checklist_seccionamentos_data),
         checklist_aterramentos_cerca_data: convertChecklistJSONBPhotos(data.checklist_aterramentos_cerca_data),
+        checklist_hastes_termometros_data: convertChecklistJSONBPhotos(data.checklist_hastes_termometros_data),
       }
 
       setObra(obraComFotos)
@@ -870,31 +906,161 @@ export default function ObraDetailPage() {
             ) : null}
 
             {/* Checklist de Fiscalização */}
-            {(obra.fotos_checklist_croqui?.length || obra.fotos_checklist_panoramica_inicial?.length || obra.fotos_checklist_chede?.length || obra.fotos_checklist_aterramento_cerca?.length || getAterramentosFotos(obra).length > 0 || obra.fotos_checklist_padrao_geral?.length || obra.fotos_checklist_padrao_interno?.length || obra.fotos_checklist_frying?.length || obra.fotos_checklist_abertura_fechamento_pulo?.length || obra.fotos_checklist_panoramica_final?.length || obra.fotos_checklist_postes?.length || obra.fotos_checklist_seccionamentos?.length) ? (
+            {(obra.fotos_checklist_croqui?.length || obra.fotos_checklist_panoramica_inicial?.length || obra.fotos_checklist_chede?.length || obra.fotos_checklist_aterramento_cerca?.length || getAterramentosFotos(obra).length > 0 || obra.fotos_checklist_padrao_geral?.length || obra.fotos_checklist_padrao_interno?.length || obra.fotos_checklist_frying?.length || obra.fotos_checklist_abertura_fechamento_pulo?.length || obra.fotos_checklist_panoramica_final?.length || obra.fotos_checklist_postes?.length || obra.fotos_checklist_seccionamentos?.length || obra.checklist_postes_data?.length || obra.checklist_seccionamentos_data?.length || obra.checklist_hastes_termometros_data?.length) ? (
               <div className="mt-8 pt-8 border-t border-gray-200">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Checklist de Fiscalização</h3>
-                <PhotoGallery photos={obra.fotos_checklist_croqui || []} title="Croqui" sectionKey="fotos_checklist_croqui" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_panoramica_inicial || []} title="Panorâmica Inicial" sectionKey="fotos_checklist_panoramica_inicial" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_chede || []} title="CHEDE" sectionKey="fotos_checklist_chede" {...galleryProps} />
+                
+                {/* 1. Croqui */}
+                <PhotoGallery photos={obra.fotos_checklist_croqui || []} title="1. Croqui da Obra" sectionKey="fotos_checklist_croqui" {...galleryProps} />
+                
+                {/* 2. Panorâmica Inicial */}
+                <PhotoGallery photos={obra.fotos_checklist_panoramica_inicial || []} title="2. Panorâmica Inicial" sectionKey="fotos_checklist_panoramica_inicial" {...galleryProps} />
+                
+                {/* 3. CHEDE */}
+                <PhotoGallery photos={obra.fotos_checklist_chede || []} title="3. Foto da Chave com Componente (CHEDE)" sectionKey="fotos_checklist_chede" {...galleryProps} />
+                
+                {/* 4. Postes - Exibição estruturada */}
+                {obra.checklist_postes_data && obra.checklist_postes_data.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">4. Registro dos Postes</h4>
+                    {obra.checklist_postes_data.map((poste: any, posteIndex: number) => {
+                      const prefixo = poste.isAditivo ? 'AD-P' : 'P';
+                      const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
+                      const status = poste.status || 'N/A';
+                      return (
+                        <div key={posteIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
+                              {label}
+                            </span>
+                            <span className="text-sm text-gray-600">Status: {status}</span>
+                          </div>
+                          {poste.posteInteiro?.length > 0 && (
+                            <PhotoGallery photos={poste.posteInteiro} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
+                          )}
+                          {poste.engaste?.length > 0 && (
+                            <PhotoGallery photos={poste.engaste} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
+                          )}
+                          {poste.conexao1?.length > 0 && (
+                            <PhotoGallery photos={poste.conexao1} title="Conexão 1" sectionKey={`poste_${posteIndex}_conexao1`} {...galleryProps} />
+                          )}
+                          {poste.conexao2?.length > 0 && (
+                            <PhotoGallery photos={poste.conexao2} title="Conexão 2" sectionKey={`poste_${posteIndex}_conexao2`} {...galleryProps} />
+                          )}
+                          {poste.maiorEsforco?.length > 0 && (
+                            <PhotoGallery photos={poste.maiorEsforco} title="Maior Esforço" sectionKey={`poste_${posteIndex}_maior`} {...galleryProps} />
+                          )}
+                          {poste.menorEsforco?.length > 0 && (
+                            <PhotoGallery photos={poste.menorEsforco} title="Menor Esforço" sectionKey={`poste_${posteIndex}_menor`} {...galleryProps} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Fallback para formato antigo de postes */}
+                {(!obra.checklist_postes_data || obra.checklist_postes_data.length === 0) && (obra.fotos_checklist_postes?.length ?? 0) > 0 && (
+                  <PhotoGallery photos={obra.fotos_checklist_postes || []} title="4. Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
+                )}
+                
+                {/* 5. Seccionamentos - Exibição estruturada */}
+                {obra.checklist_seccionamentos_data && obra.checklist_seccionamentos_data.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">5. Seccionamentos</h4>
+                    {obra.checklist_seccionamentos_data.map((secc: any, seccIndex: number) => {
+                      const label = secc.numero ? `S${secc.numero}` : `Seccionamento ${seccIndex + 1}`;
+                      return (
+                        <div key={seccIndex} className="mb-4 p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="px-3 py-1 bg-purple-500 text-white rounded-full text-sm font-bold">{label}</span>
+                          </div>
+                          {secc.fotos?.length > 0 && (
+                            <PhotoGallery photos={secc.fotos} title="Fotos" sectionKey={`secc_${seccIndex}_fotos`} {...galleryProps} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* Fallback para formato antigo de seccionamentos */}
+                {(!obra.checklist_seccionamentos_data || obra.checklist_seccionamentos_data.length === 0) && (obra.fotos_checklist_seccionamentos?.length ?? 0) > 0 && (
+                  <PhotoGallery photos={obra.fotos_checklist_seccionamentos || []} title="5. Seccionamentos" sectionKey="fotos_checklist_seccionamentos" {...galleryProps} />
+                )}
 
-                {/* Aterramentos - suporta formato novo (estruturado) e antigo */}
-                {getAterramentosFotos(obra).map((aterramento, index) => (
-                  <PhotoGallery
-                    key={`aterramento_${index}`}
-                    photos={aterramento.fotos}
-                    title={aterramento.titulo}
-                    sectionKey={`fotos_aterramento_${index}`}
-                    {...galleryProps}
-                  />
-                ))}
+                {/* 6. Aterramentos de Cerca - suporta formato novo (estruturado) e antigo */}
+                {getAterramentosFotos(obra).length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">6. Aterramento de Cerca</h4>
+                    {getAterramentosFotos(obra).map((aterramento, index) => (
+                      <PhotoGallery
+                        key={`aterramento_${index}`}
+                        photos={aterramento.fotos}
+                        title={aterramento.titulo}
+                        sectionKey={`fotos_aterramento_${index}`}
+                        {...galleryProps}
+                      />
+                    ))}
+                  </div>
+                )}
 
-                <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="Padrão Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="Padrão Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="Frying" sectionKey="fotos_checklist_frying" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_postes || []} title="Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
-                <PhotoGallery photos={obra.fotos_checklist_seccionamentos || []} title="Seccionamentos" sectionKey="fotos_checklist_seccionamentos" {...galleryProps} />
+                {/* 7. Padrão Geral */}
+                <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="7. Padrão de Ligação - Vista Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
+                
+                {/* 8. Padrão Interno */}
+                <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="8. Padrão de Ligação - Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
+                
+                {/* 9. Frying */}
+                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="9. Frying" sectionKey="fotos_checklist_frying" {...galleryProps} />
+                
+                {/* 10. Abertura e Fechamento de Pulo */}
+                <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="10. Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />
+                
+                {/* 11. Hastes Aplicadas e Medição do Termômetro */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 11. Hastes Aplicadas e Medição do Termômetro</h4>
+                  {obra.checklist_hastes_termometros_data && obra.checklist_hastes_termometros_data.length > 0 ? (
+                    <>
+                      {obra.checklist_hastes_termometros_data.map((ponto: any, pontoIndex: number) => {
+                        const prefixo = ponto.isAditivo ? 'AD-P' : 'P';
+                        const label = ponto.numero ? `${prefixo}${ponto.numero}` : `Ponto ${pontoIndex + 1}`;
+
+                        // Contar fotos válidas
+                        const hasteFotos = ponto.fotoHaste || [];
+                        const termoFotos = ponto.fotoTermometro || [];
+                        const totalFotos = hasteFotos.length + termoFotos.length;
+
+                        return (
+                          <div key={pontoIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${ponto.isAditivo ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`px-3 py-1 rounded-full text-sm font-bold ${ponto.isAditivo ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                                {label}
+                              </span>
+                              <span className="text-sm text-gray-500">
+                                ({totalFotos} {totalFotos === 1 ? 'foto' : 'fotos'})
+                              </span>
+                            </div>
+                            {hasteFotos.length > 0 && (
+                              <PhotoGallery photos={hasteFotos} title="Haste Aplicada" sectionKey={`haste_${pontoIndex}`} {...galleryProps} />
+                            )}
+                            {termoFotos.length > 0 && (
+                              <PhotoGallery photos={termoFotos} title="Medição do Termômetro" sectionKey={`termo_${pontoIndex}`} {...galleryProps} />
+                            )}
+                            {totalFotos === 0 && (
+                              <p className="text-gray-500 text-sm italic">Nenhuma foto adicionada ainda.</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <div className="p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center">
+                      <p className="text-gray-500">Nenhuma foto adicionada ainda.</p>
+                    </div>
+                  )}
+                </div>
+                
+                {/* 12. Panorâmica Final */}
+                <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="12. Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
               </div>
             ) : null}
           </div>
