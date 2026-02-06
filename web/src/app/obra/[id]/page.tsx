@@ -66,10 +66,10 @@ function hasRealPhotos(structuredData: any[] | undefined): boolean {
 function getAterramentosFotos(obra: Obra): { titulo: string; fotos: FotoInfo[] }[] {
   // Tentar usar formato novo (estruturado) - mas só se tiver fotos reais
   if (hasRealPhotos(obra.checklist_aterramentos_cerca_data)) {
-    return obra.checklist_aterramentos_cerca_data.map((aterr: any, index: number) => ({
+    return obra.checklist_aterramentos_cerca_data?.map((aterr: any, index: number) => ({
       titulo: `Checklist - Aterramento de Cerca A${aterr.numero || (index + 1)}`,
       fotos: aterr.fotos || []
-    }))
+    })) || []
   }
 
   // Fallback: usar formato antigo (coluna única)
