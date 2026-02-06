@@ -1362,6 +1362,14 @@ export const syncObra = async (
       // Não lança erro - continua com as fotos que subiram com sucesso
     }
 
+    // ✅ CRÍTICO: Converter estruturas JSONB do checklist APÓS upload das fotos
+    // Isso garante que as URLs públicas já estejam disponíveis no metadata
+    console.log(`🔄 [syncObra] Convertendo estruturas JSONB com URLs das fotos...`);
+    const checklistPostesDataConverted = await convertChecklistPostesData((obra as any).checklist_postes_data);
+    const checklistSeccionamentosDataConverted = await convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data);
+    const checklistAterramentosDataConverted = await convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data);
+    const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
+
     // Obter URLs das fotos uploadadas
     console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas...`);
     console.log(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
@@ -1506,12 +1514,6 @@ export const syncObra = async (
     const fotosVazamentoTombamentoInstaladoData = convertPhotosToData(fotosVazamentoTombamentoInstaladoMetadata);
     const fotosVazamentoPlacaInstaladoData = convertPhotosToData(fotosVazamentoPlacaInstaladoMetadata);
     const fotosVazamentoInstalacaoData = convertPhotosToData(fotosVazamentoInstalacaoMetadata);
-
-    // ✅ NOVO: Converter estruturas JSONB do checklist para ter URLs nas fotos
-    const checklistPostesDataConverted = await convertChecklistPostesData((obra as any).checklist_postes_data);
-    const checklistSeccionamentosDataConverted = await convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data);
-    const checklistAterramentosDataConverted = await convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data);
-    const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
 
     // Se a obra pendente representa a edição de uma obra já existente no servidor,
     // devemos atualizar (UPDATE) em vez de inserir (INSERT). Detectamos isso quando:
