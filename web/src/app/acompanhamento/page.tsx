@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
-import { supabase, type Obra, getObraStatus } from '@/lib/supabase'
+import { supabase, type Obra, type FotoInfo, getObraStatus } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
 import { format } from 'date-fns'
@@ -25,10 +25,83 @@ export default function AcompanhamentoPage() {
     loadObras()
   }, [])
 
+  // Função para converter IDs de fotos em objetos FotoInfo com URLs
+  function convertPhotoIdsToFotoInfo(photoField: any): FotoInfo[] {
+    if (!photoField) return []
+    if (!Array.isArray(photoField)) return []
+    if (photoField.length === 0) return []
+
+    return photoField.map((item: any) => {
+      // CASO 1: Já é objeto com URL (dados sincronizados corretamente)
+      if (typeof item === 'object' && item !== null && item.url) {
+        // Filtrar URLs locais (file:///)
+        if (item.url.startsWith('file:///')) {
+          return null
+        }
+        return {
+          url: item.url,
+          latitude: item.latitude || null,
+          longitude: item.longitude || null,
+          placaData: item.placaData || item.placa_data || null
+        } as FotoInfo
+      }
+
+      // CASO 2: String que é uma URL direta (https://...)
+      if (typeof item === 'string' && item.startsWith('http')) {
+        return {
+          url: item,
+          latitude: null,
+          longitude: null,
+          placaData: null
+        } as FotoInfo
+      }
+
+      // CASO 3: String que é um photo ID - tentar reconstruir a URL do storage
+      if (typeof item === 'string') {
+        const photoId = item
+
+        // Se começa com "temp_" ou "local_", não conseguimos reconstruir
+        if (photoId.startsWith('temp_') || photoId.startsWith('local_')) {
+          return null
+        }
+
+        // Tentar reconstruir a URL usando o padrão do Supabase Storage
+        const storageUrl = `${supabase.storage.from('obra-photos').getPublicUrl(photoId).data.publicUrl}`
+
+        return {
+          url: storageUrl,
+          latitude: null,
+          longitude: null,
+          placaData: null
+        } as FotoInfo
+      }
+
+      return null
+    }).filter((item: FotoInfo | null): item is FotoInfo => item !== null)
+  }
+
   function handleOpenBook(obraId: string) {
     const obra = obras.find(o => o.id === obraId)
     if (obra) {
-      setSelectedObraForBook(obra)
+      console.log('🔍 [handleOpenBook] Dados originais da obra:', obra.obra)
+      console.log('   fotos_antes original:', obra.fotos_antes)
+
+      // Converter fotos para o formato correto antes de exibir
+      const fotosAntesConvertidas = convertPhotoIdsToFotoInfo(obra.fotos_antes)
+      const fotosDuranteConvertidas = convertPhotoIdsToFotoInfo(obra.fotos_durante)
+      const fotosDepoisConvertidas = convertPhotoIdsToFotoInfo(obra.fotos_depois)
+
+      console.log('   fotos_antes convertidas:', fotosAntesConvertidas)
+
+      const obraComFotosConvertidas: Obra = {
+        ...obra,
+        fotos_antes: fotosAntesConvertidas,
+        fotos_durante: fotosDuranteConvertidas,
+        fotos_depois: fotosDepoisConvertidas,
+        fotos_abertura: convertPhotoIdsToFotoInfo(obra.fotos_abertura),
+        fotos_fechamento: convertPhotoIdsToFotoInfo(obra.fotos_fechamento),
+      }
+      setSelectedObraForBook(obraComFotosConvertidas)
     }
   }
 

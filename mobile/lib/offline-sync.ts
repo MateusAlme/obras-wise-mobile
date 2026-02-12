@@ -263,6 +263,8 @@ export const saveObraLocal = async (
       locallyModified: obraIndex !== -1 || !!serverId, // Modificada se já existia ou se já foi para o servidor
       last_modified: now,
       created_at: obraIndex !== -1 ? (existingObra?.created_at || obra.created_at || now) : (obra.created_at || now),
+      // ✅ CRÍTICO: Preservar data original da obra (não sobrescrever com data atual)
+      data: obraIndex !== -1 ? (existingObra?.data || obra.data) : obra.data,
     };
 
     if (obraIndex !== -1) {

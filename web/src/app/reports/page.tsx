@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useRef } from 'react'
-import { supabase, type Obra, getObraStatus } from '@/lib/supabase'
+import { supabase, type Obra, type FotoInfo, getObraStatus } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
 import { generatePDF } from '@/lib/pdf-generator'
@@ -210,10 +210,74 @@ export default function ReportsPage() {
     return count
   }
 
+  // Função para converter IDs de fotos em objetos FotoInfo com URLs
+  function convertPhotoIdsToFotoInfo(photoField: any): FotoInfo[] {
+    if (!photoField) return []
+    if (!Array.isArray(photoField)) return []
+    if (photoField.length === 0) return []
+
+    return photoField.map((item: any) => {
+      // CASO 1: Já é objeto com URL (dados sincronizados corretamente)
+      if (typeof item === 'object' && item !== null && item.url) {
+        // Filtrar URLs locais (file:///)
+        if (item.url.startsWith('file:///')) {
+          return null
+        }
+        return {
+          url: item.url,
+          latitude: item.latitude || null,
+          longitude: item.longitude || null,
+          placaData: item.placaData || item.placa_data || null
+        } as FotoInfo
+      }
+
+      // CASO 2: String que é uma URL direta (https://...)
+      if (typeof item === 'string' && item.startsWith('http')) {
+        return {
+          url: item,
+          latitude: null,
+          longitude: null,
+          placaData: null
+        } as FotoInfo
+      }
+
+      // CASO 3: String que é um photo ID - tentar reconstruir a URL do storage
+      if (typeof item === 'string') {
+        const photoId = item
+
+        // Se começa com "temp_" ou "local_", não conseguimos reconstruir
+        if (photoId.startsWith('temp_') || photoId.startsWith('local_')) {
+          return null
+        }
+
+        // Tentar reconstruir a URL usando o padrão do Supabase Storage
+        const storageUrl = `${supabase.storage.from('obra-photos').getPublicUrl(photoId).data.publicUrl}`
+
+        return {
+          url: storageUrl,
+          latitude: null,
+          longitude: null,
+          placaData: null
+        } as FotoInfo
+      }
+
+      return null
+    }).filter((item: FotoInfo | null): item is FotoInfo => item !== null)
+  }
+
   function handleOpenBook(obraId: string) {
     const obra = obras.find(o => o.id === obraId)
     if (obra) {
-      setSelectedObraForBook(obra)
+      // Converter fotos para o formato correto antes de exibir
+      const obraComFotosConvertidas: Obra = {
+        ...obra,
+        fotos_antes: convertPhotoIdsToFotoInfo(obra.fotos_antes),
+        fotos_durante: convertPhotoIdsToFotoInfo(obra.fotos_durante),
+        fotos_depois: convertPhotoIdsToFotoInfo(obra.fotos_depois),
+        fotos_abertura: convertPhotoIdsToFotoInfo(obra.fotos_abertura),
+        fotos_fechamento: convertPhotoIdsToFotoInfo(obra.fotos_fechamento),
+      }
+      setSelectedObraForBook(obraComFotosConvertidas)
     }
   }
 
@@ -828,117 +892,20 @@ export default function ReportsPage() {
                 {/* Galerias de Fotos - Dinâmico por tipo de serviço */}
                 <div className="space-y-8">
                   {(() => {
-                    // Mapeamento de todas as seções de fotos com nomes e cores
+                    // ...existing code for photoSections, colorMap, lightColorMap
                     const photoSections: { key: keyof Obra; label: string; color: string; lightColor: string }[] = [
-                      // Básicas
-                      { key: 'fotos_antes', label: 'Fotos Antes', color: 'from-blue-500 to-blue-600', lightColor: 'blue' },
-                      { key: 'fotos_durante', label: 'Fotos Durante', color: 'from-orange-500 to-orange-600', lightColor: 'orange' },
-                      { key: 'fotos_depois', label: 'Fotos Depois', color: 'from-green-500 to-green-600', lightColor: 'green' },
-                      // Abertura/Fechamento de Chave
-                      { key: 'fotos_abertura', label: 'Abertura de Chave', color: 'from-cyan-500 to-cyan-600', lightColor: 'cyan' },
-                      { key: 'fotos_fechamento', label: 'Fechamento de Chave', color: 'from-teal-500 to-teal-600', lightColor: 'teal' },
-                      // DITAIS
-                      { key: 'fotos_ditais_abertura', label: 'DITAIS - Desligar/Abertura', color: 'from-red-500 to-red-600', lightColor: 'red' },
-                      { key: 'fotos_ditais_impedir', label: 'DITAIS - Impedir Religamento', color: 'from-red-600 to-red-700', lightColor: 'red' },
-                      { key: 'fotos_ditais_testar', label: 'DITAIS - Testar Ausência de Tensão', color: 'from-red-500 to-red-600', lightColor: 'red' },
-                      { key: 'fotos_ditais_aterrar', label: 'DITAIS - Aterrar', color: 'from-red-600 to-red-700', lightColor: 'red' },
-                      { key: 'fotos_ditais_sinalizar', label: 'DITAIS - Sinalizar/Isolar', color: 'from-red-500 to-red-600', lightColor: 'red' },
-                      // Aterramento
-                      { key: 'fotos_aterramento_vala_aberta', label: 'Aterramento - Vala Aberta', color: 'from-amber-500 to-amber-600', lightColor: 'amber' },
-                      { key: 'fotos_aterramento_hastes', label: 'Aterramento - Hastes Aplicadas', color: 'from-amber-600 to-amber-700', lightColor: 'amber' },
-                      { key: 'fotos_aterramento_vala_fechada', label: 'Aterramento - Vala Fechada', color: 'from-amber-500 to-amber-600', lightColor: 'amber' },
-                      { key: 'fotos_aterramento_medicao', label: 'Aterramento - Medição Terrômetro', color: 'from-amber-600 to-amber-700', lightColor: 'amber' },
-                      // Transformador
-                      { key: 'fotos_transformador_laudo', label: 'Transformador - Laudo', color: 'from-purple-500 to-purple-600', lightColor: 'purple' },
-                      { key: 'fotos_transformador_componente_instalado', label: 'Transformador - Componente Instalado', color: 'from-purple-600 to-purple-700', lightColor: 'purple' },
-                      { key: 'fotos_transformador_tombamento_instalado', label: 'Transformador - Tombamento (Instalado)', color: 'from-purple-500 to-purple-600', lightColor: 'purple' },
-                      { key: 'fotos_transformador_tape', label: 'Transformador - Tape', color: 'from-purple-600 to-purple-700', lightColor: 'purple' },
-                      { key: 'fotos_transformador_placa_instalado', label: 'Transformador - Placa (Instalado)', color: 'from-purple-500 to-purple-600', lightColor: 'purple' },
-                      { key: 'fotos_transformador_instalado', label: 'Transformador - Instalado', color: 'from-purple-600 to-purple-700', lightColor: 'purple' },
-                      { key: 'fotos_transformador_antes_retirar', label: 'Transformador - Antes de Retirar', color: 'from-purple-500 to-purple-600', lightColor: 'purple' },
-                      { key: 'fotos_transformador_tombamento_retirado', label: 'Transformador - Tombamento (Retirado)', color: 'from-purple-600 to-purple-700', lightColor: 'purple' },
-                      { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa (Retirado)', color: 'from-purple-500 to-purple-600', lightColor: 'purple' },
-                      // Medidor
-                      { key: 'fotos_medidor_padrao', label: 'Medidor - Padrão c/ Medidor', color: 'from-indigo-500 to-indigo-600', lightColor: 'indigo' },
-                      { key: 'fotos_medidor_leitura', label: 'Medidor - Leitura', color: 'from-indigo-600 to-indigo-700', lightColor: 'indigo' },
-                      { key: 'fotos_medidor_selo_born', label: 'Medidor - Selo do Born', color: 'from-indigo-500 to-indigo-600', lightColor: 'indigo' },
-                      { key: 'fotos_medidor_selo_caixa', label: 'Medidor - Selo da Caixa', color: 'from-indigo-600 to-indigo-700', lightColor: 'indigo' },
-                      { key: 'fotos_medidor_identificador_fase', label: 'Medidor - Identificador de Fase', color: 'from-indigo-500 to-indigo-600', lightColor: 'indigo' },
-                      // Checklist
-                      { key: 'fotos_checklist_croqui', label: 'Checklist - Croqui', color: 'from-emerald-500 to-emerald-600', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_panoramica_inicial', label: 'Checklist - Panorâmica Inicial', color: 'from-emerald-600 to-emerald-700', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_chede', label: 'Checklist - CHEDE', color: 'from-emerald-500 to-emerald-600', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_aterramento_cerca', label: 'Checklist - Aterramento de Cerca', color: 'from-emerald-600 to-emerald-700', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_padrao_geral', label: 'Checklist - Padrão Geral', color: 'from-emerald-500 to-emerald-600', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_padrao_interno', label: 'Checklist - Padrão Interno', color: 'from-emerald-600 to-emerald-700', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_panoramica_final', label: 'Checklist - Panorâmica Final', color: 'from-emerald-500 to-emerald-600', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_postes', label: 'Checklist - Postes', color: 'from-emerald-600 to-emerald-700', lightColor: 'emerald' },
-                      { key: 'fotos_checklist_seccionamentos', label: 'Checklist - Seccionamentos', color: 'from-emerald-500 to-emerald-600', lightColor: 'emerald' },
-                      // Altimetria
-                      { key: 'fotos_altimetria_lado_fonte', label: 'Altimetria - Lado Fonte', color: 'from-sky-500 to-sky-600', lightColor: 'sky' },
-                      { key: 'fotos_altimetria_medicao_fonte', label: 'Altimetria - Medição Fonte', color: 'from-sky-600 to-sky-700', lightColor: 'sky' },
-                      { key: 'fotos_altimetria_lado_carga', label: 'Altimetria - Lado Carga', color: 'from-sky-500 to-sky-600', lightColor: 'sky' },
-                      { key: 'fotos_altimetria_medicao_carga', label: 'Altimetria - Medição Carga', color: 'from-sky-600 to-sky-700', lightColor: 'sky' },
-                      // Vazamento
-                      { key: 'fotos_vazamento_evidencia', label: 'Vazamento - Evidência', color: 'from-rose-500 to-rose-600', lightColor: 'rose' },
-                      { key: 'fotos_vazamento_equipamentos_limpeza', label: 'Vazamento - Equipamentos de Limpeza', color: 'from-rose-600 to-rose-700', lightColor: 'rose' },
-                      { key: 'fotos_vazamento_tombamento_retirado', label: 'Vazamento - Tombamento Retirado', color: 'from-rose-500 to-rose-600', lightColor: 'rose' },
-                      { key: 'fotos_vazamento_placa_retirado', label: 'Vazamento - Placa Retirado', color: 'from-rose-600 to-rose-700', lightColor: 'rose' },
-                      { key: 'fotos_vazamento_tombamento_instalado', label: 'Vazamento - Tombamento Instalado', color: 'from-rose-500 to-rose-600', lightColor: 'rose' },
-                      { key: 'fotos_vazamento_placa_instalado', label: 'Vazamento - Placa Instalado', color: 'from-rose-600 to-rose-700', lightColor: 'rose' },
-                      { key: 'fotos_vazamento_instalacao', label: 'Vazamento - Instalação', color: 'from-rose-500 to-rose-600', lightColor: 'rose' },
-                    ]
-
+                      // ...existing code...
+                    ];
                     const colorMap: Record<string, string> = {
-                      blue: 'bg-blue-600',
-                      orange: 'bg-orange-600',
-                      green: 'bg-green-600',
-                      cyan: 'bg-cyan-600',
-                      teal: 'bg-teal-600',
-                      red: 'bg-red-600',
-                      amber: 'bg-amber-600',
-                      purple: 'bg-purple-600',
-                      indigo: 'bg-indigo-600',
-                      emerald: 'bg-emerald-600',
-                      sky: 'bg-sky-600',
-                      rose: 'bg-rose-600',
-                    }
-
+                      blue: 'bg-blue-600', orange: 'bg-orange-600', green: 'bg-green-600', cyan: 'bg-cyan-600', teal: 'bg-teal-600', red: 'bg-red-600', amber: 'bg-amber-600', purple: 'bg-purple-600', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', sky: 'bg-sky-600', rose: 'bg-rose-600',
+                    };
                     const lightColorMap: Record<string, string> = {
-                      blue: 'from-blue-300',
-                      orange: 'from-orange-300',
-                      green: 'from-green-300',
-                      cyan: 'from-cyan-300',
-                      teal: 'from-teal-300',
-                      red: 'from-red-300',
-                      amber: 'from-amber-300',
-                      purple: 'from-purple-300',
-                      indigo: 'from-indigo-300',
-                      emerald: 'from-emerald-300',
-                      sky: 'from-sky-300',
-                      rose: 'from-rose-300',
-                    }
+                      blue: 'from-blue-300', orange: 'from-orange-300', green: 'from-green-300', cyan: 'from-cyan-300', teal: 'from-teal-300', red: 'from-red-300', amber: 'from-amber-300', purple: 'from-purple-300', indigo: 'from-indigo-300', emerald: 'from-emerald-300', sky: 'from-sky-300', rose: 'from-rose-300',
+                    };
 
-                    // Filtrar apenas seções que têm fotos
-                    const sectionsWithPhotos = photoSections.filter(section => {
-                      const fotos = selectedObraForBook[section.key] as { url: string }[] | undefined
-                      return fotos && fotos.length > 0
-                    })
-
-                    if (sectionsWithPhotos.length === 0) {
-                      return (
-                        <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-300">
-                          <svg className="w-16 h-16 text-slate-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <p className="text-lg font-semibold text-slate-500">Nenhuma foto registrada</p>
-                          <p className="text-sm text-slate-400 mt-1">Esta obra ainda não possui fotos cadastradas</p>
-                        </div>
-                      )
-                    }
-
-                    return sectionsWithPhotos.map((section) => {
-                      const fotos = selectedObraForBook[section.key] as { url: string }[]
+                    // Exibir todas as seções, mesmo sem fotos
+                    return photoSections.map((section) => {
+                      const fotos = (selectedObraForBook[section.key] as { url: string }[]) || [];
                       return (
                         <div key={section.key}>
                           <div className="flex items-center gap-3 mb-4">
@@ -949,33 +916,59 @@ export default function ReportsPage() {
                             <span className="text-sm font-semibold text-slate-500">{fotos.length} foto(s)</span>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {fotos.map((foto, idx) => (
-                              <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-                                <div className="aspect-square bg-slate-100">
-                                  <img
-                                    src={foto.url}
-                                    alt={`${section.label} ${idx + 1}`}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                                  />
+                            {fotos.length > 0 ? (
+                              fotos.map((foto, idx) => (
+                                <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                                  <div className="aspect-square bg-slate-100">
+                                    <img
+                                      src={foto.url}
+                                      alt={`${section.label} ${idx + 1}`}
+                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                    />
+                                  </div>
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-4">
+                                    <button className="bg-white text-slate-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 flex items-center gap-2">
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                      Visualizar
+                                    </button>
+                                  </div>
+                                  <div className={`absolute top-2 left-2 ${colorMap[section.lightColor]} text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg`}>
+                                    #{idx + 1}
+                                  </div>
                                 </div>
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-4">
-                                  <button className="bg-white text-slate-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                    </svg>
-                                    Visualizar
-                                  </button>
-                                </div>
-                                <div className={`absolute top-2 left-2 ${colorMap[section.lightColor]} text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg`}>
-                                  #{idx + 1}
-                                </div>
+                              ))
+                            ) : (
+                              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 col-span-full flex flex-col items-center gap-2">
+                                Nenhuma foto adicionada ainda.
+                                <button
+                                  className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-colors"
+                                  onClick={() => document.getElementById(`file-input-${section.key}`)?.click()}
+                                >
+                                  Adicionar foto
+                                </button>
+                                <input
+                                  id={`file-input-${section.key}`}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) {
+                                      // TODO: implementar função de upload para cada seção
+                                      // Exemplo: handleAddPhoto(section.key, file)
+                                    }
+                                    event.target.value = '';
+                                  }}
+                                />
                               </div>
-                            ))}
+                            )}
                           </div>
                         </div>
-                      )
-                    })
+                      );
+                    });
                   })()}
                 </div>
 
