@@ -94,7 +94,14 @@
       "Bash(cd /c/Users/Mateus Almeida/obras-wise-mobile)",
       "Bash(eas build:*)",
       "Bash(npm outdated:*)",
-      "Bash(npm audit:*)"
+      "Bash(npm audit:*)",
+      "Bash(npx tsx:*)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=https://hiuagpzaelcocyxutgdt.supabase.co SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdWFncHphZWxjb2N5eHV0Z2R0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MTc0MTU4MCwiZXhwIjoyMDc3MzE3NTgwfQ.4zXWa-0XcdMF5Zcavc8IKdwOz5TjnMr4blefiiyQWfU npx tsx:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)",
+      "Bash(git diff:*)",
+      "Bash(npm run android:*)",
+      "Bash(npx madge:*)"
     ],
     "deny": [],
     "ask": []

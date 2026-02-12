@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, TextInput, useWindowDimensions } from 'react-native';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
@@ -53,6 +53,7 @@ const HISTORY_CACHE_KEY = '@obras_history_cache';
 
 export default function Obras() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [onlineObras, setOnlineObras] = useState<Obra[]>([]);
   const [pendingObrasState, setPendingObrasState] = useState<PendingObra[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +63,8 @@ export default function Obras() {
   const [searchTerm, setSearchTerm] = useState('');
   const [equipeLogada, setEquipeLogada] = useState<string>('');
   const insets = useSafeAreaInsets();
+  const isSmallScreen = width < 380;
+  const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
 
   // Estado para modal de progresso de sincronização
   const [syncModalVisible, setSyncModalVisible] = useState(false);
@@ -85,7 +88,9 @@ export default function Obras() {
 
   const combinedObras = useMemo<ObraListItem[]>(() => {
     // ✅ CORREÇÃO: Preservar origem que já está salva em cada obra
-    const pendentes: ObraListItem[] = pendingObrasState.map((obra) => ({
+    const pendentes: ObraListItem[] = pendingObrasState
+      .filter((obra) => !!equipeLogada && obra.equipe === equipeLogada)
+      .map((obra) => ({
       ...obra,
       origem: obra.origem || 'offline', // Usar origem salva, ou 'offline' como fallback
     }));
@@ -98,7 +103,7 @@ export default function Obras() {
     }));
 
     return [...pendentes, ...sincronizadas];
-  }, [pendingObrasState, onlineObras]);
+  }, [pendingObrasState, onlineObras, equipeLogada]);
 
   const filteredObras = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -109,6 +114,16 @@ export default function Obras() {
       return texto.includes(term);
     });
   }, [combinedObras, searchTerm]);
+
+  // ✅ Filtrar obras pendentes apenas da equipe logada para contadores
+  const pendingObrasDaEquipe = useMemo(() => {
+    if (!equipeLogada) return [];
+
+    return pendingObrasState.filter((obra) => {
+      // Comparar equipe da obra com equipe logada
+      return obra.equipe === equipeLogada;
+    });
+  }, [pendingObrasState, equipeLogada]);
 
   useEffect(() => {
     loadCachedObras();
@@ -145,7 +160,12 @@ export default function Obras() {
     return () => {
       unsubscribe?.();
     };
-  }, []);
+  }, [equipeLogada]);
+
+  useEffect(() => {
+    if (!equipeLogada) return;
+    loadPendingObras();
+  }, [equipeLogada]);
 
   /**
    * Busca e sincroniza obras do Supabase para AsyncStorage (migração)
@@ -320,7 +340,10 @@ export default function Obras() {
   const loadPendingObras = async () => {
     try {
       const pendentes = await getPendingObras();
-      setPendingObrasState(pendentes);
+      const pendentesDaEquipe = equipeLogada
+        ? pendentes.filter((obra) => obra.equipe === equipeLogada)
+         : [];
+      setPendingObrasState(pendentesDaEquipe);
     } catch (error) {
       console.error('Erro ao carregar obras pendentes:', error);
     }
@@ -336,7 +359,7 @@ export default function Obras() {
   useFocusEffect(
     useCallback(() => {
       reloadAllObras();
-    }, [isOnline])
+    }, [isOnline, equipeLogada])
   );
 
   const onRefresh = () => {
@@ -578,7 +601,7 @@ export default function Obras() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingHorizontal: horizontalPadding }]}>
         {/* Banner de Equipe Logada */}
         {equipeLogada && (
           <View style={styles.equipeBanner}>
@@ -597,11 +620,26 @@ export default function Obras() {
 
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Text style={styles.title}>Obras</Text>
-            <Text style={styles.subtitle}>{subtitleText}</Text>
-            {!isOnline && (
-              <Text style={styles.offlineHint}>📴 Modo Offline</Text>
-            )}
+            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>Obras</Text>
+            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>{subtitleText}</Text>
+          </View>
+          {!isOnline && (
+            <View style={styles.offlinePill}>
+              <Text style={styles.offlineHint}>Modo Offline</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
+          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+            <Text style={styles.metricLabel}>Total da equipe</Text>
+            <Text style={styles.metricValue}>{combinedObras.length}</Text>
+          </View>
+          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+            <Text style={styles.metricLabel}>Pendentes</Text>
+            <Text style={[styles.metricValue, pendingObrasDaEquipe.length > 0 && styles.metricValueAlert]}>
+              {pendingObrasDaEquipe.length}
+            </Text>
           </View>
         </View>
 
@@ -610,12 +648,12 @@ export default function Obras() {
           style={styles.novaObraButton}
           onPress={() => router.push('/nova-obra')}
         >
-          <Text style={styles.novaObraButtonIcon}>➕</Text>
+          <Text style={styles.novaObraButtonIcon}>+</Text>
           <Text style={styles.novaObraButtonLabel}>Nova Obra</Text>
         </TouchableOpacity>
 
-        {/* Botão Sincronizar Obras (só aparece quando há obras pendentes) */}
-        {pendingObrasState.length > 0 && (
+        {/* Botão Sincronizar Obras (só aparece quando há obras pendentes da equipe) */}
+        {pendingObrasDaEquipe.length > 0 && (
           <TouchableOpacity
             style={[
               styles.syncManualButton,
@@ -624,14 +662,14 @@ export default function Obras() {
             onPress={handleManualSync}
             disabled={!isOnline}
           >
-            <Text style={styles.syncManualButtonIcon}>☁️</Text>
             <Text style={styles.syncManualButtonLabel}>
-              Sincronizar {pendingObrasState.length} obra{pendingObrasState.length > 1 ? 's' : ''}
+              Sincronizar {pendingObrasDaEquipe.length} obra{pendingObrasDaEquipe.length > 1 ? 's' : ''}
             </Text>
           </TouchableOpacity>
         )}
 
         <View style={styles.searchContainer}>
+          <Text style={styles.searchPrefix}>Buscar</Text>
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar por obra, responsável ou equipe"
@@ -642,11 +680,11 @@ export default function Obras() {
           />
         </View>
 
-        {pendingObrasState.length > 0 && (
+        {pendingObrasDaEquipe.length > 0 && (
           <View style={styles.syncBanner}>
             <View style={styles.syncBannerInfo}>
               <Text style={styles.syncBannerTitle}>
-                {pendingObrasState.length} obra(s) aguardando sincronização
+                {pendingObrasDaEquipe.length} obra(s) da sua equipe aguardando sincronização
               </Text>
               <Text style={styles.syncBannerSubtitle}>
                 {isOnline ? 'Envie agora para liberar espaço.' : 'Conecte-se para finalizar o envio.'}
@@ -664,7 +702,7 @@ export default function Obras() {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.syncBannerButtonText}>
-                  Sincronizar ({pendingObrasState.length})
+                  Sincronizar ({pendingObrasDaEquipe.length})
                 </Text>
               )}
             </TouchableOpacity>
@@ -795,39 +833,94 @@ export default function Obras() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#eef2f6',
   },
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#eef2f6',
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 110,
   },
   content: {
-    padding: 20,
+    paddingVertical: 18,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 14,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#111827',
     marginBottom: 4,
   },
+  titleSmall: {
+    fontSize: 26,
+  },
   subtitle: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  subtitleSmall: {
+    fontSize: 13,
+  },
+  offlinePill: {
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    marginHorizontal: -6,
+    marginBottom: 14,
+  },
+  metricsRowStacked: {
+    flexDirection: 'column',
+    marginHorizontal: 0,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  metricCardStacked: {
+    marginHorizontal: 0,
+    marginBottom: 10,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  metricValue: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  metricValueAlert: {
+    color: '#dc2626',
   },
   syncBanner: {
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#ffe0b2',
+    borderColor: '#fde68a',
     padding: 16,
     marginBottom: 16,
     flexDirection: 'column',
@@ -839,11 +932,11 @@ const styles = StyleSheet.create({
   syncBannerTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#8d5300',
+    color: '#92400e',
   },
   syncBannerSubtitle: {
     fontSize: 13,
-    color: '#7b7b7b',
+    color: '#6b7280',
   },
   syncBannerButton: {
     backgroundColor: '#dc3545',
@@ -853,7 +946,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   syncBannerButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.55,
   },
   syncBannerButtonText: {
     color: '#fff',
@@ -862,64 +955,61 @@ const styles = StyleSheet.create({
   },
   offlineHint: {
     fontSize: 11,
-    color: '#f59e0b',
-    marginTop: 4,
-    fontWeight: '600',
+    color: '#c2410c',
+    fontWeight: '700',
   },
   headerTop: {
     marginBottom: 4,
   },
   novaObraButton: {
     backgroundColor: '#dc3545',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
     shadowColor: '#dc3545',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.22,
+    shadowRadius: 7,
+    elevation: 5,
   },
   novaObraButtonIcon: {
-    fontSize: 20,
+    fontSize: 24,
     marginRight: 8,
+    color: '#fff',
+    fontWeight: '700',
   },
   novaObraButtonLabel: {
     fontSize: 16,
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   syncManualButton: {
     backgroundColor: '#2563eb',
-    borderRadius: 12,
+    borderRadius: 14,
     paddingVertical: 14,
     paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
     shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
     elevation: 4,
   },
   syncManualButtonDisabled: {
     backgroundColor: '#94a3b8',
     opacity: 0.6,
   },
-  syncManualButtonIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
   syncManualButtonLabel: {
     fontSize: 15,
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   headerButtons: {
     flexDirection: 'row',
@@ -985,38 +1075,52 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     marginBottom: 12,
-  },
-  searchInput: {
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-    paddingHorizontal: 14,
+    borderColor: '#dbe2ea',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+  },
+  searchPrefix: {
+    fontSize: 12,
+    color: '#64748b',
+    marginRight: 8,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 6,
     paddingVertical: 12,
-    fontSize: 15,
-    color: '#1a1a1a',
+    fontSize: 14,
+    color: '#0f172a',
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
+    borderRadius: 14,
+    padding: 18,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cardTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
     marginBottom: 8,
   },
   cardText: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 24,
+    fontSize: 14,
+    color: '#4b5563',
+    lineHeight: 20,
   },
   emptyText: {
     fontSize: 16,
@@ -1025,16 +1129,18 @@ const styles = StyleSheet.create({
   },
   obraCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
+    elevation: 2,
     borderLeftWidth: 4,
     borderLeftColor: '#dc3545',
+    borderWidth: 1,
+    borderColor: '#eef2f7',
   },
   obraCardFinalizada: {
     borderLeftColor: '#28a745',
@@ -1046,9 +1152,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
     paddingBottom: 12,
-    paddingRight: 105, // Espaço para o indicador de sync
+    paddingRight: 98,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#eef2f7',
   },
   obraHeaderLeft: {
     flex: 1,
@@ -1059,17 +1165,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   obraNumero: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
     flexShrink: 1,
   },
   obraData: {
-    fontSize: 13,
-    color: '#666',
-    backgroundColor: '#f5f5f5',
+    fontSize: 12,
+    color: '#475569',
+    backgroundColor: '#eef2f7',
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 10,
     flexShrink: 1,
   },
@@ -1079,21 +1185,21 @@ const styles = StyleSheet.create({
   },
   obraLabel: {
     fontSize: 12,
-    color: '#999',
+    color: '#94a3b8',
     marginBottom: 2,
   },
   obraValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#1f2937',
+    fontWeight: '600',
     flexShrink: 1,
   },
   verMais: {
     fontSize: 12,
-    color: '#dc3545',
-    marginTop: 10,
+    color: '#2563eb',
+    marginTop: 12,
     textAlign: 'right',
-    fontWeight: '500',
+    fontWeight: '700',
   },
   syncBadge: {
     borderRadius: 8,

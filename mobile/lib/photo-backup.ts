@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as utm from 'utm';
+// import { captureError, addBreadcrumb } from './sentry';
 
 const PHOTO_BACKUP_DIR = `${FileSystem.documentDirectory}obra_photos_backup/`;
 const PHOTO_METADATA_KEY = '@photo_metadata';
@@ -159,14 +160,38 @@ export const backupPhoto = async (
     let compressedUri = uri;
     try {
       compressedUri = await compressPhoto(uri);
+
+      // ✅ Verificar se a compressão gerou um arquivo válido
+      const compressedInfo = await FileSystem.getInfoAsync(compressedUri);
+      if (!compressedInfo.exists) {
+        console.warn('Arquivo comprimido não existe, usando original');
+        compressedUri = uri;
+      }
     } catch (error) {
       console.warn('Compressão falhou, usando foto original:', error);
     }
 
-    await FileSystem.copyAsync({
-      from: compressedUri,
-      to: compressedPath
-    });
+    // ✅ Tentar copiar arquivo comprimido
+    try {
+      await FileSystem.copyAsync({
+        from: compressedUri,
+        to: compressedPath
+      });
+    } catch (copyError) {
+      // Se falhar, tentar usar o backup original
+      console.warn('Falha ao copiar arquivo comprimido, tentando usar backup original:', copyError);
+      await FileSystem.copyAsync({
+        from: backupPath,
+        to: compressedPath
+      });
+    }
+
+    // ✅ Verificar se o arquivo comprimido foi salvo corretamente ANTES de criar metadados
+    const finalCompressedInfo = await FileSystem.getInfoAsync(compressedPath);
+    if (!finalCompressedInfo.exists) {
+      throw new Error('Falha ao salvar arquivo comprimido - arquivo não existe após cópia');
+    }
+    console.log(`✅ Arquivo comprimido verificado: ${Math.round((finalCompressedInfo.size || 0) / 1024)}KB`);
 
     // 3. Converter coordenadas para UTM
     const utmCoords = convertToUTM(latitude, longitude);
@@ -196,6 +221,19 @@ export const backupPhoto = async (
     return metadata;
   } catch (error) {
     console.error('Erro ao fazer backup da foto:', error);
+
+    // 🔍 Capturar erro no Sentry com contexto
+    captureError(error as Error, {
+      type: 'photo',
+      obraId,
+      metadata: {
+        photoType: type,
+        photoIndex: index,
+        hasLocation: latitude !== null && longitude !== null,
+        operation: 'backup',
+      },
+    });
+
     throw error;
   }
 };

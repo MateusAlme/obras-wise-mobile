@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { captureError, addBreadcrumb } from '../lib/sentry';
 
 interface Props {
   children: ReactNode;
@@ -45,6 +46,20 @@ export class ErrorBoundary extends Component<Props, State> {
     // Logar erro para debug
     console.error('🚨 ErrorBoundary capturou erro:', error);
     console.error('📊 Informações do erro:', errorInfo);
+
+    // 🔍 Enviar erro para o Sentry
+    captureError(error, {
+      type: 'other',
+      metadata: {
+        componentStack: errorInfo.componentStack,
+        errorBoundary: true,
+      },
+    });
+
+    // Adicionar breadcrumb para contexto
+    addBreadcrumb('ErrorBoundary capturou erro', 'ui', {
+      errorMessage: error.message,
+    }, 'error');
 
     // Salvar erro no AsyncStorage para análise posterior
     this.logErrorToStorage(error, errorInfo);

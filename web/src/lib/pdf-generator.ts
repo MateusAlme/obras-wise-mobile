@@ -34,10 +34,8 @@ function mergePostesPhotosWithStructure(
     'menor_esforco': 'menorEsforco'
   }
 
-  const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = []
-  let currentPosteIndex = -1
-  let lastInteiroTimestamp = 0
-
+  // ✅ NOVA LÓGICA: Usar sequência de fotos "inteiro" para delimitar postes
+  // Ordenar fotos por timestamp
   const sortedPhotos = [...flatPhotos].sort((a, b) => {
     const infoA = extractPhotoInfo(a.url)
     const infoB = extractPhotoInfo(b.url)
@@ -45,20 +43,61 @@ function mergePostesPhotosWithStructure(
     return infoA.timestamp - infoB.timestamp
   })
 
+  // Identificar timestamps das fotos "inteiro" (cada uma marca início de um poste)
+  const inteiroTimestamps: number[] = []
+  for (const photo of sortedPhotos) {
+    const info = extractPhotoInfo(photo.url)
+    if (info && info.tipo === 'inteiro') {
+      inteiroTimestamps.push(info.timestamp)
+    }
+  }
+
+  // Se não há fotos "inteiro", todas as fotos vão para o primeiro poste
+  if (inteiroTimestamps.length === 0) {
+    const firstPoste = {
+      ...postesData[0],
+      posteInteiro: [],
+      engaste: [],
+      conexao1: [],
+      conexao2: [],
+      maiorEsforco: [],
+      menorEsforco: []
+    }
+
+    for (const photo of sortedPhotos) {
+      const info = extractPhotoInfo(photo.url)
+      if (!info) continue
+      const field = tipoToField[info.tipo]
+      if (field && firstPoste[field]) {
+        firstPoste[field].push(photo)
+      }
+    }
+
+    return [firstPoste, ...postesData.slice(1)]
+  }
+
+  // Agrupar fotos por poste baseado nos timestamps "inteiro"
+  const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = []
+
   for (const photo of sortedPhotos) {
     const info = extractPhotoInfo(photo.url)
     if (!info) continue
 
-    if (info.tipo === 'inteiro') {
-      if (currentPosteIndex === -1 || info.timestamp - lastInteiroTimestamp > 30000) {
-        currentPosteIndex++
-        lastInteiroTimestamp = info.timestamp
+    // Determinar a qual poste esta foto pertence
+    // Encontrar o índice do último "inteiro" que veio ANTES ou NO MESMO timestamp desta foto
+    let posteIndex = 0
+    for (let i = 0; i < inteiroTimestamps.length; i++) {
+      if (info.timestamp >= inteiroTimestamps[i]) {
+        posteIndex = i
+      } else {
+        break
       }
     }
 
-    if (currentPosteIndex >= 0 && currentPosteIndex < postesData.length) {
+    // Garantir que não exceda o número de postes disponíveis
+    if (posteIndex < postesData.length) {
       photoGroups.push({
-        posteIndex: currentPosteIndex,
+        posteIndex,
         tipo: info.tipo,
         photo
       })

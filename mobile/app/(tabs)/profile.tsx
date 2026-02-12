@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect } from 'react';
 import { getStorageStats, cleanupUploadedPhotos } from '../../lib/photo-backup';
-import { syncAllPendingObras, checkInternetConnection } from '../../lib/offline-sync';
+import { syncAllPendingObras, checkInternetConnection, cleanupAllDuplicates } from '../../lib/offline-sync';
 
 export default function Profile() {
   const router = useRouter();
@@ -15,6 +15,7 @@ export default function Profile() {
   // Estados para sincronização
   const [syncing, setSyncing] = useState(false);
   const [cleaning, setCleaning] = useState(false);
+  const [deduplicating, setDeduplicating] = useState(false);
   const [stats, setStats] = useState({
     totalPhotos: 0,
     pendingPhotos: 0,
@@ -167,6 +168,39 @@ export default function Profile() {
     }
   };
 
+  const handleOpenDiagnostics = () => {
+    router.push('/diagnostico');
+  };
+
+  const handleCleanupDuplicates = () => {
+    Alert.alert(
+      'Limpar Duplicatas',
+      'Deseja remover obras duplicadas do armazenamento local?\n\nSerá mantida apenas a versão mais recente de cada obra.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Limpar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeduplicating(true);
+              const result = await cleanupAllDuplicates();
+              Alert.alert(
+                'Limpeza concluída',
+                `${result.totalRemoved} obra(s) duplicada(s) removida(s).\n\nLocal: ${result.localRemoved}\nPendentes: ${result.pendingRemoved}`
+              );
+            } catch (error) {
+              console.error('Erro ao limpar duplicatas:', error);
+              Alert.alert('Erro', 'Não foi possível limpar duplicatas. Tente novamente.');
+            } finally {
+              setDeduplicating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleLogout = async () => {
     const doLogout = async () => {
       try {
@@ -295,6 +329,35 @@ export default function Profile() {
               A sincronização é feita através do botão em "Obras". O cache é limpo automaticamente após sincronização bem-sucedida.
             </Text>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Manutenção do Sistema</Text>
+
+          <TouchableOpacity
+            style={[styles.maintenanceButton, styles.diagnosticButton]}
+            onPress={handleOpenDiagnostics}
+          >
+            <Text style={styles.maintenanceButtonIcon}>🔍</Text>
+            <View style={styles.maintenanceButtonContent}>
+              <Text style={styles.maintenanceButtonTitle}>Diagnosticar Sistema</Text>
+              <Text style={styles.maintenanceButtonSubtitle}>Verifique storage, crash logs e recomendações</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.maintenanceButton, styles.cleanupDuplicatesButton, deduplicating && styles.maintenanceButtonDisabled]}
+            onPress={handleCleanupDuplicates}
+            disabled={deduplicating}
+          >
+            <Text style={styles.maintenanceButtonIcon}>🧹</Text>
+            <View style={styles.maintenanceButtonContent}>
+              <Text style={styles.maintenanceButtonTitle}>
+                {deduplicating ? 'Limpando duplicatas...' : 'Limpar Duplicatas'}
+              </Text>
+              <Text style={styles.maintenanceButtonSubtitle}>Remove duplicações no armazenamento local</Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -511,5 +574,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0d47a1',
     lineHeight: 18,
+  },
+  maintenanceButton: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  diagnosticButton: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#bfdbfe',
+  },
+  cleanupDuplicatesButton: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+  },
+  maintenanceButtonDisabled: {
+    opacity: 0.6,
+  },
+  maintenanceButtonIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  maintenanceButtonContent: {
+    flex: 1,
+  },
+  maintenanceButtonTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  maintenanceButtonSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
   },
 });

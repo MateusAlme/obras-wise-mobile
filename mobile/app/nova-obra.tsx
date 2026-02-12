@@ -47,6 +47,7 @@ import { PlacaScanner } from '../components/PlacaScanner';
 import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
 import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
+import { useToast } from '../components/Toast';
 // Import dinâmico (lazy) para evitar erro no web
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
@@ -78,6 +79,7 @@ const EQUIPES_DISPONIVEIS = [
 export default function NovaObra() {
   const router = useRouter();
   const params = useLocalSearchParams<{ editMode?: string; obraData?: string }>();
+  const { showToast, toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -323,6 +325,14 @@ export default function NovaObra() {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
 
+  // ✅ SCROLL: Ref para controlar scroll automático ao adicionar itens
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [sectionLayouts, setSectionLayouts] = useState<{
+    postes?: number;
+    seccionamentos?: number;
+    aterramentos?: number;
+  }>({});
+
   // Formatar data para exibição (DD/MM/AAAA)
   const formatDateForDisplay = (dateString: string): string => {
     if (!dateString) return 'Selecione a data';
@@ -471,18 +481,63 @@ export default function NovaObra() {
     };
   }, [autoSaveEnabled]);
 
+  // ✅ AUTO-SAVE PERIÓDICO: Salvar a cada 2 minutos automaticamente
+  // Isso garante que dados não sejam perdidos mesmo se o app crashar
+  useEffect(() => {
+    if (!autoSaveEnabled) return;
+
+    const AUTO_SAVE_INTERVAL = 2 * 60 * 1000; // 2 minutos
+
+    const intervalId = setInterval(async () => {
+      console.log('⏰ Auto-save periódico disparado (2 minutos)');
+
+      if (autoSaveRef.current) {
+        try {
+          await autoSaveRef.current();
+          console.log('✅ Auto-save periódico concluído');
+        } catch (error) {
+          console.error('❌ Erro no auto-save periódico:', error);
+        }
+      }
+    }, AUTO_SAVE_INTERVAL);
+
+    return () => {
+      clearInterval(intervalId);
+      console.log('🛑 Auto-save periódico cancelado');
+    };
+  }, [autoSaveEnabled]);
+
   // ✅ AUTO-SAVE: Atualizar função de salvamento silencioso sempre que os estados mudarem
   // Usamos useCallback para criar uma função estável que acessa os valores atuais
   const performAutoSave = useCallback(async () => {
-    // Não salvar se não há dados mínimos
-    if (!data && !obra && fotosAntes.length === 0 && fotosDurante.length === 0 && fotosDepois.length === 0) {
-      console.log('⚠️ Auto-save ignorado: nenhum dado para salvar');
+    // ✅ Verificar se há QUALQUER informação para salvar (muito menos restritivo)
+    const hasAnyData =
+      data ||
+      obra ||
+      responsavel ||
+      tipoServico ||
+      fotosAntes.length > 0 ||
+      fotosDurante.length > 0 ||
+      fotosDepois.length > 0 ||
+      fotosAbertura.length > 0 ||
+      fotosFechamento.length > 0 ||
+      fotosDitaisAbertura.length > 0 ||
+      fotosTransformadorLaudo.length > 0 ||
+      docCadastroMedidor.length > 0 ||
+      numPostes > 0 ||
+      numSeccionamentos > 0 ||
+      numAterramentosCerca > 0;
+
+    if (!hasAnyData) {
+      console.log('⚠️ Auto-save ignorado: nenhum dado preenchido');
       return;
     }
 
     console.log('💾 Executando auto-save silencioso...');
     console.log('   Data:', data);
     console.log('   Obra:', obra);
+    console.log('   Responsável:', responsavel);
+    console.log('   Tipo:', tipoServico);
     console.log('   Fotos antes:', fotosAntes.length);
     console.log('   Fotos durante:', fotosDurante.length);
     console.log('   Fotos depois:', fotosDepois.length);
@@ -590,11 +645,22 @@ export default function NovaObra() {
           console.error('❌ Erro ao atualizar obraId das fotos:', error);
         }
       }
+
+      // ✅ Mostrar feedback visual discreto
+      const totalFotos = Object.values(photoIds).reduce((acc, arr) => acc + arr.length, 0);
+      const mensagem = totalFotos > 0
+        ? `Rascunho salvo automaticamente (${totalFotos} foto${totalFotos > 1 ? 's' : ''})`
+        : 'Rascunho salvo automaticamente';
+
+      showToast(mensagem, 'info');
+
     } catch (error) {
       console.error('❌ Erro no auto-save:', error);
+      // Não mostrar erro para usuário, apenas logar
       throw error;
     }
   }, [
+    showToast, // Adicionar showToast às dependências
     data, obra, responsavel, equipe, equipeExecutora, tipoServico, isCompUser, isEditMode, obraId,
     currentServerId, transformadorStatus, numPostes, numSeccionamentos, numAterramentosCerca,
     backupObraId,
@@ -1209,9 +1275,9 @@ export default function NovaObra() {
   useEffect(() => {
     const backAction = () => {
       // Verificar se há dados não salvos (obra iniciada)
-      const hasData = obra.trim() !== '' || 
-                      fotosAntes.length > 0 || 
-                      fotosDurante.length > 0 || 
+      const hasData = obra.trim() !== '' ||
+                      fotosAntes.length > 0 ||
+                      fotosDurante.length > 0 ||
                       fotosDepois.length > 0 ||
                       fotosAbertura.length > 0 ||
                       fotosFechamento.length > 0 ||
@@ -1222,12 +1288,12 @@ export default function NovaObra() {
                       fotosChecklistCroqui.length > 0 ||
                       fotosChecklistPanoramicaInicial.length > 0 ||
                       fotosChecklistPanoramicaFinal.length > 0;
-      
+
       if (hasData) {
         setExitModalVisible(true);
         return true; // Previne o comportamento padrão do back
       }
-      
+
       return false; // Permite o comportamento padrão se não houver dados
     };
 
@@ -1360,6 +1426,10 @@ export default function NovaObra() {
         expandido: true,
       };
       setPostesData(prevPostes => [...prevPostes, novoPoste]);
+
+      // ✅ Aviso simples
+      showToast('Poste adicionado! Role a tela para baixo para ver o novo poste.', 'success');
+
       return prev + 1;
     });
   };
@@ -4491,6 +4561,7 @@ export default function NovaObra() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <ScrollView
+        ref={scrollViewRef}
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -4992,7 +5063,10 @@ export default function NovaObra() {
 
               {/* CAVA EM ROCHA - Sistema de Múltiplos Postes */}
               {isServicoCavaRocha && (
-                <>
+                <View onLayout={(event) => {
+                  const { y } = event.nativeEvent.layout;
+                  setSectionLayouts(prev => ({ ...prev, postes: y }));
+                }}>
                   <Text style={styles.sectionTitle}>📋 Checklist de Postes</Text>
 
                   {postesData.map((poste, index) => {
@@ -5208,7 +5282,7 @@ export default function NovaObra() {
                       numberOfLines={4}
                     />
                   </View>
-                </>
+                </View>
               )}
 
               {isServicoPadrao && (
@@ -7331,7 +7405,13 @@ export default function NovaObra() {
                 </View>
 
                 {/* 4. Postes - Seção Dinâmica */}
-                <View style={styles.checklistSection}>
+                <View
+                  style={styles.checklistSection}
+                  onLayout={(event) => {
+                    const { y } = event.nativeEvent.layout;
+                    setSectionLayouts(prev => ({ ...prev, postes: y }));
+                  }}
+                >
                   <Text style={styles.checklistSectionTitle}>4️⃣ Registro dos Postes</Text>
                   <Text style={styles.checklistHint}>Recomendado: 4 fotos por poste</Text>
 
@@ -7340,7 +7420,8 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        setNumPostes(numPostes + 1);
+                        const newLength = numPostes + 1;
+                        setNumPostes(newLength);
                         setFotosPostes([...fotosPostes, {
                           numero: '', // Novo poste sem número
                           status: '', // Novo poste sem status
@@ -7352,6 +7433,8 @@ export default function NovaObra() {
                           maiorEsforco: [],
                           menorEsforco: [],
                         }]);
+                        // ✅ Aviso simples
+                        showToast('Poste adicionado! Role a tela para baixo para ver o novo poste.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Poste</Text>
@@ -7777,7 +7860,13 @@ export default function NovaObra() {
                 </View>
 
                 {/* 5. Seccionamento de Cerca */}
-                <View style={styles.checklistSection}>
+                <View
+                  style={styles.checklistSection}
+                  onLayout={(event) => {
+                    const { y } = event.nativeEvent.layout;
+                    setSectionLayouts(prev => ({ ...prev, seccionamentos: y }));
+                  }}
+                >
                   <Text style={styles.checklistSectionTitle}>5️⃣ Seccionamento de Cerca (Opcional)</Text>
                   <Text style={styles.checklistHint}>1 foto por ponto de seccionamento</Text>
 
@@ -7786,8 +7875,11 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        setNumSeccionamentos(numSeccionamentos + 1);
+                        const newLength = numSeccionamentos + 1;
+                        setNumSeccionamentos(newLength);
                         setFotosSeccionamentos([...fotosSeccionamentos, { numero: '', fotos: [] }]);
+                        // ✅ Aviso simples
+                        showToast('Ponto de seccionamento adicionado! Role a tela para baixo para ver.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -7871,7 +7963,13 @@ export default function NovaObra() {
                 </View>
 
                 {/* 6. Aterramento de Cerca - Seção Dinâmica (OPCIONAL) */}
-                <View style={styles.checklistSection}>
+                <View
+                  style={styles.checklistSection}
+                  onLayout={(event) => {
+                    const { y } = event.nativeEvent.layout;
+                    setSectionLayouts(prev => ({ ...prev, aterramentos: y }));
+                  }}
+                >
                   <Text style={styles.checklistSectionTitle}>6️⃣ Aterramento de Cerca (Opcional)</Text>
                   <Text style={styles.checklistHint}>1 foto por ponto de aterramento - Detalhar haste, condutor e fixação</Text>
 
@@ -7880,8 +7978,13 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        setNumAterramentosCerca(prev => prev + 1);
-                        setFotosAterramentosCerca(prev => [...prev, { numero: '', fotos: [] }]);
+                        setNumAterramentosCerca(prev => {
+                          const newLength = prev + 1;
+                          setFotosAterramentosCerca(curr => [...curr, { numero: '', fotos: [] }]);
+                          // ✅ Aviso simples
+                          showToast('Ponto de aterramento adicionado! Role a tela para baixo para ver.', 'success');
+                          return newLength;
+                        });
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -9270,6 +9373,9 @@ export default function NovaObra() {
           </View>
         </View>
       </Modal>
+
+      {/* Toast de notificações */}
+      {toast}
     </SafeAreaView>
   );
 }

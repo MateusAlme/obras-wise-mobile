@@ -10,6 +10,7 @@ import {
   photoExists
 } from './photo-backup';
 import * as FileSystem from 'expo-file-system/legacy';
+// import { captureError, addBreadcrumb, startTransaction } from './sentry';
 
 const UPLOAD_QUEUE_KEY = '@photo_upload_queue';
 const MAX_RETRIES = 3; // Reduzido de 5 para 3
@@ -137,8 +138,8 @@ const uploadPhotoToSupabase = async (
       return { success: false, error: 'Foto não encontrada no photo-backup', skipRetry: true };
     }
 
-    // Usar foto comprimida para upload
-    const photoUri = photoMetadata.compressedPath;
+    // ✅ Usar foto comprimida para upload, com fallback para backup original
+    let photoUri = photoMetadata.compressedPath;
 
     // Criar nome único do arquivo com timestamp e random ID para evitar conflitos
     const timestamp = Date.now();
@@ -147,13 +148,24 @@ const uploadPhotoToSupabase = async (
     // Usar obraId como pasta para organizar as fotos
     const filePath = `${folderName}/${fileName}`;
 
-    // Verificar se arquivo existe
-    const fileInfo = await FileSystem.getInfoAsync(photoUri);
+    // ✅ Verificar se arquivo comprimido existe
+    let fileInfo = await FileSystem.getInfoAsync(photoUri);
     if (!fileInfo.exists) {
-      console.error(`❌ Arquivo físico não encontrado: ${photoUri}`);
-      console.error(`   Foto ID: ${photoMetadata.id}`);
-      console.error(`   Tipo: ${photoMetadata.type}`);
-      return { success: false, error: 'Arquivo físico não encontrado', skipRetry: true };
+      console.warn(`⚠️ Arquivo comprimido não encontrado: ${photoUri}`);
+      console.log(`   Tentando usar backup original: ${photoMetadata.backupPath}`);
+
+      // ✅ FALLBACK: Tentar usar o backup original (não comprimido)
+      photoUri = photoMetadata.backupPath;
+      fileInfo = await FileSystem.getInfoAsync(photoUri);
+
+      if (!fileInfo.exists) {
+        console.error(`❌ Arquivo físico não encontrado (backup também): ${photoUri}`);
+        console.error(`   Foto ID: ${photoMetadata.id}`);
+        console.error(`   Tipo: ${photoMetadata.type}`);
+        return { success: false, error: 'Arquivo físico não encontrado (comprimido e backup)', skipRetry: true };
+      }
+
+      console.log(`✅ Usando backup original: ${Math.round((fileInfo.size || 0) / 1024)}KB`);
     }
 
     console.log(`📤 Lendo arquivo (${Math.round((fileInfo.size || 0) / 1024)}KB):`, photoUri);
@@ -223,6 +235,20 @@ const uploadPhotoToSupabase = async (
 
   } catch (error: any) {
     console.error('Erro ao fazer upload da foto:', error);
+
+    // 🔍 Capturar erro no Sentry
+    captureError(error, {
+      type: 'upload',
+      photoId: photoMetadata.id,
+      obraId: photoMetadata.obraId,
+      metadata: {
+        photoType: photoMetadata.type,
+        photoIndex: photoMetadata.index,
+        retries: photoMetadata.retries,
+        operation: 'uploadPhotoToSupabase',
+      },
+    });
+
     return { success: false, error: error.message || 'Erro desconhecido' };
   }
 };
@@ -413,8 +439,9 @@ export const processObraPhotos = async (
     let failedCount = 0;
     let completedCount = 0;
 
-    // Upload paralelo: processar em lotes de 3 fotos simultaneamente
-    const BATCH_SIZE = 3;
+    // ✅ Upload paralelo: processar em lotes de 2 fotos simultaneamente
+    // Reduzido de 3 para 2 para evitar pressão de memória em dispositivos com menos RAM
+    const BATCH_SIZE = 2;
     for (let i = 0; i < obraPhotos.length; i += BATCH_SIZE) {
       const batch = obraPhotos.slice(i, i + BATCH_SIZE);
 

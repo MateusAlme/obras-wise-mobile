@@ -4,6 +4,8 @@ import { supabase } from './supabase';
 import { Alert } from 'react-native';
 import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata } from './photo-backup';
 import { processObraPhotos, UploadProgress } from './photo-queue';
+// import { captureError, addBreadcrumb } from './sentry';
+import { createEmergencyBackup, shouldCreateEmergencyBackup } from './emergency-backup';
 
 const PENDING_OBRAS_KEY = '@obras_pending_sync';
 const SYNC_STATUS_KEY = '@sync_status';
@@ -132,6 +134,7 @@ export interface PendingObra {
   created_at: string;
   sync_status: 'pending' | 'syncing' | 'failed';
   error_message?: string;
+  sync_attempts?: number; // Número de tentativas de sync falhadas (para backup de emergência)
   photos_uploaded: boolean; // Nova flag
   isEdited?: boolean; // Flag para indicar se é uma edição
   originalId?: string; // ID original da obra no servidor (se for edição)
@@ -241,8 +244,18 @@ export const saveObraLocal = async (
   try {
     const localObras = await getLocalObras();
 
+    // ✅ CORREÇÃO: Verificar se já existe obra com o MESMO NÚMERO (evita duplicação)
+    // Isso acontece quando auto-save e save manual disparam para a mesma obra
+    let finalExistingId = existingId;
+    const existingByNumero = !existingId ? localObras.find(o => o.obra === obra.obra) : null;
+
+    if (existingByNumero && !existingId) {
+      console.log(`⚠️ [saveObraLocal] Obra ${obra.obra} já existe (ID: ${existingByNumero.id}). Atualizando em vez de duplicar.`);
+      finalExistingId = existingByNumero.id; // Forçar atualização da obra existente
+    }
+
     // Se tem ID existente, atualizar; senão, criar novo
-    const obraId = existingId || obra.id || `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const obraId = finalExistingId || obra.id || `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
     const obraIndex = localObras.findIndex(o => o.id === obraId);
     const now = new Date().toISOString();
@@ -400,11 +413,12 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
     console.log(`🔄 Forçando atualização da obra ${obraId} do Supabase...`);
 
     // Primeiro, buscar obra local para obter o número da obra
+    // ✅ CORREÇÃO: Buscar por ID local OU serverId (para obras já sincronizadas)
     const localObras = await getLocalObras();
-    const obraLocal = localObras.find(o => o.id === obraId);
+    const obraLocal = localObras.find(o => o.id === obraId || o.serverId === obraId);
 
     if (!obraLocal) {
-      console.error(`❌ Obra ${obraId} não encontrada no AsyncStorage local`);
+      console.error(`❌ Obra ${obraId} não encontrada no AsyncStorage local (buscou por ID e serverId)`);
       return false;
     }
 
@@ -828,13 +842,50 @@ export const saveObraOffline = async (
       fotos_vazamento_instalacao: photoIds.vazamento_instalacao ?? [],
     };
 
-    pendingObras.push(newObra);
+    // ✅ CORREÇÃO: Verificar se já existe uma obra pendente com o MESMO NÚMERO
+    // Isso evita duplicação quando auto-save e save manual disparam para a mesma obra
+    const existingByNumero = pendingObras.findIndex(o => o.obra === obra.obra);
+
+    if (existingByNumero !== -1 && !existingObraId) {
+      // Já existe uma obra pendente com este número - ATUALIZAR em vez de criar nova
+      console.log(`⚠️ [saveObraOffline] Obra ${obra.obra} já existe (ID: ${pendingObras[existingByNumero].id}). Atualizando em vez de duplicar.`);
+      pendingObras[existingByNumero] = {
+        ...pendingObras[existingByNumero],
+        ...newObra,
+        id: pendingObras[existingByNumero].id, // Manter ID original
+        created_at: pendingObras[existingByNumero].created_at, // Manter data original
+      };
+    } else if (existingObraId) {
+      // Atualizando obra existente pelo ID
+      const existingIndex = pendingObras.findIndex(o => o.id === existingObraId);
+      if (existingIndex !== -1) {
+        console.log(`📝 [saveObraOffline] Atualizando obra existente: ${existingObraId}`);
+        pendingObras[existingIndex] = {
+          ...pendingObras[existingIndex],
+          ...newObra,
+          id: existingObraId,
+          created_at: pendingObras[existingIndex].created_at,
+        };
+      } else {
+        // ID existente não encontrado, adicionar como nova
+        pendingObras.push(newObra);
+      }
+    } else {
+      // Nova obra - adicionar
+      pendingObras.push(newObra);
+    }
+
     await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(pendingObras));
 
     // Atualizar status de sincronização
     await updateSyncStatus();
 
-    return newObra.id;
+    // Retornar o ID correto (existente ou novo)
+    const finalId = existingByNumero !== -1 && !existingObraId
+      ? pendingObras[existingByNumero].id
+      : (existingObraId || newObra.id);
+
+    return finalId;
   } catch (error) {
     console.error('Erro ao salvar obra offline:', error);
     throw error;
@@ -1053,7 +1104,8 @@ export const removePendingObra = async (id: string): Promise<void> => {
 export const updatePendingObraStatus = async (
   id: string,
   status: 'pending' | 'syncing' | 'failed',
-  errorMessage?: string
+  errorMessage?: string,
+  syncAttempts?: number
 ): Promise<void> => {
   try {
     const pendingObras = await getPendingObras();
@@ -1063,8 +1115,16 @@ export const updatePendingObraStatus = async (
       pendingObras[index].sync_status = status;
       if (status === 'failed') {
         pendingObras[index].error_message = errorMessage;
+        // Incrementar tentativas de sync
+        if (syncAttempts !== undefined) {
+          pendingObras[index].sync_attempts = syncAttempts;
+        }
       } else {
         delete pendingObras[index].error_message;
+        // Reset tentativas quando volta a pending ou syncing
+        if (status === 'pending') {
+          pendingObras[index].sync_attempts = 0;
+        }
       }
       await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(pendingObras));
       await updateSyncStatus();
@@ -1928,7 +1988,58 @@ export const syncObra = async (
   } catch (error: any) {
     console.error('Erro ao sincronizar obra:', error);
     const friendlyMessage = translateErrorMessage(error?.message);
-    await updatePendingObraStatus(obra.id, 'failed', friendlyMessage);
+
+    // Incrementar contador de tentativas falhadas
+    const syncAttempts = (obra.sync_attempts || 0) + 1;
+    await updatePendingObraStatus(obra.id, 'failed', friendlyMessage, syncAttempts);
+
+    // 🚨 BACKUP DE EMERGÊNCIA: Criar backup se falhou 3+ vezes
+    if (shouldCreateEmergencyBackup(syncAttempts)) {
+      try {
+        console.log(`🚨 Criando backup de emergência após ${syncAttempts} tentativas falhadas...`);
+
+        const backup = await createEmergencyBackup(obra.id, obra, 'sync_failed');
+
+        console.log(`✅ Backup de emergência criado: ${backup.id}`);
+        console.log(`   📁 Pasta: ${backup.folderPath}`);
+        console.log(`   📸 Fotos: ${backup.totalPhotos}`);
+
+        // Avisar usuário (não bloquear por isso)
+        Alert.alert(
+          '🆘 Backup de Emergência Criado',
+          `A obra ${obra.obra} falhou ao sincronizar ${syncAttempts} vezes.\n\n` +
+          `✅ Um backup de emergência foi criado com ${backup.totalPhotos} foto(s).\n\n` +
+          `Seus dados estão protegidos! Continue usando o app normalmente e tentaremos sincronizar novamente.`,
+          [{ text: 'OK' }]
+        );
+
+      } catch (backupError) {
+        console.error('❌ Erro ao criar backup de emergência:', backupError);
+
+        // Capturar erro no Sentry
+        captureError(backupError as Error, {
+          type: 'storage',
+          obraId: obra.id,
+          metadata: {
+            operation: 'createEmergencyBackup',
+            syncAttempts,
+            originalError: error?.message,
+          },
+        });
+      }
+    }
+
+    // Capturar erro original no Sentry
+    captureError(error, {
+      type: 'sync',
+      obraId: obra.id,
+      metadata: {
+        obraNumero: obra.obra,
+        operation: 'syncObra',
+        syncAttempts,
+      },
+    });
+
     return { success: false };
   }
 };
@@ -1999,6 +2110,17 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
         }
       } catch (error) {
         console.error(`❌ [syncAllPendingObras] Erro ao sincronizar obra local ${localObra.id}:`, error);
+
+        // 🔍 Capturar erro no Sentry
+        captureError(error as Error, {
+          type: 'sync',
+          obraId: localObra.id,
+          metadata: {
+            obraNumero: localObra.obra,
+            operation: 'syncLocalObra',
+          },
+        });
+
         failed++;
       }
     }
@@ -2329,6 +2451,169 @@ export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: s
 
   } catch (error) {
     console.error('❌ Erro ao recuperar fotos perdidas:', error);
+    throw error;
+  }
+};
+
+/**
+ * Remove obras duplicadas do AsyncStorage local
+ * Mantém apenas uma obra por número, priorizando:
+ * 1. Obras com serverId (já sincronizadas)
+ * 2. Obras mais recentes (last_modified)
+ */
+export const removeDuplicateObras = async (): Promise<{ removed: number; kept: number }> => {
+  try {
+    console.log('🧹 Iniciando limpeza de obras duplicadas...');
+
+    // Buscar todas as obras locais
+    const localObras = await getLocalObras();
+    console.log(`📊 Total de obras no AsyncStorage: ${localObras.length}`);
+
+    // Agrupar obras pelo número
+    const obrasByNumero = new Map<string, LocalObra[]>();
+    for (const obra of localObras) {
+      const numero = obra.obra;
+      if (!obrasByNumero.has(numero)) {
+        obrasByNumero.set(numero, []);
+      }
+      obrasByNumero.get(numero)!.push(obra);
+    }
+
+    // Identificar duplicatas e selecionar qual manter
+    const obrasToKeep: LocalObra[] = [];
+    let removedCount = 0;
+
+    for (const [numero, obras] of obrasByNumero.entries()) {
+      if (obras.length === 1) {
+        // Não há duplicata, manter
+        obrasToKeep.push(obras[0]);
+      } else {
+        // Há duplicatas - escolher qual manter
+        console.log(`⚠️ Encontradas ${obras.length} duplicatas da obra ${numero}`);
+
+        // Ordenar por prioridade:
+        // 1. Obras com serverId (sincronizadas) primeiro
+        // 2. Depois por data de modificação (mais recente primeiro)
+        const sorted = obras.sort((a, b) => {
+          // Prioridade 1: tem serverId
+          if (a.serverId && !b.serverId) return -1;
+          if (!a.serverId && b.serverId) return 1;
+
+          // Prioridade 2: mais recente
+          const dateA = new Date(a.last_modified || a.created_at || 0).getTime();
+          const dateB = new Date(b.last_modified || b.created_at || 0).getTime();
+          return dateB - dateA;
+        });
+
+        // Manter a primeira (melhor prioridade)
+        const toKeep = sorted[0];
+        obrasToKeep.push(toKeep);
+        removedCount += obras.length - 1;
+
+        console.log(`   ✅ Mantendo: ID=${toKeep.id}${toKeep.serverId ? `, serverId=${toKeep.serverId}` : ''}`);
+        console.log(`   ❌ Removendo ${obras.length - 1} duplicata(s)`);
+      }
+    }
+
+    // Salvar lista limpa
+    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasToKeep));
+
+    console.log(`✅ Limpeza concluída:`);
+    console.log(`   - Obras mantidas: ${obrasToKeep.length}`);
+    console.log(`   - Obras removidas: ${removedCount}`);
+
+    return { removed: removedCount, kept: obrasToKeep.length };
+  } catch (error) {
+    console.error('❌ Erro ao remover obras duplicadas:', error);
+    throw error;
+  }
+};
+
+/**
+ * Remove obras duplicadas das pending obras também
+ */
+export const removeDuplicatePendingObras = async (): Promise<{ removed: number; kept: number }> => {
+  try {
+    console.log('🧹 Limpando pending obras duplicadas...');
+
+    const pendingObras = await getPendingObras();
+    console.log(`📊 Total de pending obras: ${pendingObras.length}`);
+
+    // Agrupar por número
+    const obrasByNumero = new Map<string, PendingObra[]>();
+    for (const obra of pendingObras) {
+      const numero = obra.obra;
+      if (!obrasByNumero.has(numero)) {
+        obrasByNumero.set(numero, []);
+      }
+      obrasByNumero.get(numero)!.push(obra);
+    }
+
+    const obrasToKeep: PendingObra[] = [];
+    let removedCount = 0;
+
+    for (const [numero, obras] of obrasByNumero.entries()) {
+      if (obras.length === 1) {
+        obrasToKeep.push(obras[0]);
+      } else {
+        console.log(`⚠️ Encontradas ${obras.length} pending duplicatas da obra ${numero}`);
+
+        // Ordenar por data de criação (mais recente primeiro)
+        const sorted = obras.sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA;
+        });
+
+        obrasToKeep.push(sorted[0]);
+        removedCount += obras.length - 1;
+
+        console.log(`   ✅ Mantendo: ID=${sorted[0].id}`);
+        console.log(`   ❌ Removendo ${obras.length - 1} duplicata(s)`);
+      }
+    }
+
+    await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(obrasToKeep));
+
+    console.log(`✅ Pending obras limpas:`);
+    console.log(`   - Mantidas: ${obrasToKeep.length}`);
+    console.log(`   - Removidas: ${removedCount}`);
+
+    return { removed: removedCount, kept: obrasToKeep.length };
+  } catch (error) {
+    console.error('❌ Erro ao limpar pending obras:', error);
+    throw error;
+  }
+};
+
+/**
+ * Limpa todas as duplicatas (local + pending)
+ */
+export const cleanupAllDuplicates = async (): Promise<{
+  localRemoved: number;
+  pendingRemoved: number;
+  totalRemoved: number;
+}> => {
+  try {
+    console.log('🧹🧹 Limpeza completa de duplicatas...');
+
+    const localResult = await removeDuplicateObras();
+    const pendingResult = await removeDuplicatePendingObras();
+
+    const totalRemoved = localResult.removed + pendingResult.removed;
+
+    console.log(`✅ Limpeza completa concluída:`);
+    console.log(`   - Local: ${localResult.removed} removida(s), ${localResult.kept} mantida(s)`);
+    console.log(`   - Pending: ${pendingResult.removed} removida(s), ${pendingResult.kept} mantida(s)`);
+    console.log(`   - Total removido: ${totalRemoved}`);
+
+    return {
+      localRemoved: localResult.removed,
+      pendingRemoved: pendingResult.removed,
+      totalRemoved
+    };
+  } catch (error) {
+    console.error('❌ Erro na limpeza completa:', error);
     throw error;
   }
 };

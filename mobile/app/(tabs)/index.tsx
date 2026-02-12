@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../../lib/supabase';
 import NetInfo from '@react-native-community/netinfo';
 import {
@@ -13,6 +14,7 @@ import type { PendingObra } from '../../lib/offline-sync';
 
 export default function Dashboard() {
   const router = useRouter();
+  const [equipeLogada, setEquipeLogada] = useState('');
   const [totalObras, setTotalObras] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
@@ -20,11 +22,7 @@ export default function Dashboard() {
   const [syncingPending, setSyncingPending] = useState(false);
 
   useEffect(() => {
-    carregarEstatisticas();
-  }, []);
-
-  useEffect(() => {
-    loadPendingObras();
+    initializeDashboard();
   }, []);
 
   useEffect(() => {
@@ -48,39 +46,76 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    if (!equipeLogada) return;
+
     const unsubscribe = startAutoSync(async result => {
       if (result.success > 0 || result.failed > 0) {
-        await loadPendingObras();
+        await loadPendingObras(equipeLogada);
+        await carregarEstatisticas(equipeLogada);
       }
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, []);
+  }, [equipeLogada]);
 
-  const carregarEstatisticas = async () => {
+  const initializeDashboard = async () => {
     try {
-      // Login por equipe - não precisa verificar supabase.auth
-      // Carrega todas as obras (filtro por equipe é feito via RLS)
-      const { count, error } = await supabase
-        .from('obras')
-        .select('*', { count: 'exact', head: true });
+      const equipe = await AsyncStorage.getItem('@equipe_logada');
+      const equipeAtual = equipe || '';
+      setEquipeLogada(equipeAtual);
 
-      if (!error && count !== null) {
-        setTotalObras(count);
+      if (!equipeAtual) {
+        setTotalObras(0);
+        setPendingObras([]);
+        return;
       }
-    } catch (err) {
-      console.error('Erro ao carregar estatísticas:', err);
+
+      await Promise.all([
+        carregarEstatisticas(equipeAtual),
+        loadPendingObras(equipeAtual),
+      ]);
+    } catch (error) {
+      console.error('Erro ao inicializar dashboard:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadPendingObras = async () => {
+  const carregarEstatisticas = async (equipeParam?: string) => {
     try {
+      const equipe = equipeParam || equipeLogada;
+      if (!equipe) {
+        setTotalObras(0);
+        return;
+      }
+
+      // Conta somente obras da equipe logada.
+      const { count, error } = await supabase
+        .from('obras')
+        .select('*', { count: 'exact', head: true })
+        .eq('equipe', equipe);
+
+      if (!error && count !== null) {
+        setTotalObras(count);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar estatisticas:', err);
+    }
+  };
+
+  const loadPendingObras = async (equipeParam?: string) => {
+    try {
+      const equipe = equipeParam || equipeLogada;
+      if (!equipe) {
+        setPendingObras([]);
+        return;
+      }
+
       const obras = await getPendingObras();
-      setPendingObras(obras);
+      const pendentesDaEquipe = obras.filter(obra => obra.equipe === equipe);
+      setPendingObras(pendentesDaEquipe);
     } catch (error) {
       console.error('Erro ao carregar pendencias:', error);
     }
@@ -93,6 +128,7 @@ export default function Dashboard() {
     try {
       const result = await syncAllPendingObras();
       await loadPendingObras();
+      await carregarEstatisticas();
 
       if (result.success === 0 && result.failed === 0) {
         Alert.alert('Sem conexao', 'Precisamos de internet para enviar as obras.');
@@ -100,9 +136,9 @@ export default function Dashboard() {
       }
 
       if (result.failed > 0) {
-        Alert.alert('Aten�ʣo', `${result.failed} obra(s) ainda estao na fila. Tente novamente.`);
+        Alert.alert('Atencao', `${result.failed} obra(s) ainda estao na fila. Tente novamente.`);
       } else {
-        Alert.alert('Pronto!', `${result.success} obra(s) sincronizadas.`);
+        Alert.alert('Pronto', `${result.success} obra(s) sincronizadas.`);
       }
     } catch (error) {
       console.error('Erro ao sincronizar pendencias:', error);
@@ -114,15 +150,12 @@ export default function Dashboard() {
 
   const pendingMessage = isOnline
     ? pendingObras.length > 0
-      ? `${pendingObras.length} obra(s) aguardando sincronizacao`
-      : 'Tudo sincronizado'
-    : 'Cadastros ficam guardados e sincronizam assim que voltar a conexao';
+      ? `${pendingObras.length} obra(s) da equipe aguardando sincronizacao`
+      : 'Tudo sincronizado para a sua equipe'
+    : 'Cadastros ficam locais e sincronizam quando voltar a conexao';
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-    >
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.content}>
         <View
           style={[
@@ -139,7 +172,7 @@ export default function Dashboard() {
             />
             <View style={styles.statusTexts}>
               <Text style={styles.statusTitle}>
-                {isOnline ? 'Voce esta online' : 'Modo offline'}
+                {isOnline ? 'Conectado ao servidor' : 'Modo offline ativo'}
               </Text>
               <Text style={styles.statusSubtitle}>{pendingMessage}</Text>
             </View>
@@ -163,10 +196,26 @@ export default function Dashboard() {
           )}
         </View>
 
-        <Text style={styles.title}>Dashboard</Text>
-        <Text style={styles.subtitle}>Bem-vindo ao Obras Teccel</Text>
+        <View style={styles.header}>
+          <Text style={styles.title}>Inicio</Text>
+          <Text style={styles.subtitle}>
+            {equipeLogada ? `Equipe ${equipeLogada}` : 'Equipe nao identificada'}
+          </Text>
+        </View>
 
-        {/* Botão Principal - Nova Obra */}
+        <View style={styles.metricsRow}>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Obras da equipe</Text>
+            <Text style={styles.metricValue}>{loading ? '...' : totalObras}</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Pendencias</Text>
+            <Text style={[styles.metricValue, pendingObras.length > 0 && styles.metricAlert]}>
+              {loading ? '...' : pendingObras.length}
+            </Text>
+          </View>
+        </View>
+
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => router.push('/nova-obra')}
@@ -179,26 +228,21 @@ export default function Dashboard() {
           </View>
         </TouchableOpacity>
 
-        {/* Card Unificado - Obras */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>🏗️ Obras Cadastradas</Text>
-          <Text style={styles.statsNumber}>{totalObras}</Text>
+          <Text style={styles.cardTitle}>Obras Cadastradas</Text>
+          <Text style={styles.statsNumber}>{loading ? '--' : totalObras}</Text>
           <Text style={styles.cardText}>
             {totalObras === 0
-              ? 'Nenhuma obra cadastrada ainda'
-              : `${totalObras} obra${totalObras > 1 ? 's' : ''} registrada${totalObras > 1 ? 's' : ''} no sistema`
-            }
+              ? 'Nenhuma obra da sua equipe cadastrada ainda.'
+              : `${totalObras} obra${totalObras > 1 ? 's' : ''} da sua equipe registrada${totalObras > 1 ? 's' : ''}.`}
           </Text>
         </View>
 
-        {/* Botão Histórico */}
         <TouchableOpacity
           style={styles.secondaryButton}
           onPress={() => router.push('/(tabs)/obras')}
         >
-          <Text style={styles.secondaryButtonText}>
-            📋 Ver Histórico Completo
-          </Text>
+          <Text style={styles.secondaryButtonText}>Ver Historico Completo</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -208,34 +252,68 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#eef1f5',
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 110,
   },
   content: {
     padding: 20,
   },
+  header: {
+    marginBottom: 14,
+  },
   title: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
-    marginBottom: 8,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 4,
   },
   subtitle: {
-    fontSize: 18,
-    color: '#666',
-    marginBottom: 24,
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    marginHorizontal: -6,
+    marginBottom: 14,
+  },
+  metricCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    marginHorizontal: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 6,
+    fontWeight: '600',
+  },
+  metricValue: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#1f2937',
+  },
+  metricAlert: {
+    color: '#dc2626',
   },
   primaryButton: {
     backgroundColor: '#dc3545',
     borderRadius: 16,
-    padding: 20,
+    padding: 18,
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
     shadowColor: '#dc3545',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.25,
     shadowRadius: 8,
     elevation: 6,
   },
@@ -245,83 +323,83 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconText: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#dc3545',
-    lineHeight: 32,
+    lineHeight: 30,
   },
   primaryButtonText: {
     color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontWeight: '800',
   },
   secondaryButton: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 2,
-    borderColor: '#dc3545',
+    marginTop: 2,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
   },
   secondaryButtonText: {
-    color: '#dc3545',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#374151',
+    fontSize: 15,
+    fontWeight: '700',
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 20,
-    marginBottom: 16,
+    marginBottom: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
     elevation: 3,
   },
   cardTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 8,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 6,
   },
   cardText: {
-    fontSize: 16,
-    color: '#666',
-    lineHeight: 24,
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 21,
   },
   statsNumber: {
-    fontSize: 48,
-    fontWeight: 'bold',
+    fontSize: 50,
+    fontWeight: '800',
     color: '#dc3545',
     textAlign: 'center',
-    marginVertical: 12,
+    marginVertical: 8,
   },
   statusCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#ececec',
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 18,
     gap: 12,
   },
   statusCardOnline: {
-    backgroundColor: '#f1f8e9',
-    borderColor: '#dcedc8',
+    borderColor: '#bbf7d0',
+    backgroundColor: '#f0fdf4',
   },
   statusCardOffline: {
-    backgroundColor: '#fff8e1',
-    borderColor: '#ffe0b2',
+    borderColor: '#fde68a',
+    backgroundColor: '#fffbeb',
   },
   statusRow: {
     flexDirection: 'row',
@@ -329,42 +407,42 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statusDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   statusDotOnline: {
-    backgroundColor: '#2e7d32',
+    backgroundColor: '#16a34a',
   },
   statusDotOffline: {
-    backgroundColor: '#ff6f00',
+    backgroundColor: '#d97706',
   },
   statusTexts: {
     flex: 1,
   },
   statusTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
   },
   statusSubtitle: {
     fontSize: 13,
-    color: '#4a4a4a',
+    color: '#4b5563',
     marginTop: 2,
     lineHeight: 18,
   },
   statusButton: {
     backgroundColor: '#dc3545',
-    borderRadius: 12,
+    borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
   },
   statusButtonDisabled: {
-    opacity: 0.5,
+    opacity: 0.55,
   },
   statusButtonText: {
     color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

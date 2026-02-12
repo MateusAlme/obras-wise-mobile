@@ -29,6 +29,8 @@
       },
       "package": "com.obraswise.mobile",
       "versionCode": 5,
+      "minSdkVersion": 26,
+      "targetSdkVersion": 34,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -43,7 +45,10 @@
         "googleMaps": {
           "apiKey": ""
         }
-      }
+      },
+      "jsEngine": "hermes",
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
