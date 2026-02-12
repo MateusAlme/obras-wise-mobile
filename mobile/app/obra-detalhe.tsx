@@ -737,6 +737,102 @@ export default function ObraDetalhe() {
     });
   };
 
+  /**
+   * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
+   * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
+   */
+  const mergePostesPhotosWithStructure = (
+    postesData: any[] | undefined,
+    flatPhotos: FotoInfo[] | undefined
+  ): any[] | undefined => {
+    if (!postesData || postesData.length === 0) return postesData;
+    if (!flatPhotos || flatPhotos.length === 0) return postesData;
+
+    const extractPhotoInfo = (url: string) => {
+      const filename = url.split('/').pop() || '';
+      const match = filename.match(/checklist_poste_([a-z_]+\d?)_(\d+)_/);
+      if (!match) return null;
+      return {
+        tipo: match[1],
+        timestamp: parseInt(match[2])
+      };
+    };
+
+    const tipoToField: Record<string, string> = {
+      'inteiro': 'posteInteiro',
+      'engaste': 'engaste',
+      'conexao1': 'conexao1',
+      'conexao2': 'conexao2',
+      'maior_esforco': 'maiorEsforco',
+      'menor_esforco': 'menorEsforco'
+    };
+
+    const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = [];
+    let currentPosteIndex = -1;
+    let lastInteiroTimestamp = 0;
+
+    // Ordenar fotos por timestamp
+    const sortedPhotos = [...flatPhotos].sort((a, b) => {
+      const urlA = a.url || a.uri || '';
+      const urlB = b.url || b.uri || '';
+      const infoA = extractPhotoInfo(urlA);
+      const infoB = extractPhotoInfo(urlB);
+      if (!infoA || !infoB) return 0;
+      return infoA.timestamp - infoB.timestamp;
+    });
+
+    for (const photo of sortedPhotos) {
+      const url = photo.url || photo.uri || '';
+      const info = extractPhotoInfo(url);
+      if (!info) continue;
+
+      if (info.tipo === 'inteiro') {
+        if (currentPosteIndex === -1 || info.timestamp - lastInteiroTimestamp > 30000) {
+          currentPosteIndex++;
+          lastInteiroTimestamp = info.timestamp;
+        }
+      }
+
+      if (currentPosteIndex >= 0 && currentPosteIndex < postesData.length) {
+        photoGroups.push({
+          posteIndex: currentPosteIndex,
+          tipo: info.tipo,
+          photo
+        });
+      }
+    }
+
+    // Criar cópia dos postes e adicionar as fotos
+    const mergedPostes = postesData.map((poste, index) => {
+      const mergedPoste = {
+        ...poste,
+        posteInteiro: [...(poste.posteInteiro || [])],
+        engaste: [...(poste.engaste || [])],
+        conexao1: [...(poste.conexao1 || [])],
+        conexao2: [...(poste.conexao2 || [])],
+        maiorEsforco: [...(poste.maiorEsforco || [])],
+        menorEsforco: [...(poste.menorEsforco || [])]
+      };
+
+      for (const group of photoGroups) {
+        if (group.posteIndex === index) {
+          const field = tipoToField[group.tipo];
+          if (field && mergedPoste[field]) {
+            const photoUrl = group.photo.url || group.photo.uri || '';
+            const exists = mergedPoste[field].some((f: any) => (f.url || f.uri || f) === photoUrl || f === photoUrl);
+            if (!exists) {
+              mergedPoste[field].push(group.photo);
+            }
+          }
+        }
+      }
+
+      return mergedPoste;
+    });
+
+    return mergedPostes;
+  };
+
   // Helper para buscar fotos pelos IDs (aceita strings ou objetos com {id, url})
   const getPhotosByIds = (photoIds: (string | any)[]): FotoInfo[] => {
     if (!photoIds || photoIds.length === 0) return [];
@@ -1756,51 +1852,60 @@ export default function ObraDetalhe() {
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA POSTES DO CHECKLIST
             if (section.key === 'fotos_checklist_postes') {
-              const temFotosReais = hasRealPhotos(obra.checklist_postes_data);
+              // Tentar mesclar fotos flat com estrutura de postes
+              const mergedPostes = !hasRealPhotos(obra.checklist_postes_data) && ((obra as any).fotos_checklist_postes?.length ?? 0) > 0
+                ? mergePostesPhotosWithStructure(obra.checklist_postes_data, (obra as any).fotos_checklist_postes)
+                : obra.checklist_postes_data;
+
+              const temFotosReais = hasRealPhotos(mergedPostes);
               console.log('🔍 [DEBUG POSTES]', {
                 temEstrutura: !!obra.checklist_postes_data,
                 qtdItens: obra.checklist_postes_data?.length || 0,
                 temFotosReais,
-                primeiroItem: obra.checklist_postes_data?.[0]
+                usouMesclagem: mergedPostes !== obra.checklist_postes_data,
+                primeiroItem: mergedPostes?.[0]
               });
-            }
-            if (section.key === 'fotos_checklist_postes' && hasRealPhotos(obra.checklist_postes_data)) {
-              return (
-                <View key={section.key} style={styles.infoCard}>
-                  <Text style={styles.photoSectionTitle}>{section.label}</Text>
-                  {obra.checklist_postes_data.map((poste, posteIndex) => {
-                    const categoriasPoste = [
-                      { label: '📸 Poste Inteiro', fotos: poste.posteInteiro || [] },
-                      { label: '🔩 Engaste', fotos: poste.engaste || [] },
-                      { label: '🔌 Conexão 1', fotos: poste.conexao1 || [] },
-                      { label: '🔌 Conexão 2', fotos: poste.conexao2 || [] },
-                      { label: '💪 Maior Esforço', fotos: poste.maiorEsforco || [] },
-                      { label: '👌 Menor Esforço', fotos: poste.menorEsforco || [] },
-                    ];
 
-                    const totalFotos = categoriasPoste.reduce((sum, cat) => sum + cat.fotos.length, 0);
+              if (temFotosReais && mergedPostes) {
+                return (
+                  <View key={section.key} style={styles.infoCard}>
+                    <Text style={styles.photoSectionTitle}>{section.label}</Text>
+                    {mergedPostes.map((poste, posteIndex) => {
+                      const categoriasPoste = [
+                        { label: '📸 Poste Inteiro', fotos: poste.posteInteiro || [] },
+                        { label: '🔩 Engaste', fotos: poste.engaste || [] },
+                        { label: '🔌 Conexão 1', fotos: poste.conexao1 || [] },
+                        { label: '🔌 Conexão 2', fotos: poste.conexao2 || [] },
+                        { label: '💪 Maior Esforço', fotos: poste.maiorEsforco || [] },
+                        { label: '👌 Menor Esforço', fotos: poste.menorEsforco || [] },
+                      ];
 
-                    return (
-                      <View key={poste.id || posteIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: poste.isAditivo ? '#ff6b6b' : '#007bff' }}>
-                        <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
-                          {poste.isAditivo ? 'AD-' : ''}P{poste.numero} - {poste.status} ({totalFotos} fotos)
-                          {poste.isAditivo && <Text style={{ fontSize: 12, color: '#ff6b6b', marginLeft: 8 }}>(Aditivo)</Text>}
-                        </Text>
-                        {categoriasPoste.map((categoria, catIndex) => {
-                          const fotosCarregadas = getPhotosByIds(categoria.fotos);
-                          if (fotosCarregadas.length === 0) return null;
+                      const totalFotos = categoriasPoste.reduce((sum, cat) => sum + cat.fotos.length, 0);
 
-                          return (
-                            <View key={catIndex} style={{ marginBottom: 12 }}>
-                              <Text style={{ fontSize: 14, color: '#666', marginBottom: 6, marginLeft: 8 }}>
-                                {categoria.label} ({fotosCarregadas.length})
-                              </Text>
-                              <View style={styles.photoGrid}>
-                                {fotosCarregadas.map((foto, fotoIndex) => {
-                                  const source = getPhotoSource(foto);
-                                  if (!source) return null;
+                      return (
+                        <View key={poste.id || posteIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: poste.isAditivo ? '#ff6b6b' : '#007bff' }}>
+                          <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
+                            {poste.isAditivo ? 'AD-' : ''}P{poste.numero} - {poste.status} ({totalFotos} fotos)
+                            {poste.isAditivo && <Text style={{ fontSize: 12, color: '#ff6b6b', marginLeft: 8 }}>(Aditivo)</Text>}
+                          </Text>
+                          {categoriasPoste.map((categoria, catIndex) => {
+                            // Para fotos mescladas, usar diretamente; para IDs, buscar
+                            const fotosCarregadas = categoria.fotos.length > 0 && typeof categoria.fotos[0] === 'object'
+                              ? categoria.fotos
+                              : getPhotosByIds(categoria.fotos);
+                            if (fotosCarregadas.length === 0) return null;
 
-                                  return (
+                            return (
+                              <View key={catIndex} style={{ marginBottom: 12 }}>
+                                <Text style={{ fontSize: 14, color: '#666', marginBottom: 6, marginLeft: 8 }}>
+                                  {categoria.label} ({fotosCarregadas.length})
+                                </Text>
+                                <View style={styles.photoGrid}>
+                                  {fotosCarregadas.map((foto, fotoIndex) => {
+                                    const source = getPhotoSource(foto);
+                                    if (!source) return null;
+
+                                    return (
                                     <TouchableOpacity
                                       key={`${poste.id}-${catIndex}-${fotoIndex}`}
                                       onPress={() => openPhotoModal(foto, section.key)}
@@ -1822,6 +1927,7 @@ export default function ObraDetalhe() {
                   })}
                 </View>
               );
+              }
             }
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA SECCIONAMENTOS DO CHECKLIST
@@ -1994,9 +2100,9 @@ export default function ObraDetalhe() {
               </View>
             );
           })}
-            </>
-          );
-        })()}
+          </>
+        );
+      })()}
       </ScrollView>
 
       {/* Modal de visualização de foto em tela cheia */}
