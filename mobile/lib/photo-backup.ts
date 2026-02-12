@@ -237,10 +237,65 @@ export const getAllPhotoMetadata = async (): Promise<PhotoMetadata[]> => {
 
 /**
  * Obtém fotos pendentes de upload
+ * ✅ CORREÇÃO: Inclui fotos "zombie" (uploaded=true mas sem URL válida)
+ * Essas fotos ocorrem quando um upload falhou mas foi marcado como uploaded
  */
 export const getPendingPhotos = async (): Promise<PhotoMetadata[]> => {
   const allMetadata = await getAllPhotoMetadata();
-  return allMetadata.filter(m => !m.uploaded);
+  return allMetadata.filter(m => {
+    // Foto nunca foi uploaded
+    if (!m.uploaded) return true;
+    // ✅ Foto "zombie": marcada como uploaded mas sem URL válida
+    // Isso acontece quando upload falhou e a foto precisa ser re-tentada
+    if (m.uploaded && (!m.uploadUrl || m.uploadUrl === '')) {
+      console.log(`🔄 Foto zombie encontrada: ${m.id} - será re-tentada`);
+      return true;
+    }
+    return false;
+  });
+};
+
+/**
+ * Recupera fotos "zombie" de uma obra (uploaded=true mas sem URL)
+ * Útil para diagnóstico e recuperação manual
+ */
+export const getZombiePhotos = async (obraId?: string): Promise<PhotoMetadata[]> => {
+  const allMetadata = await getAllPhotoMetadata();
+  return allMetadata.filter(m => {
+    const isZombie = m.uploaded && (!m.uploadUrl || m.uploadUrl === '');
+    if (obraId) {
+      return isZombie && m.obraId === obraId;
+    }
+    return isZombie;
+  });
+};
+
+/**
+ * Reseta fotos zombie para permitir novo upload
+ */
+export const resetZombiePhotos = async (obraId?: string): Promise<number> => {
+  const zombies = await getZombiePhotos(obraId);
+  let count = 0;
+
+  for (const zombie of zombies) {
+    try {
+      // Resetar o status de uploaded para false
+      const allMetadata = await getAllPhotoMetadata();
+      const updated = allMetadata.map(m => {
+        if (m.id === zombie.id) {
+          return { ...m, uploaded: false, uploadUrl: undefined, retries: 0 };
+        }
+        return m;
+      });
+      await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(updated));
+      count++;
+      console.log(`✅ Foto zombie resetada: ${zombie.id}`);
+    } catch (error) {
+      console.error(`❌ Erro ao resetar foto zombie ${zombie.id}:`, error);
+    }
+  }
+
+  return count;
 };
 
 /**

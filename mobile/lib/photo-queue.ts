@@ -29,6 +29,7 @@ export interface UploadResult {
   success: boolean;
   url?: string;
   error?: string;
+  permanent?: boolean; // Indica erro permanente (ex: arquivo perdido)
 }
 
 export interface UploadProgress {
@@ -272,14 +273,16 @@ const uploadPhotoWithRetry = async (
         `Arquivo perdido: ${result.error}`
       );
 
-      // Marcar como "uploaded" com URL vazia para evitar sync loop
-      await markPhotoAsUploaded(photoMetadata.id, '');
+      // ✅ CORREÇÃO: NÃO marcar como uploaded se falhou
+      // Manter a foto como pendente mas com status 'lost' para permitir diagnóstico
+      // A foto ainda pode ser recuperada se o arquivo for encontrado novamente
       await removeFromQueue(photoMetadata.id);
 
       return {
         photoId: photoMetadata.id,
         success: false,
-        error: result.error
+        error: result.error,
+        permanent: true // Indica que é um erro permanente (arquivo perdido)
       };
     }
 

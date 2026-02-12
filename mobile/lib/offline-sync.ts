@@ -573,6 +573,18 @@ export const syncLocalObra = async (
         console.log(`   - Tipo do primeiro item fotos_antes: ${Array.isArray(syncedObra.fotos_antes) && syncedObra.fotos_antes.length > 0 ? typeof syncedObra.fotos_antes[0] : 'N/A'}`);
       }
 
+      // ✅ CORREÇÃO: Verificar se há fotos pendentes antes de marcar como synced
+      const { getPendingPhotos, getZombiePhotos } = await import('./photo-backup');
+      const pendingPhotos = await getPendingPhotos();
+      const zombiePhotos = await getZombiePhotos(obraId);
+      const obraPendingPhotos = pendingPhotos.filter(p => p.obraId === obraId || p.obraId === finalId);
+
+      const hasPendingPhotos = obraPendingPhotos.length > 0 || zombiePhotos.length > 0;
+      if (hasPendingPhotos) {
+        console.warn(`⚠️ Obra ${obraId} tem ${obraPendingPhotos.length} foto(s) pendente(s) e ${zombiePhotos.length} foto(s) zombie`);
+        console.warn(`⚠️ Obra NÃO será marcada como totalmente sincronizada - permitindo re-sync`);
+      }
+
       const localObras = await getLocalObras();
       const index = localObras.findIndex(o => o.id === obraId);
 
@@ -587,19 +599,26 @@ export const syncLocalObra = async (
             ...syncedObra, // Sobrescrever com dados do servidor
             id: obraId, // ✅ MANTER o ID local original
             serverId: finalId, // ✅ Guardar o UUID do Supabase
-            synced: true,
-            locallyModified: false,
+            // ✅ CORREÇÃO: Só marcar como synced se não houver fotos pendentes
+            synced: !hasPendingPhotos,
+            locallyModified: hasPendingPhotos, // Manter como modificada se há fotos pendentes
+            sync_status: hasPendingPhotos ? 'partial' : undefined, // Indicar sync parcial
             origem: 'online',
             last_modified: syncedObra.updated_at || syncedObra.created_at,
             created_at: syncedObra.created_at,
           } as LocalObra;
 
-          console.log(`✅ Obra atualizada - ID local: ${obraId}, serverId: ${finalId}`);
+          if (hasPendingPhotos) {
+            console.log(`⚠️ Obra parcialmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
+            console.log(`   Fotos pendentes: ${obraPendingPhotos.length}, Fotos zombie: ${zombiePhotos.length}`);
+          } else {
+            console.log(`✅ Obra totalmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
+          }
         } else {
           // Fallback: apenas marcar como sincronizada (mantém IDs)
           console.warn(`⚠️ Não foi possível buscar dados atualizados, marcando apenas como sincronizada`);
-          localObras[index].synced = true;
-          localObras[index].locallyModified = false;
+          localObras[index].synced = !hasPendingPhotos;
+          localObras[index].locallyModified = hasPendingPhotos;
           // ✅ Ainda assim, guardar o serverId se disponível
           if (finalId && finalId !== obraId) {
             (localObras[index] as any).serverId = finalId;
@@ -607,7 +626,7 @@ export const syncLocalObra = async (
         }
 
         await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-        console.log(`✅ Obra marcada como sincronizada: ${obraId} (serverId: ${finalId})`);
+        console.log(`✅ Obra ${hasPendingPhotos ? 'parcialmente' : 'totalmente'} sincronizada: ${obraId} (serverId: ${finalId})`);
       }
     }
 
