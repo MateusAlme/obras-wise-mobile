@@ -5,6 +5,113 @@ import { ptBR } from 'date-fns/locale'
 import { latLongToUTM, formatUTM } from './geocoding'
 
 /**
+ * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
+ * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
+ */
+function mergePostesPhotosWithStructure(
+  postesData: any[] | undefined,
+  flatPhotos: FotoInfo[] | undefined
+): any[] | undefined {
+  if (!postesData || postesData.length === 0) return postesData
+  if (!flatPhotos || flatPhotos.length === 0) return postesData
+
+  const extractPhotoInfo = (url: string) => {
+    const filename = url.split('/').pop() || ''
+    const match = filename.match(/checklist_poste_([a-z_]+\d?)_(\d+)_/)
+    if (!match) return null
+    return {
+      tipo: match[1],
+      timestamp: parseInt(match[2])
+    }
+  }
+
+  const tipoToField: Record<string, string> = {
+    'inteiro': 'posteInteiro',
+    'engaste': 'engaste',
+    'conexao1': 'conexao1',
+    'conexao2': 'conexao2',
+    'maior_esforco': 'maiorEsforco',
+    'menor_esforco': 'menorEsforco'
+  }
+
+  const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = []
+  let currentPosteIndex = -1
+  let lastInteiroTimestamp = 0
+
+  const sortedPhotos = [...flatPhotos].sort((a, b) => {
+    const infoA = extractPhotoInfo(a.url)
+    const infoB = extractPhotoInfo(b.url)
+    if (!infoA || !infoB) return 0
+    return infoA.timestamp - infoB.timestamp
+  })
+
+  for (const photo of sortedPhotos) {
+    const info = extractPhotoInfo(photo.url)
+    if (!info) continue
+
+    if (info.tipo === 'inteiro') {
+      if (currentPosteIndex === -1 || info.timestamp - lastInteiroTimestamp > 30000) {
+        currentPosteIndex++
+        lastInteiroTimestamp = info.timestamp
+      }
+    }
+
+    if (currentPosteIndex >= 0 && currentPosteIndex < postesData.length) {
+      photoGroups.push({
+        posteIndex: currentPosteIndex,
+        tipo: info.tipo,
+        photo
+      })
+    }
+  }
+
+  const mergedPostes = postesData.map((poste, index) => {
+    const mergedPoste = {
+      ...poste,
+      posteInteiro: [...(poste.posteInteiro || [])],
+      engaste: [...(poste.engaste || [])],
+      conexao1: [...(poste.conexao1 || [])],
+      conexao2: [...(poste.conexao2 || [])],
+      maiorEsforco: [...(poste.maiorEsforco || [])],
+      menorEsforco: [...(poste.menorEsforco || [])]
+    }
+
+    for (const group of photoGroups) {
+      if (group.posteIndex === index) {
+        const field = tipoToField[group.tipo]
+        if (field && mergedPoste[field]) {
+          const exists = mergedPoste[field].some((f: FotoInfo) => f.url === group.photo.url)
+          if (!exists) {
+            mergedPoste[field].push(group.photo)
+          }
+        }
+      }
+    }
+
+    return mergedPoste
+  })
+
+  return mergedPostes
+}
+
+/**
+ * Verifica se um campo estruturado tem fotos reais
+ */
+function hasRealPhotos(structuredData: any[] | undefined): boolean {
+  if (!structuredData || !Array.isArray(structuredData) || structuredData.length === 0) {
+    return false
+  }
+  return structuredData.some((item: any) => {
+    if (!item) return false
+    const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
+    return photoFields.some(field => {
+      const value = item[field]
+      return Array.isArray(value) && value.length > 0
+    })
+  })
+}
+
+/**
  * Carrega uma foto e retorna a imagem como data URL junto com suas dimensões originais
  * NÃO adiciona placa na imagem - a placa será renderizada separadamente no PDF
  */
@@ -649,16 +756,77 @@ export async function generatePDF(obra: Obra) {
   await addPhotosSection(obra.fotos_medidor_selo_caixa, 'Medidor - Selo da Caixa')
   await addPhotosSection(obra.fotos_medidor_identificador_fase, 'Medidor - Identificador de Fase')
 
-  // Checklist de Fiscalização
-  await addPhotosSection(obra.fotos_checklist_croqui, 'Checklist - Croqui')
-  await addPhotosSection(obra.fotos_checklist_panoramica_inicial, 'Checklist - Foto Panorâmica Inicial')
-  await addPhotosSection(obra.fotos_checklist_chede, 'Checklist - CHEDE')
-  await addPhotosSection(obra.fotos_checklist_aterramento_cerca, 'Checklist - Aterramento de Cerca')
-  await addPhotosSection(obra.fotos_checklist_padrao_geral, 'Checklist - Padrão Geral')
-  await addPhotosSection(obra.fotos_checklist_padrao_interno, 'Checklist - Padrão Interno')
-  await addPhotosSection(obra.fotos_checklist_panoramica_final, 'Checklist - Foto Panorâmica Final')
-  await addPhotosSection(obra.fotos_checklist_postes, 'Checklist - Postes')
-  await addPhotosSection(obra.fotos_checklist_seccionamentos, 'Checklist - Seccionamentos')
+  // Checklist de Fiscalização (ordem do formulário do app)
+  // 1. Croqui
+  await addPhotosSection(obra.fotos_checklist_croqui, 'Checklist - 1. Croqui da Obra')
+
+  // 2. Panorâmica Inicial
+  await addPhotosSection(obra.fotos_checklist_panoramica_inicial, 'Checklist - 2. Panorâmica Inicial')
+
+  // 3. CHEDE (Chave com Componente)
+  await addPhotosSection(obra.fotos_checklist_chede, 'Checklist - 3. Foto da Chave com Componente (CHEDE)')
+
+  // 4. Postes (organizado por poste)
+  const mergedPostes = !hasRealPhotos(obra.checklist_postes_data) && (obra.fotos_checklist_postes?.length ?? 0) > 0
+    ? mergePostesPhotosWithStructure(obra.checklist_postes_data, obra.fotos_checklist_postes)
+    : obra.checklist_postes_data;
+
+  if (hasRealPhotos(mergedPostes) && mergedPostes) {
+    for (let posteIndex = 0; posteIndex < mergedPostes.length; posteIndex++) {
+      const poste = mergedPostes[posteIndex];
+      const prefixo = poste.isAditivo ? 'AD-P' : 'P';
+      const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
+      const status = poste.status || '';
+      const statusText = status ? ` (${status})` : '';
+
+      // Renderizar cada tipo de foto do poste
+      if (poste.posteInteiro?.length > 0) {
+        await addPhotosSection(poste.posteInteiro, `Checklist - 4. ${label}${statusText} - Poste Inteiro`)
+      }
+      if (poste.engaste?.length > 0) {
+        await addPhotosSection(poste.engaste, `Checklist - 4. ${label}${statusText} - Engaste`)
+      }
+      if (poste.conexao1?.length > 0) {
+        await addPhotosSection(poste.conexao1, `Checklist - 4. ${label}${statusText} - Conexão 1`)
+      }
+      if (poste.conexao2?.length > 0) {
+        await addPhotosSection(poste.conexao2, `Checklist - 4. ${label}${statusText} - Conexão 2`)
+      }
+      if (poste.maiorEsforco?.length > 0) {
+        await addPhotosSection(poste.maiorEsforco, `Checklist - 4. ${label}${statusText} - Maior Esforço`)
+      }
+      if (poste.menorEsforco?.length > 0) {
+        await addPhotosSection(poste.menorEsforco, `Checklist - 4. ${label}${statusText} - Menor Esforço`)
+      }
+    }
+  } else if ((obra.fotos_checklist_postes?.length ?? 0) > 0) {
+    // Fallback: mostrar todas as fotos juntas se não conseguir organizar
+    await addPhotosSection(obra.fotos_checklist_postes, 'Checklist - 4. Postes')
+  }
+
+  // 5. Seccionamentos
+  await addPhotosSection(obra.fotos_checklist_seccionamentos, 'Checklist - 5. Seccionamentos')
+
+  // 6. Aterramento de Cerca
+  await addPhotosSection(obra.fotos_checklist_aterramento_cerca, 'Checklist - 6. Aterramento de Cerca')
+
+  // 7. Padrão Geral
+  await addPhotosSection(obra.fotos_checklist_padrao_geral, 'Checklist - 7. Padrão de Ligação - Geral')
+
+  // 8. Padrão Interno
+  await addPhotosSection(obra.fotos_checklist_padrao_interno, 'Checklist - 8. Padrão de Ligação - Interno')
+
+  // 9. Frying
+  await addPhotosSection(obra.fotos_checklist_frying, 'Checklist - 9. Frying')
+
+  // 10. Abertura e Fechamento de Pulo
+  await addPhotosSection(obra.fotos_checklist_abertura_fechamento_pulo, 'Checklist - 10. Abertura e Fechamento de Pulo')
+
+  // 11. Hastes e Termômetros
+  // TODO: Adicionar suporte para hastes/termômetros estruturados se necessário
+
+  // 12. Panorâmica Final
+  await addPhotosSection(obra.fotos_checklist_panoramica_final, 'Checklist - 12. Panorâmica Final')
 
   // Altimetria
   await addPhotosSection(obra.fotos_altimetria_lado_fonte, 'Altimetria - Lado Fonte')

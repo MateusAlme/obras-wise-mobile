@@ -45,6 +45,106 @@ function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
 
 // Função helper para obter aterramentos de cerca (suporta formato novo e antigo)
 /**
+ * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
+ * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
+ */
+function mergePostesPhotosWithStructure(
+  postesData: any[] | undefined,
+  flatPhotos: FotoInfo[] | undefined
+): any[] | undefined {
+  if (!postesData || postesData.length === 0) return postesData
+  if (!flatPhotos || flatPhotos.length === 0) return postesData
+
+  // Extrair tipo de foto do nome do arquivo
+  // Padrão: checklist_poste_{tipo}_{timestamp}_{random}_{indice}.jpg
+  const extractPhotoInfo = (url: string) => {
+    const filename = url.split('/').pop() || ''
+    const match = filename.match(/checklist_poste_([a-z_]+\d?)_(\d+)_/)
+    if (!match) return null
+    return {
+      tipo: match[1], // inteiro, conexao1, conexao2, engaste, maior_esforco, menor_esforco
+      timestamp: parseInt(match[2])
+    }
+  }
+
+  // Mapear tipos de foto para campos do poste
+  const tipoToField: Record<string, string> = {
+    'inteiro': 'posteInteiro',
+    'engaste': 'engaste',
+    'conexao1': 'conexao1',
+    'conexao2': 'conexao2',
+    'maior_esforco': 'maiorEsforco',
+    'menor_esforco': 'menorEsforco'
+  }
+
+  // Agrupar fotos por timestamp para identificar a qual poste pertencem
+  // Cada "inteiro" com timestamp significativamente diferente marca um novo poste
+  const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = []
+  let currentPosteIndex = -1
+  let lastInteiroTimestamp = 0
+
+  // Ordenar fotos por timestamp
+  const sortedPhotos = [...flatPhotos].sort((a, b) => {
+    const infoA = extractPhotoInfo(a.url)
+    const infoB = extractPhotoInfo(b.url)
+    if (!infoA || !infoB) return 0
+    return infoA.timestamp - infoB.timestamp
+  })
+
+  for (const photo of sortedPhotos) {
+    const info = extractPhotoInfo(photo.url)
+    if (!info) continue
+
+    // Se é uma foto "inteiro" com timestamp bem diferente do último, é um novo poste
+    if (info.tipo === 'inteiro') {
+      if (currentPosteIndex === -1 || info.timestamp - lastInteiroTimestamp > 30000) {
+        currentPosteIndex++
+        lastInteiroTimestamp = info.timestamp
+      }
+    }
+
+    if (currentPosteIndex >= 0 && currentPosteIndex < postesData.length) {
+      photoGroups.push({
+        posteIndex: currentPosteIndex,
+        tipo: info.tipo,
+        photo
+      })
+    }
+  }
+
+  // Criar cópia profunda dos postes e adicionar as fotos
+  const mergedPostes = postesData.map((poste, index) => {
+    const mergedPoste = {
+      ...poste,
+      posteInteiro: [...(poste.posteInteiro || [])],
+      engaste: [...(poste.engaste || [])],
+      conexao1: [...(poste.conexao1 || [])],
+      conexao2: [...(poste.conexao2 || [])],
+      maiorEsforco: [...(poste.maiorEsforco || [])],
+      menorEsforco: [...(poste.menorEsforco || [])]
+    }
+
+    // Adicionar fotos deste poste
+    for (const group of photoGroups) {
+      if (group.posteIndex === index) {
+        const field = tipoToField[group.tipo]
+        if (field && mergedPoste[field]) {
+          // Verificar se a foto já não existe (evitar duplicatas)
+          const exists = mergedPoste[field].some((f: FotoInfo) => f.url === group.photo.url)
+          if (!exists) {
+            mergedPoste[field].push(group.photo)
+          }
+        }
+      }
+    }
+
+    return mergedPoste
+  })
+
+  return mergedPostes
+}
+
+/**
  * Verifica se um campo estruturado tem fotos reais
  */
 function hasRealPhotos(structuredData: any[] | undefined): boolean {
@@ -938,49 +1038,63 @@ export default function ObraDetailPage() {
                 {/* 3. CHEDE */}
                 <PhotoGallery photos={obra.fotos_checklist_chede || []} title="3. Foto da Chave com Componente (CHEDE)" sectionKey="fotos_checklist_chede" {...galleryProps} />
                 
-                {/* 4. Postes - Exibição estruturada (só se tiver fotos reais) */}
-                {hasRealPhotos(obra.checklist_postes_data) && (
-                  <div className="mb-6">
-                    <h4 className="text-lg font-semibold text-gray-800 mb-3">4. Registro dos Postes</h4>
-                    {obra.checklist_postes_data?.map((poste: any, posteIndex: number) => {
-                      const prefixo = poste.isAditivo ? 'AD-P' : 'P';
-                      const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
-                      const status = poste.status || 'N/A';
-                      return (
-                        <div key={posteIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
-                              {label}
-                            </span>
-                            <span className="text-sm text-gray-600">Status: {status}</span>
-                          </div>
-                          {poste.posteInteiro?.length > 0 && (
-                            <PhotoGallery photos={poste.posteInteiro} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
-                          )}
-                          {poste.engaste?.length > 0 && (
-                            <PhotoGallery photos={poste.engaste} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
-                          )}
-                          {poste.conexao1?.length > 0 && (
-                            <PhotoGallery photos={poste.conexao1} title="Conexão 1" sectionKey={`poste_${posteIndex}_conexao1`} {...galleryProps} />
-                          )}
-                          {poste.conexao2?.length > 0 && (
-                            <PhotoGallery photos={poste.conexao2} title="Conexão 2" sectionKey={`poste_${posteIndex}_conexao2`} {...galleryProps} />
-                          )}
-                          {poste.maiorEsforco?.length > 0 && (
-                            <PhotoGallery photos={poste.maiorEsforco} title="Maior Esforço" sectionKey={`poste_${posteIndex}_maior`} {...galleryProps} />
-                          )}
-                          {poste.menorEsforco?.length > 0 && (
-                            <PhotoGallery photos={poste.menorEsforco} title="Menor Esforço" sectionKey={`poste_${posteIndex}_menor`} {...galleryProps} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* Fallback para formato antigo de postes */}
-                {!hasRealPhotos(obra.checklist_postes_data) && (obra.fotos_checklist_postes?.length ?? 0) > 0 && (
-                  <PhotoGallery photos={obra.fotos_checklist_postes || []} title="4. Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
-                )}
+                {/* 4. Postes - Exibição estruturada */}
+                {(() => {
+                  // Tentar mesclar fotos flat com estrutura de postes
+                  const mergedPostes = !hasRealPhotos(obra.checklist_postes_data) && (obra.fotos_checklist_postes?.length ?? 0) > 0
+                    ? mergePostesPhotosWithStructure(obra.checklist_postes_data, obra.fotos_checklist_postes)
+                    : obra.checklist_postes_data;
+
+                  const hasPostesWithPhotos = hasRealPhotos(mergedPostes);
+
+                  if (hasPostesWithPhotos && mergedPostes) {
+                    return (
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-3">4. Registro dos Postes</h4>
+                        {mergedPostes.map((poste: any, posteIndex: number) => {
+                          const prefixo = poste.isAditivo ? 'AD-P' : 'P';
+                          const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
+                          const status = poste.status || 'N/A';
+                          return (
+                            <div key={posteIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                  {label}
+                                </span>
+                                <span className="text-sm text-gray-600">Status: {status}</span>
+                              </div>
+                              {poste.posteInteiro?.length > 0 && (
+                                <PhotoGallery photos={poste.posteInteiro} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
+                              )}
+                              {poste.engaste?.length > 0 && (
+                                <PhotoGallery photos={poste.engaste} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
+                              )}
+                              {poste.conexao1?.length > 0 && (
+                                <PhotoGallery photos={poste.conexao1} title="Conexão 1" sectionKey={`poste_${posteIndex}_conexao1`} {...galleryProps} />
+                              )}
+                              {poste.conexao2?.length > 0 && (
+                                <PhotoGallery photos={poste.conexao2} title="Conexão 2" sectionKey={`poste_${posteIndex}_conexao2`} {...galleryProps} />
+                              )}
+                              {poste.maiorEsforco?.length > 0 && (
+                                <PhotoGallery photos={poste.maiorEsforco} title="Maior Esforço" sectionKey={`poste_${posteIndex}_maior`} {...galleryProps} />
+                              )}
+                              {poste.menorEsforco?.length > 0 && (
+                                <PhotoGallery photos={poste.menorEsforco} title="Menor Esforço" sectionKey={`poste_${posteIndex}_menor`} {...galleryProps} />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  }
+
+                  // Fallback: mostrar todas as fotos juntas se não conseguir mesclar
+                  if ((obra.fotos_checklist_postes?.length ?? 0) > 0) {
+                    return <PhotoGallery photos={obra.fotos_checklist_postes || []} title="4. Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />;
+                  }
+
+                  return null;
+                })()}
                 
                 {/* 5. Seccionamentos - Exibição estruturada (só se tiver fotos reais) */}
                 {hasRealPhotos(obra.checklist_seccionamentos_data) && (

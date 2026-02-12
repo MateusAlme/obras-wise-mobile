@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   Pressable,
   ActivityIndicator,
   BackHandler,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -315,6 +317,12 @@ export default function NovaObra() {
   // Modal de confirmação de saída
   const [exitModalVisible, setExitModalVisible] = useState(false);
 
+  // ✅ AUTO-SAVE: Ref para guardar função de salvamento silencioso
+  // Usamos ref para evitar closures stale no callback do AppState
+  const autoSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+
   // Formatar data para exibição (DD/MM/AAAA)
   const formatDateForDisplay = (dateString: string): string => {
     if (!dateString) return 'Selecione a data';
@@ -432,6 +440,186 @@ export default function NovaObra() {
     };
     loadEquipeLogada();
   }, []);
+
+  // ✅ AUTO-SAVE: Salvar automaticamente quando app vai para background
+  // Isso evita perda de fotos quando o SO mata o processo
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+      // Detectar quando app vai para background ou inactive
+      if (
+        appStateRef.current === 'active' &&
+        (nextAppState === 'background' || nextAppState === 'inactive')
+      ) {
+        console.log('📱 App indo para background - executando auto-save...');
+
+        // Chamar a função de salvamento silencioso
+        if (autoSaveRef.current && autoSaveEnabled) {
+          try {
+            await autoSaveRef.current();
+            console.log('✅ Auto-save concluído com sucesso');
+          } catch (error) {
+            console.error('❌ Erro no auto-save:', error);
+          }
+        }
+      }
+
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [autoSaveEnabled]);
+
+  // ✅ AUTO-SAVE: Atualizar função de salvamento silencioso sempre que os estados mudarem
+  // Usamos useCallback para criar uma função estável que acessa os valores atuais
+  const performAutoSave = useCallback(async () => {
+    // Não salvar se não há dados mínimos
+    if (!data && !obra && fotosAntes.length === 0 && fotosDurante.length === 0 && fotosDepois.length === 0) {
+      console.log('⚠️ Auto-save ignorado: nenhum dado para salvar');
+      return;
+    }
+
+    console.log('💾 Executando auto-save silencioso...');
+    console.log('   Data:', data);
+    console.log('   Obra:', obra);
+    console.log('   Fotos antes:', fotosAntes.length);
+    console.log('   Fotos durante:', fotosDurante.length);
+    console.log('   Fotos depois:', fotosDepois.length);
+
+    const finalObraId = isEditMode && obraId
+      ? obraId
+      : `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    // Extrair photoIds de todos os arrays de fotos
+    const photoIds = {
+      fotos_antes: fotosAntes.map(f => f.photoId).filter(Boolean),
+      fotos_durante: fotosDurante.map(f => f.photoId).filter(Boolean),
+      fotos_depois: fotosDepois.map(f => f.photoId).filter(Boolean),
+      fotos_abertura: fotosAbertura.map(f => f.photoId).filter(Boolean),
+      fotos_fechamento: fotosFechamento.map(f => f.photoId).filter(Boolean),
+      fotos_ditais_abertura: fotosDitaisAbertura.map(f => f.photoId).filter(Boolean),
+      fotos_ditais_impedir: fotosDitaisImpedir.map(f => f.photoId).filter(Boolean),
+      fotos_ditais_testar: fotosDitaisTestar.map(f => f.photoId).filter(Boolean),
+      fotos_ditais_aterrar: fotosDitaisAterrar.map(f => f.photoId).filter(Boolean),
+      fotos_ditais_sinalizar: fotosDitaisSinalizar.map(f => f.photoId).filter(Boolean),
+      fotos_aterramento_vala_aberta: fotosAterramentoValaAberta.map(f => f.photoId).filter(Boolean),
+      fotos_aterramento_hastes: fotosAterramentoHastes.map(f => f.photoId).filter(Boolean),
+      fotos_aterramento_vala_fechada: fotosAterramentoValaFechada.map(f => f.photoId).filter(Boolean),
+      fotos_aterramento_medicao: fotosAterramentoMedicao.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_laudo: fotosTransformadorLaudo.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_componente_instalado: fotosTransformadorComponenteInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_tombamento_instalado: fotosTransformadorTombamentoInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_tape: fotosTransformadorTape.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_placa_instalado: fotosTransformadorPlacaInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_instalado: fotosTransformadorInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_conexoes_secundarias_instalado: fotosTransformadorConexoesSecundariasInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_antes_retirar: fotosTransformadorAntesRetirar.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_laudo_retirado: fotosTransformadorLaudoRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_placa_retirado: fotosTransformadorPlacaRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_conexoes_primarias_retirado: fotosTransformadorConexoesPrimariasRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_transformador_conexoes_secundarias_retirado: fotosTransformadorConexoesSecundariasRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_medidor_padrao: fotosMedidorPadrao.map(f => f.photoId).filter(Boolean),
+      fotos_medidor_leitura: fotosMedidorLeitura.map(f => f.photoId).filter(Boolean),
+      fotos_medidor_selo_born: fotosMedidorSeloBorn.map(f => f.photoId).filter(Boolean),
+      fotos_medidor_selo_caixa: fotosMedidorSeloCaixa.map(f => f.photoId).filter(Boolean),
+      fotos_medidor_identificador_fase: fotosMedidorIdentificadorFase.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_croqui: fotosChecklistCroqui.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_panoramica_inicial: fotosChecklistPanoramicaInicial.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_chave_componente: fotosChecklistChaveComponente.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_padrao_geral: fotosChecklistPadraoGeral.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_padrao_interno: fotosChecklistPadraoInterno.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_frying: fotosChecklistFrying.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_abertura_fechamento_pulo: fotosChecklistAberturaFechamentoPulo.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_panoramica_final: fotosChecklistPanoramicaFinal.map(f => f.photoId).filter(Boolean),
+      fotos_altimetria_lado_fonte: fotosAltimetriaLadoFonte.map(f => f.photoId).filter(Boolean),
+      fotos_altimetria_medicao_fonte: fotosAltimetriaMedicaoFonte.map(f => f.photoId).filter(Boolean),
+      fotos_altimetria_lado_carga: fotosAltimetriaLadoCarga.map(f => f.photoId).filter(Boolean),
+      fotos_altimetria_medicao_carga: fotosAltimetriaMedicaoCarga.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_evidencia: fotosVazamentoEvidencia.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_equipamentos_limpeza: fotosVazamentoEquipamentosLimpeza.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_tombamento_retirado: fotosVazamentoTombamentoRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_placa_retirado: fotosVazamentoPlacaRetirado.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_tombamento_instalado: fotosVazamentoTombamentoInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstalado.map(f => f.photoId).filter(Boolean),
+      fotos_vazamento_instalacao: fotosVazamentoInstalacao.map(f => f.photoId).filter(Boolean),
+      doc_cadastro_medidor: docCadastroMedidor.map(f => f.photoId).filter(Boolean),
+      doc_laudo_transformador: docLaudoTransformador.map(f => f.photoId).filter(Boolean),
+      doc_laudo_regulador: docLaudoRegulador.map(f => f.photoId).filter(Boolean),
+      doc_laudo_religador: docLaudoReligador.map(f => f.photoId).filter(Boolean),
+      doc_apr: docApr.map(f => f.photoId).filter(Boolean),
+      doc_fvbt: docFvbt.map(f => f.photoId).filter(Boolean),
+      doc_termo_desistencia_lpt: docTermoDesistenciaLpt.map(f => f.photoId).filter(Boolean),
+      doc_autorizacao_passagem: docAutorizacaoPassagem.map(f => f.photoId).filter(Boolean),
+      doc_materiais_previsto: docMateriaisPrevisto.map(f => f.photoId).filter(Boolean),
+      doc_materiais_realizado: docMateriaisRealizado.map(f => f.photoId).filter(Boolean),
+    };
+
+    const obraData: any = {
+      id: finalObraId,
+      ...(currentServerId && { serverId: currentServerId }),
+      obra: obra?.trim() || '',
+      data: data || '',
+      responsavel: isCompUser ? 'COMP' : (responsavel || ''),
+      equipe: isCompUser ? (equipeExecutora || '') : (equipe || ''),
+      tipo_servico: tipoServico || '',
+      status: 'rascunho' as const,
+      origem: 'offline' as const,
+      created_at: new Date().toISOString(),
+      creator_role: isCompUser ? 'compressor' : 'equipe',
+      transformador_status: transformadorStatus,
+      num_postes: numPostes,
+      num_seccionamentos: numSeccionamentos,
+      num_aterramento_cerca: numAterramentosCerca,
+      auto_saved: true, // Marcar como auto-save para identificação
+      ...photoIds,
+    };
+
+    try {
+      const savedObraId = await saveObraLocal(obraData);
+      console.log(`✅ Auto-save concluído: ${savedObraId}`);
+
+      // Atualizar obraId das fotos no photo-backup se necessário
+      if (backupObraId !== savedObraId) {
+        try {
+          const qtd = await updatePhotosObraId(backupObraId, savedObraId);
+          console.log(`✅ ${qtd} foto(s) atualizadas com novo obraId`);
+        } catch (error) {
+          console.error('❌ Erro ao atualizar obraId das fotos:', error);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro no auto-save:', error);
+      throw error;
+    }
+  }, [
+    data, obra, responsavel, equipe, equipeExecutora, tipoServico, isCompUser, isEditMode, obraId,
+    currentServerId, transformadorStatus, numPostes, numSeccionamentos, numAterramentosCerca,
+    backupObraId,
+    fotosAntes, fotosDurante, fotosDepois, fotosAbertura, fotosFechamento,
+    fotosDitaisAbertura, fotosDitaisImpedir, fotosDitaisTestar, fotosDitaisAterrar, fotosDitaisSinalizar,
+    fotosAterramentoValaAberta, fotosAterramentoHastes, fotosAterramentoValaFechada, fotosAterramentoMedicao,
+    fotosTransformadorLaudo, fotosTransformadorComponenteInstalado, fotosTransformadorTombamentoInstalado,
+    fotosTransformadorTape, fotosTransformadorPlacaInstalado, fotosTransformadorInstalado,
+    fotosTransformadorConexoesPrimariasInstalado, fotosTransformadorConexoesSecundariasInstalado,
+    fotosTransformadorAntesRetirar, fotosTransformadorLaudoRetirado, fotosTransformadorTombamentoRetirado,
+    fotosTransformadorPlacaRetirado, fotosTransformadorConexoesPrimariasRetirado, fotosTransformadorConexoesSecundariasRetirado,
+    fotosMedidorPadrao, fotosMedidorLeitura, fotosMedidorSeloBorn, fotosMedidorSeloCaixa, fotosMedidorIdentificadorFase,
+    fotosChecklistCroqui, fotosChecklistPanoramicaInicial, fotosChecklistChaveComponente, fotosChecklistPadraoGeral,
+    fotosChecklistPadraoInterno, fotosChecklistFrying, fotosChecklistAberturaFechamentoPulo, fotosChecklistPanoramicaFinal,
+    fotosAltimetriaLadoFonte, fotosAltimetriaMedicaoFonte, fotosAltimetriaLadoCarga, fotosAltimetriaMedicaoCarga,
+    fotosVazamentoEvidencia, fotosVazamentoEquipamentosLimpeza, fotosVazamentoTombamentoRetirado,
+    fotosVazamentoPlacaRetirado, fotosVazamentoTombamentoInstalado, fotosVazamentoPlacaInstalado, fotosVazamentoInstalacao,
+    docCadastroMedidor, docLaudoTransformador, docLaudoRegulador, docLaudoReligador,
+    docApr, docFvbt, docTermoDesistenciaLpt, docAutorizacaoPassagem, docMateriaisPrevisto, docMateriaisRealizado,
+  ]);
+
+  // Atualizar a referência sempre que a função mudar
+  useEffect(() => {
+    autoSaveRef.current = performAutoSave;
+  }, [performAutoSave]);
 
   // Carregar dados da obra em modo de edição
   useEffect(() => {
