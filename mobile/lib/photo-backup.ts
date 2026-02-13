@@ -2,10 +2,39 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as utm from 'utm';
-// import { captureError, addBreadcrumb } from './sentry';
+import { captureError } from './sentry';
 
 const PHOTO_BACKUP_DIR = `${FileSystem.documentDirectory}obra_photos_backup/`;
 const PHOTO_METADATA_KEY = '@photo_metadata';
+const MIN_FREE_STORAGE_BYTES = 80 * 1024 * 1024; // 80MB
+const STORAGE_SAFETY_MARGIN_BYTES = 20 * 1024 * 1024; // 20MB
+
+/**
+ * Verifica espaço livre antes de copiar/comprimir arquivos para reduzir risco de falha por disco cheio.
+ */
+const ensureEnoughStorageForBackup = async (uri: string): Promise<void> => {
+  try {
+    const fileInfo = await FileSystem.getInfoAsync(uri);
+    const originalSize = fileInfo.exists ? (fileInfo.size || 0) : 0;
+    const estimatedRequiredBytes = Math.max(
+      MIN_FREE_STORAGE_BYTES,
+      (originalSize * 2) + STORAGE_SAFETY_MARGIN_BYTES
+    );
+
+    const freeDiskBytes = await FileSystem.getFreeDiskStorageAsync();
+    if (freeDiskBytes < estimatedRequiredBytes) {
+      const freeMb = Math.floor(freeDiskBytes / 1024 / 1024);
+      const requiredMb = Math.floor(estimatedRequiredBytes / 1024 / 1024);
+      throw new Error(`Espaço insuficiente no dispositivo (${freeMb}MB livres, mínimo ${requiredMb}MB).`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.toLowerCase().includes('espaço insuficiente')) {
+      throw error;
+    }
+    console.warn('Não foi possível validar espaço livre antes do backup. Prosseguindo:', message);
+  }
+};
 
 export interface PhotoMetadata {
   id: string;
@@ -142,6 +171,7 @@ export const backupPhoto = async (
   longitude: number | null
 ): Promise<PhotoMetadata> => {
   try {
+    await ensureEnoughStorageForBackup(uri);
     await ensureBackupDirectoryExists();
 
     const photoId = `${obraId}_${type}_${index}_${Date.now()}`;

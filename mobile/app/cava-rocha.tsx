@@ -59,6 +59,7 @@ export default function CavaRocha() {
   // Postes
   const [postes, setPostes] = useState<Poste[]>([]);
   const [proximoNumero, setProximoNumero] = useState(1);
+  const [tempObraId] = useState(`local_cava_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
 
   // Modal
   const [showEquipeModal, setShowEquipeModal] = useState(false);
@@ -154,13 +155,29 @@ export default function CavaRocha() {
         }
 
         // Fazer backup da foto
-        const photoId = await backupPhoto(photo.uri, latitude, longitude);
+        const posteAtual = postes.find(p => p.id === posteId);
+        const indexFoto = posteAtual
+          ? (tipo === 'antes'
+              ? posteAtual.fotosAntes.length
+              : tipo === 'durante'
+                ? posteAtual.fotosDurante.length
+                : posteAtual.fotosDepois.length)
+          : 0;
+        const backupObraId = obra?.trim() ? `cava_${obra.trim()}` : tempObraId;
+        const photoMetadata = await backupPhoto(
+          photo.uri,
+          backupObraId,
+          tipo,
+          indexFoto,
+          latitude,
+          longitude
+        );
 
         const fotoData: FotoData = {
           uri: photo.uri,
           latitude,
           longitude,
-          photoId,
+          photoId: photoMetadata.id,
         };
 
         // Adicionar foto ao poste específico

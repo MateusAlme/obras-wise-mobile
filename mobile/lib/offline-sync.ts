@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 import { Alert } from 'react-native';
 import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata } from './photo-backup';
 import { processObraPhotos, UploadProgress } from './photo-queue';
-// import { captureError, addBreadcrumb } from './sentry';
+import { captureError } from './sentry';
 import { createEmergencyBackup, shouldCreateEmergencyBackup } from './emergency-backup';
 
 const PENDING_OBRAS_KEY = '@obras_pending_sync';
@@ -1280,28 +1280,47 @@ const convertPhotoIdsToUrls = async (photoIds: any[]): Promise<any[]> => {
 
   const result: any[] = [];
 
+  const toPhotoPayload = (url: string, source?: any, metadata?: PhotoMetadata) => ({
+    url,
+    latitude: metadata?.latitude ?? source?.latitude ?? null,
+    longitude: metadata?.longitude ?? source?.longitude ?? null,
+    utm_x: metadata?.utmX ?? source?.utm_x ?? source?.utmX ?? null,
+    utm_y: metadata?.utmY ?? source?.utm_y ?? source?.utmY ?? null,
+    utm_zone: metadata?.utmZone ?? source?.utm_zone ?? source?.utmZone ?? null,
+  });
+
   for (const item of photoIds) {
     // Se já é objeto com URL, manter como está
     if (typeof item === 'object' && item !== null && item.url) {
-      result.push(item);
+      result.push(toPhotoPayload(item.url, item));
       continue;
     }
 
-    // Se é string, buscar o metadata e converter para objeto com URL
-    if (typeof item === 'string') {
-      const metadataList = await getPhotoMetadatasByIds([item]);
-      if (metadataList.length > 0 && metadataList[0].uploaded && metadataList[0].uploadUrl) {
-        result.push({
-          url: metadataList[0].uploadUrl,
-          latitude: metadataList[0].latitude,
-          longitude: metadataList[0].longitude,
-          utm_x: metadataList[0].utmX,
-          utm_y: metadataList[0].utmY,
-          utm_zone: metadataList[0].utmZone,
-        });
-      } else {
-        console.warn(`⚠️ [convertPhotoIdsToUrls] Foto ${item} não tem URL, será ignorada`);
-      }
+    // Se veio URL direta em string
+    if (typeof item === 'string' && item.startsWith('http')) {
+      result.push(toPhotoPayload(item));
+      continue;
+    }
+
+    // Aceitar tanto string quanto objeto com { id, ... }
+    const photoId =
+      typeof item === 'string'
+        ? item
+        : (typeof item === 'object' && item !== null && typeof item.id === 'string'
+            ? item.id
+            : null);
+
+    if (!photoId) {
+      continue;
+    }
+
+    const metadataList = await getPhotoMetadatasByIds([photoId]);
+    const metadata = metadataList.find(m => m.uploaded && m.uploadUrl);
+
+    if (metadata?.uploadUrl) {
+      result.push(toPhotoPayload(metadata.uploadUrl, item, metadata));
+    } else {
+      console.warn(`[WARN] [convertPhotoIdsToUrls] Foto ${photoId} não tem URL, será ignorada`);
     }
   }
 

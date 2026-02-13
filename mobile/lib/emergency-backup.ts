@@ -8,7 +8,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAllPhotoMetadata, type PhotoMetadata } from './photo-backup';
-// import { captureError, addBreadcrumb } from './sentry';
+import { captureError, addBreadcrumb } from './sentry';
 
 // Pasta de backups de emergência (permanente, não é limpa pelo sistema)
 const EMERGENCY_BACKUP_DIR = `${FileSystem.documentDirectory}emergency_backups/`;

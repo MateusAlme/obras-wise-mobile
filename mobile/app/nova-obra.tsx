@@ -524,6 +524,10 @@ export default function NovaObra() {
       fotosDitaisAbertura.length > 0 ||
       fotosTransformadorLaudo.length > 0 ||
       docCadastroMedidor.length > 0 ||
+      fotosPostes.some(p => p.posteInteiro.length > 0 || p.engaste.length > 0 || p.conexao1.length > 0 || p.conexao2.length > 0 || p.maiorEsforco.length > 0 || p.menorEsforco.length > 0) ||
+      fotosSeccionamentos.some(s => s.fotos.length > 0) ||
+      fotosAterramentosCerca.some(a => a.fotos.length > 0) ||
+      pontosHastesTermometros.some(p => p.fotoHaste.length > 0 || p.fotoTermometro.length > 0) ||
       numPostes > 0 ||
       numSeccionamentos > 0 ||
       numAterramentosCerca > 0;
@@ -545,6 +549,22 @@ export default function NovaObra() {
     const finalObraId = isEditMode && obraId
       ? obraId
       : `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+
+    const extractPhotoDataFull = (fotos: FotoData[]) => {
+      return fotos.map(f => {
+        if ((f as any)._originalData) {
+          return (f as any)._originalData;
+        }
+        return {
+          id: f.photoId,
+          latitude: f.latitude,
+          longitude: f.longitude,
+          utmX: f.utmX,
+          utmY: f.utmY,
+          utmZone: f.utmZone
+        };
+      }).filter(Boolean);
+    };
 
     // Extrair photoIds de todos os arrays de fotos
     const photoIds = {
@@ -583,12 +603,22 @@ export default function NovaObra() {
       fotos_medidor_identificador_fase: fotosMedidorIdentificadorFase.map(f => f.photoId).filter(Boolean),
       fotos_checklist_croqui: fotosChecklistCroqui.map(f => f.photoId).filter(Boolean),
       fotos_checklist_panoramica_inicial: fotosChecklistPanoramicaInicial.map(f => f.photoId).filter(Boolean),
-      fotos_checklist_chave_componente: fotosChecklistChaveComponente.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_chede: fotosChecklistChaveComponente.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_aterramento_cerca: fotosAterramentosCerca.flatMap(aterr => aterr.fotos.map(f => f.photoId).filter(Boolean) as string[]),
       fotos_checklist_padrao_geral: fotosChecklistPadraoGeral.map(f => f.photoId).filter(Boolean),
       fotos_checklist_padrao_interno: fotosChecklistPadraoInterno.map(f => f.photoId).filter(Boolean),
       fotos_checklist_frying: fotosChecklistFrying.map(f => f.photoId).filter(Boolean),
       fotos_checklist_abertura_fechamento_pulo: fotosChecklistAberturaFechamentoPulo.map(f => f.photoId).filter(Boolean),
       fotos_checklist_panoramica_final: fotosChecklistPanoramicaFinal.map(f => f.photoId).filter(Boolean),
+      fotos_checklist_postes: fotosPostes.flatMap(poste => [
+        ...poste.posteInteiro.map(f => f.photoId).filter(Boolean) as string[],
+        ...poste.engaste.map(f => f.photoId).filter(Boolean) as string[],
+        ...poste.conexao1.map(f => f.photoId).filter(Boolean) as string[],
+        ...poste.conexao2.map(f => f.photoId).filter(Boolean) as string[],
+        ...poste.maiorEsforco.map(f => f.photoId).filter(Boolean) as string[],
+        ...poste.menorEsforco.map(f => f.photoId).filter(Boolean) as string[],
+      ]),
+      fotos_checklist_seccionamentos: fotosSeccionamentos.flatMap(sec => sec.fotos.map(f => f.photoId).filter(Boolean) as string[]),
       fotos_altimetria_lado_fonte: fotosAltimetriaLadoFonte.map(f => f.photoId).filter(Boolean),
       fotos_altimetria_medicao_fonte: fotosAltimetriaMedicaoFonte.map(f => f.photoId).filter(Boolean),
       fotos_altimetria_lado_carga: fotosAltimetriaLadoCarga.map(f => f.photoId).filter(Boolean),
@@ -630,6 +660,59 @@ export default function NovaObra() {
       num_aterramento_cerca: numAterramentosCerca,
       auto_saved: true, // Marcar como auto-save para identificação
       ...photoIds,
+      ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
+        postes_data: postesIdentificados.map(poste => ({
+          id: poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`,
+          numero: poste.numero,
+          isAditivo: poste.isAditivo,
+          fotos_antes: [],
+          fotos_durante: [],
+          fotos_depois: [],
+          observacao: '',
+        })),
+      }),
+      ...(isServicoCavaRocha && {
+        postes_data: postesData.map(poste => ({
+          id: poste.id,
+          numero: poste.numero,
+          fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
+          fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
+          fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
+          observacao: poste.observacao,
+        })),
+        observacoes: observacaoGeralCavaRocha,
+      }),
+      ...(isServicoChecklist && {
+        checklist_postes_data: fotosPostes.map((poste, index) => ({
+          id: `poste_${index + 1}`,
+          numero: poste.numero,
+          status: poste.status,
+          isAditivo: poste.isAditivo || false,
+          posteInteiro: extractPhotoDataFull(poste.posteInteiro),
+          engaste: extractPhotoDataFull(poste.engaste),
+          conexao1: extractPhotoDataFull(poste.conexao1),
+          conexao2: extractPhotoDataFull(poste.conexao2),
+          maiorEsforco: extractPhotoDataFull(poste.maiorEsforco),
+          menorEsforco: extractPhotoDataFull(poste.menorEsforco),
+        })),
+        checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
+          id: `seccionamento_${index + 1}`,
+          numero: parseInt(sec.numero) || (index + 1),
+          fotos: extractPhotoDataFull(sec.fotos),
+        })),
+        checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
+          id: `aterramento_${index + 1}`,
+          numero: parseInt(aterr.numero) || (index + 1),
+          fotos: extractPhotoDataFull(aterr.fotos),
+        })),
+        checklist_hastes_termometros_data: pontosHastesTermometros.map((ponto, index) => ({
+          id: `ponto_${index + 1}`,
+          numero: ponto.numero || `${index + 1}`,
+          isAditivo: ponto.isAditivo || false,
+          fotoHaste: extractPhotoDataFull(ponto.fotoHaste),
+          fotoTermometro: extractPhotoDataFull(ponto.fotoTermometro),
+        })),
+      }),
     };
 
     try {
@@ -664,6 +747,8 @@ export default function NovaObra() {
     data, obra, responsavel, equipe, equipeExecutora, tipoServico, isCompUser, isEditMode, obraId,
     currentServerId, transformadorStatus, numPostes, numSeccionamentos, numAterramentosCerca,
     backupObraId,
+    isServicoChecklist, isServicoCavaRocha, isServicoPostesIdentificacao,
+    postesData, observacaoGeralCavaRocha, postesIdentificados,
     fotosAntes, fotosDurante, fotosDepois, fotosAbertura, fotosFechamento,
     fotosDitaisAbertura, fotosDitaisImpedir, fotosDitaisTestar, fotosDitaisAterrar, fotosDitaisSinalizar,
     fotosAterramentoValaAberta, fotosAterramentoHastes, fotosAterramentoValaFechada, fotosAterramentoMedicao,
@@ -678,6 +763,7 @@ export default function NovaObra() {
     fotosAltimetriaLadoFonte, fotosAltimetriaMedicaoFonte, fotosAltimetriaLadoCarga, fotosAltimetriaMedicaoCarga,
     fotosVazamentoEvidencia, fotosVazamentoEquipamentosLimpeza, fotosVazamentoTombamentoRetirado,
     fotosVazamentoPlacaRetirado, fotosVazamentoTombamentoInstalado, fotosVazamentoPlacaInstalado, fotosVazamentoInstalacao,
+    fotosPostes, fotosSeccionamentos, fotosAterramentosCerca, pontosHastesTermometros,
     docCadastroMedidor, docLaudoTransformador, docLaudoRegulador, docLaudoReligador,
     docApr, docFvbt, docTermoDesistenciaLpt, docAutorizacaoPassagem, docMateriaisPrevisto, docMateriaisRealizado,
   ]);
@@ -1321,33 +1407,66 @@ export default function NovaObra() {
     handlePausar();
   };
 
+  const selectImageSource = (): Promise<'camera' | 'gallery' | null> => {
+    return new Promise((resolve) => {
+      let resolved = false;
+      const finish = (value: 'camera' | 'gallery' | null) => {
+        if (resolved) return;
+        resolved = true;
+        resolve(value);
+      };
 
-  const requestPermissions = async () => {
+      Alert.alert(
+        'Adicionar Foto',
+        'Escolha a origem da imagem:',
+        [
+          { text: 'Câmera', onPress: () => finish('camera') },
+          { text: 'Galeria', onPress: () => finish('gallery') },
+          { text: 'Cancelar', style: 'cancel', onPress: () => finish(null) },
+        ],
+        {
+          cancelable: true,
+          onDismiss: () => finish(null),
+        }
+      );
+    });
+  };
+
+  const requestPermissions = async (
+    source: 'camera' | 'gallery',
+    needsLocation: boolean
+  ) => {
     try {
       // PROTEÇÃO: Timeout de 30 segundos para solicitação de permissões
-      const permissionsPromise = Promise.all([
-        ImagePicker.requestCameraPermissionsAsync(),
-        Location.requestForegroundPermissionsAsync()
-      ]);
+      const mediaPermissionPromise = source === 'camera'
+        ? ImagePicker.requestCameraPermissionsAsync()
+        : ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionsPromise = needsLocation
+        ? Promise.all([mediaPermissionPromise, Location.requestForegroundPermissionsAsync()])
+        : Promise.all([mediaPermissionPromise]);
 
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Timeout de permissões')), 30000)
       );
 
-      const [cameraResult, locationResult] = await Promise.race([
+      const permissionResults = await Promise.race([
         permissionsPromise,
         timeoutPromise
       ]);
+      const mediaResult = permissionResults[0];
+      const locationResult = needsLocation ? permissionResults[1] : null;
 
-      if (cameraResult.status !== 'granted') {
+      if (mediaResult.status !== 'granted') {
         Alert.alert(
-          'Permissão de Câmera Negada',
-          'É necessário permitir o acesso à câmera para tirar fotos.\n\nVá em Configurações > Permissões para habilitar.'
+          source === 'camera' ? 'Permissão de Câmera Negada' : 'Permissão da Galeria Negada',
+          source === 'camera'
+            ? 'É necessário permitir o acesso à câmera para tirar fotos.\n\nVá em Configurações > Permissões para habilitar.'
+            : 'É necessário permitir o acesso à galeria para selecionar fotos.\n\nVá em Configurações > Permissões para habilitar.'
         );
         return false;
       }
 
-      if (locationResult.status !== 'granted') {
+      if (needsLocation && locationResult?.status !== 'granted') {
         Alert.alert(
           'Permissão de Localização Negada',
           'É necessário permitir o acesso à localização para registrar as coordenadas.\n\nAs fotos serão salvas sem localização GPS.'
@@ -1508,19 +1627,26 @@ export default function NovaObra() {
     posteId: string,
     secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois'
   ) => {
-    const hasPermission = await requestPermissions();
+    const source = await selectImageSource();
+    if (!source) return;
+
+    const hasPermission = await requestPermissions(source, true);
     if (!hasPermission) return;
 
     setUploadingPhoto(true);
 
     try {
-      const result = await ImagePicker.launchCameraAsync({
+      const pickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.4,
         allowsEditing: false,
         aspect: [4, 3] as [number, number],
         exif: false,
-      });
+      };
+
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync(pickerOptions)
+        : await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
       if (result.canceled) {
         setUploadingPhoto(false);
@@ -1599,8 +1725,13 @@ export default function NovaObra() {
       setUploadingPhoto(false);
       console.log(`✅ Foto adicionada ao ${posteId} - ${secao}`);
     } catch (error) {
-      console.error('❌ Erro ao tirar foto do poste:', error);
-      Alert.alert('Erro', 'Não foi possível tirar a foto. Tente novamente.');
+      console.error('❌ Erro ao adicionar foto do poste:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.toLowerCase().includes('espaço') || message.toLowerCase().includes('insuficiente') || message.toLowerCase().includes('storage') || message.toLowerCase().includes('disk')) {
+        Alert.alert('Espaço insuficiente', 'Libere espaço no dispositivo e tente novamente.');
+      } else {
+        Alert.alert('Erro', 'Não foi possível adicionar a foto. Tente novamente.');
+      }
       setUploadingPhoto(false);
     }
   };
@@ -1645,11 +1776,6 @@ export default function NovaObra() {
     aterramentoCercaIndex?: number,
     pontoIndex?: number
   ) => {
-    const hasPermission = await requestPermissions();
-    if (!hasPermission) return;
-
-    setUploadingPhoto(true);
-
     try {
       // Verificar se é foto de documento (scanner mode)
       const isDocument =
@@ -1664,8 +1790,16 @@ export default function NovaObra() {
         tipo === 'doc_termo_desistencia_lpt' ||
         tipo === 'doc_autorizacao_passagem';
 
+      const source = await selectImageSource();
+      if (!source) return;
+
+      const hasPermission = await requestPermissions(source, !isDocument);
+      if (!hasPermission) return;
+
+      setUploadingPhoto(true);
+
       // Configurações de câmera baseadas no tipo
-      const cameraOptions = isDocument
+      const pickerOptions = isDocument
         ? {
             // 📄 MODO SCANNER: Alta qualidade para documentos
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -1683,7 +1817,9 @@ export default function NovaObra() {
             exif: false,
           };
 
-      const result = await ImagePicker.launchCameraAsync(cameraOptions);
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync(pickerOptions)
+        : await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
       if (result.canceled) {
         setUploadingPhoto(false);
@@ -2074,7 +2210,7 @@ export default function NovaObra() {
         errorMessage = 'Permissão de câmera negada. Verifique as configurações do app.';
       } else if (error?.message?.includes('location')) {
         errorMessage = 'Erro ao obter localização GPS. A foto será salva sem coordenadas.';
-      } else if (error?.message?.includes('storage') || error?.message?.includes('disk')) {
+      } else if (error?.message?.includes('storage') || error?.message?.includes('disk') || error?.message?.toLowerCase()?.includes('espaço') || error?.message?.toLowerCase()?.includes('insuficiente')) {
         errorMessage = 'Espaço de armazenamento insuficiente. Libere espaço e tente novamente.';
       } else if (error?.message?.includes('memory')) {
         errorMessage = 'Memória insuficiente. Feche outros apps e tente novamente.';
@@ -3954,29 +4090,29 @@ export default function NovaObra() {
                 numero: poste.numero,
                 status: poste.status,
                 isAditivo: poste.isAditivo || false,
-                posteInteiro: poste.posteInteiro.map(f => f.photoId).filter(Boolean),
-                engaste: poste.engaste.map(f => f.photoId).filter(Boolean),
-                conexao1: poste.conexao1.map(f => f.photoId).filter(Boolean),
-                conexao2: poste.conexao2.map(f => f.photoId).filter(Boolean),
-                maiorEsforco: poste.maiorEsforco.map(f => f.photoId).filter(Boolean),
-                menorEsforco: poste.menorEsforco.map(f => f.photoId).filter(Boolean),
+                posteInteiro: extractPhotoDataFull(poste.posteInteiro),
+                engaste: extractPhotoDataFull(poste.engaste),
+                conexao1: extractPhotoDataFull(poste.conexao1),
+                conexao2: extractPhotoDataFull(poste.conexao2),
+                maiorEsforco: extractPhotoDataFull(poste.maiorEsforco),
+                menorEsforco: extractPhotoDataFull(poste.menorEsforco),
               })),
               checklist_seccionamentos_data: fotosSeccionamentos.map((sec, index) => ({
                 id: `seccionamento_${index + 1}`,
                 numero: parseInt(sec.numero) || (index + 1),
-                fotos: sec.fotos.map(f => f.photoId).filter(Boolean),
+                fotos: extractPhotoDataFull(sec.fotos),
               })),
               checklist_aterramentos_cerca_data: fotosAterramentosCerca.map((aterr, index) => ({
                 id: `aterramento_${index + 1}`,
                 numero: parseInt(aterr.numero) || (index + 1),
-                fotos: aterr.fotos.map(f => f.photoId).filter(Boolean),
+                fotos: extractPhotoDataFull(aterr.fotos),
               })),
               checklist_hastes_termometros_data: pontosHastesTermometros.map((ponto, index) => ({
                 id: `ponto_${index + 1}`,
                 numero: ponto.numero || `${index + 1}`,
                 isAditivo: ponto.isAditivo || false,
-                fotoHaste: ponto.fotoHaste.map(f => f.photoId).filter(Boolean),
-                fotoTermometro: ponto.fotoTermometro.map(f => f.photoId).filter(Boolean),
+                fotoHaste: extractPhotoDataFull(ponto.fotoHaste),
+                fotoTermometro: extractPhotoDataFull(ponto.fotoTermometro),
               })),
             }),
           })

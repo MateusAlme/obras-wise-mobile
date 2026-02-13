@@ -10,11 +10,18 @@ import {
   photoExists
 } from './photo-backup';
 import * as FileSystem from 'expo-file-system/legacy';
-// import { captureError, addBreadcrumb, startTransaction } from './sentry';
+import { captureError } from './sentry';
 
 const UPLOAD_QUEUE_KEY = '@photo_upload_queue';
 const MAX_RETRIES = 3; // Reduzido de 5 para 3
 const RETRY_DELAYS = [1000, 3000, 5000]; // Reduzido: 1s, 3s, 5s (total 9s)
+
+interface UploadToSupabaseResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+  skipRetry?: boolean;
+}
 
 export interface UploadQueueItem {
   photoId: string;
@@ -126,7 +133,7 @@ const removeFromQueue = async (photoId: string): Promise<void> => {
  */
 const uploadPhotoToSupabase = async (
   photoMetadata: PhotoMetadata
-): Promise<{ success: boolean; url?: string; error?: string }> => {
+): Promise<UploadToSupabaseResult> => {
   try {
     // Login por equipe - usar obraId como pasta ao invés de user.id
     const folderName = photoMetadata.obraId || 'temp';
@@ -171,7 +178,7 @@ const uploadPhotoToSupabase = async (
     console.log(`📤 Lendo arquivo (${Math.round((fileInfo.size || 0) / 1024)}KB):`, photoUri);
 
     // Ler arquivo como base64 para upload
-    const base64 = await FileSystem.readAsStringAsync(photoUri, {
+    let base64 = await FileSystem.readAsStringAsync(photoUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
 
@@ -205,13 +212,14 @@ const uploadPhotoToSupabase = async (
     };
 
     const fileBytes = base64ToBytes(base64);
+    base64 = '';
 
     console.log(`📤 Enviando para Supabase: ${filePath}`);
 
     // Upload do arquivo
     const { data, error } = await supabase.storage
       .from('obra-photos')
-      .upload(filePath, fileBytes.buffer, {
+      .upload(filePath, fileBytes, {
         contentType: 'image/jpeg',
         upsert: false
       });
@@ -439,9 +447,8 @@ export const processObraPhotos = async (
     let failedCount = 0;
     let completedCount = 0;
 
-    // ✅ Upload paralelo: processar em lotes de 2 fotos simultaneamente
-    // Reduzido de 3 para 2 para evitar pressão de memória em dispositivos com menos RAM
-    const BATCH_SIZE = 2;
+    // ✅ Processar uma foto por vez para reduzir pico de memória em aparelhos mais fracos.
+    const BATCH_SIZE = 1;
     for (let i = 0; i < obraPhotos.length; i += BATCH_SIZE) {
       const batch = obraPhotos.slice(i, i + BATCH_SIZE);
 

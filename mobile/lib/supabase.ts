@@ -31,15 +31,18 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
   global: {
-    headers: async () => {
+    fetch: async (input, init?: RequestInit) => {
       const equipe = await getEquipeLogada();
       const role = await getUserRole();
 
-      const headers: Record<string, string> = {};
-      if (equipe) headers['x-equipe'] = equipe;
-      if (role) headers['x-role'] = role;
+      const headers = new Headers(init?.headers ?? {});
+      if (equipe) headers.set('x-equipe', equipe);
+      if (role) headers.set('x-role', role);
 
-      return headers;
+      return fetch(input, {
+        ...(init ?? {}),
+        headers,
+      });
     },
   },
 });

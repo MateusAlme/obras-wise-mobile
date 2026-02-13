@@ -35,7 +35,7 @@ export const captureError = (
  */
 export const addBreadcrumb = (
   message: string,
-  category: 'navigation' | 'user_action' | 'photo' | 'sync' | 'network' | 'ui',
+  category: 'navigation' | 'user_action' | 'photo' | 'sync' | 'network' | 'ui' | 'storage' | 'upload',
   data?: Record<string, any>,
   level: 'debug' | 'info' | 'warning' | 'error' = 'info'
 ) => {

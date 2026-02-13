@@ -649,7 +649,11 @@ export default function ObraDetalhe() {
           ...(ponto.fotoHaste || []),
           ...(ponto.fotoTermometro || []),
         ]),
-      ].map(item => typeof item === 'string' ? item : item?.id).filter(id => typeof id === 'string') : [];
+      ].map(item => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object') return item.id || item.photoId;
+        return undefined;
+      }).filter((id): id is string => typeof id === 'string') : [];
 
       // Usar função com fallback para encontrar fotos mesmo quando obraId mudou
       // IMPORTANTE: Passar serverId para buscar fotos que foram atualizadas após sync
@@ -737,6 +741,53 @@ export default function ObraDetalhe() {
     });
   };
 
+  const isChecklistPostesDataSuspicious = (postesData: any[] | undefined): boolean => {
+    if (!postesData || !Array.isArray(postesData) || postesData.length === 0) return false;
+
+    return postesData.some((poste: any) => {
+      const posteInteiro = Array.isArray(poste?.posteInteiro) ? poste.posteInteiro.length : 0;
+      const engaste = Array.isArray(poste?.engaste) ? poste.engaste.length : 0;
+      const conexao1 = Array.isArray(poste?.conexao1) ? poste.conexao1.length : 0;
+      const conexao2 = Array.isArray(poste?.conexao2) ? poste.conexao2.length : 0;
+      const maiorEsforco = Array.isArray(poste?.maiorEsforco) ? poste.maiorEsforco.length : 0;
+      const menorEsforco = Array.isArray(poste?.menorEsforco) ? poste.menorEsforco.length : 0;
+
+      return (
+        posteInteiro > 2 ||
+        engaste > 1 ||
+        conexao1 > 1 ||
+        conexao2 > 1 ||
+        maiorEsforco > 2 ||
+        menorEsforco > 2
+      );
+    });
+  };
+
+  const clearChecklistPostesPhotos = (postesData: any[] | undefined): any[] | undefined => {
+    if (!postesData || !Array.isArray(postesData)) return postesData;
+
+    return postesData.map((poste: any) => ({
+      ...poste,
+      posteInteiro: [],
+      engaste: [],
+      conexao1: [],
+      conexao2: [],
+      maiorEsforco: [],
+      menorEsforco: []
+    }));
+  };
+
+  const getChecklistPostesForDisplay = (
+    postesData: any[] | undefined,
+    _flatPhotos: FotoInfo[] | undefined
+  ): any[] | undefined => {
+    if (!postesData || !Array.isArray(postesData) || postesData.length === 0) return postesData;
+
+    // Evita remapeamento heurístico por timestamp (causa mistura entre postes).
+    // Se a estrutura não tiver fotos, deixamos o fallback para renderização genérica da seção.
+    return postesData;
+  };
+
   /**
    * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
    * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
@@ -767,59 +818,33 @@ export default function ObraDetalhe() {
       'menor_esforco': 'menorEsforco'
     };
 
-    // ✅ NOVA LÓGICA: Usar sequência de fotos "inteiro" para delimitar postes
-    // Ordenar fotos por timestamp
-    const sortedPhotos = [...flatPhotos].sort((a, b) => {
-      const urlA = a.url || a.uri || '';
-      const urlB = b.url || b.uri || '';
-      const infoA = extractPhotoInfo(urlA);
-      const infoB = extractPhotoInfo(urlB);
-      if (!infoA || !infoB) return 0;
-      return infoA.timestamp - infoB.timestamp;
-    });
-
-    // Identificar timestamps das fotos "inteiro" (cada uma marca início de um poste)
-    const inteiroTimestamps: number[] = [];
-    for (const photo of sortedPhotos) {
-      const url = photo.url || photo.uri || '';
-      const info = extractPhotoInfo(url);
-      if (info && info.tipo === 'inteiro') {
-        inteiroTimestamps.push(info.timestamp);
-      }
-    }
-
-    // Se não há fotos "inteiro", todas as fotos vão para o primeiro poste
-    if (inteiroTimestamps.length === 0) {
-      const firstPoste = {
-        ...postesData[0],
-        posteInteiro: [],
-        engaste: [],
-        conexao1: [],
-        conexao2: [],
-        maiorEsforco: [],
-        menorEsforco: []
-      };
-
-      for (const photo of sortedPhotos) {
+    const parsedPhotos = flatPhotos
+      .map(photo => {
         const url = photo.url || photo.uri || '';
         const info = extractPhotoInfo(url);
-        if (!info) continue;
-        const field = tipoToField[info.tipo];
-        if (field && firstPoste[field]) {
-          firstPoste[field].push(photo);
-        }
-      }
+        if (!info || !tipoToField[info.tipo]) return null;
+        return { photo, info };
+      })
+      .filter(Boolean) as Array<{ photo: FotoInfo; info: { tipo: string; timestamp: number } }>;
 
-      return [firstPoste, ...postesData.slice(1)];
+    if (parsedPhotos.length === 0) return postesData;
+
+    const sortedPhotos = [...parsedPhotos].sort((a, b) => a.info.timestamp - b.info.timestamp);
+
+    // Mapeamento confiável: precisa de um marcador "inteiro" por poste.
+    const inteiroTimestamps = sortedPhotos
+      .filter(item => item.info.tipo === 'inteiro')
+      .map(item => item.info.timestamp);
+
+    if (inteiroTimestamps.length !== postesData.length) {
+      return postesData;
     }
 
     // Agrupar fotos por poste baseado nos timestamps "inteiro"
     const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = [];
 
-    for (const photo of sortedPhotos) {
-      const url = photo.url || photo.uri || '';
-      const info = extractPhotoInfo(url);
-      if (!info) continue;
+    for (const item of sortedPhotos) {
+      const { photo, info } = item;
 
       // Determinar a qual poste esta foto pertence
       // Encontrar o índice do último "inteiro" que veio ANTES ou NO MESMO timestamp desta foto
@@ -879,10 +904,11 @@ export default function ObraDetalhe() {
 
     const fotos: FotoInfo[] = [];
     for (const item of photoIds) {
-      // Se já é um objeto com url (formato do banco após correção)
-      if (typeof item === 'object' && item !== null && item.url) {
+      // Se já é um objeto com URL/URI, usar diretamente
+      if (typeof item === 'object' && item !== null && (item.url || item.uri)) {
         fotos.push({
-          url: item.url,
+          url: item.url || undefined,
+          uri: item.uri || undefined,
           latitude: item.latitude || null,
           longitude: item.longitude || null,
           utmX: item.utmX || null,
@@ -893,7 +919,7 @@ export default function ObraDetalhe() {
       }
 
       // Se é uma string (ID ou URL)
-      const photoId = typeof item === 'string' ? item : item?.id;
+      const photoId = typeof item === 'string' ? item : (item?.id || item?.photoId);
       if (!photoId) continue;
 
       // Buscar nos metadados locais
@@ -908,9 +934,9 @@ export default function ObraDetalhe() {
           utmY: metadata.utmY,
           utmZone: metadata.utmZone,
         });
-      } else if (typeof photoId === 'string' && photoId.startsWith('http')) {
-        // Se for uma URL completa, usar diretamente
-        fotos.push({ url: photoId });
+      } else if (typeof photoId === 'string' && (photoId.startsWith('http') || photoId.startsWith('file://'))) {
+        // Se for URL completa (remota ou local), usar diretamente
+        fotos.push(photoId.startsWith('http') ? { url: photoId } : { uri: photoId });
       }
     }
     return fotos;
@@ -1892,10 +1918,10 @@ export default function ObraDetalhe() {
 
             // 🎯 RENDERIZAÇÃO ESPECIAL PARA POSTES DO CHECKLIST
             if (section.key === 'fotos_checklist_postes') {
-              // Tentar mesclar fotos flat com estrutura de postes
-              const mergedPostes = !hasRealPhotos(obra.checklist_postes_data) && ((obra as any).fotos_checklist_postes?.length ?? 0) > 0
-                ? mergePostesPhotosWithStructure(obra.checklist_postes_data, (obra as any).fotos_checklist_postes)
-                : obra.checklist_postes_data;
+              const mergedPostes = getChecklistPostesForDisplay(
+                obra.checklist_postes_data,
+                (obra as any).fotos_checklist_postes
+              );
 
               const temFotosReais = hasRealPhotos(mergedPostes);
               console.log('🔍 [DEBUG POSTES]', {
@@ -1929,10 +1955,8 @@ export default function ObraDetalhe() {
                             {poste.isAditivo && <Text style={{ fontSize: 12, color: '#ff6b6b', marginLeft: 8 }}>(Aditivo)</Text>}
                           </Text>
                           {categoriasPoste.map((categoria, catIndex) => {
-                            // Para fotos mescladas, usar diretamente; para IDs, buscar
-                            const fotosCarregadas = categoria.fotos.length > 0 && typeof categoria.fotos[0] === 'object'
-                              ? categoria.fotos
-                              : getPhotosByIds(categoria.fotos);
+                            // Sempre normalizar para garantir preview quando a estrutura vem com {id}/{photoId}
+                            const fotosCarregadas = getPhotosByIds(categoria.fotos);
                             if (fotosCarregadas.length === 0) return null;
 
                             return (

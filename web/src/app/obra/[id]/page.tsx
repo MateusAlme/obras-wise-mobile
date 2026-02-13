@@ -44,6 +44,178 @@ function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
 }
 
 // Função helper para obter aterramentos de cerca (suporta formato novo e antigo)
+const CHECKLIST_POSTE_FIELDS = [
+  'posteInteiro',
+  'engaste',
+  'conexao1',
+  'conexao2',
+  'maiorEsforco',
+  'menorEsforco'
+] as const
+
+const CHECKLIST_POSTE_TIPO_TO_FIELD: Record<string, (typeof CHECKLIST_POSTE_FIELDS)[number]> = {
+  'inteiro': 'posteInteiro',
+  'engaste': 'engaste',
+  'conexao1': 'conexao1',
+  'conexao2': 'conexao2',
+  'maior_esforco': 'maiorEsforco',
+  'menor_esforco': 'menorEsforco'
+}
+
+const CHECKLIST_POSTE_FIELD_TO_TIPO: Record<(typeof CHECKLIST_POSTE_FIELDS)[number], string> = {
+  posteInteiro: 'inteiro',
+  engaste: 'engaste',
+  conexao1: 'conexao1',
+  conexao2: 'conexao2',
+  maiorEsforco: 'maior_esforco',
+  menorEsforco: 'menor_esforco'
+}
+
+function isHttpUrl(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith('http')
+}
+
+function toFotoInfoIfUrl(item: any): FotoInfo | null {
+  if (typeof item === 'object' && item !== null && isHttpUrl(item.url)) {
+    if (item.url.startsWith('file:///')) return null
+    return {
+      url: item.url,
+      latitude: item.latitude ?? null,
+      longitude: item.longitude ?? null,
+      placaData: item.placaData || item.placa_data || null
+    }
+  }
+
+  if (isHttpUrl(item)) {
+    return {
+      url: item,
+      latitude: null,
+      longitude: null,
+      placaData: null
+    }
+  }
+
+  return null
+}
+
+function extractChecklistPostePhotoInfo(url: string): { tipo: string; timestamp: number } | null {
+  const filename = url.split('/').pop() || ''
+  const match = filename.match(/checklist_poste_([a-z_]+\d?)_(\d+)_/)
+  if (!match) return null
+  return {
+    tipo: match[1],
+    timestamp: parseInt(match[2], 10)
+  }
+}
+
+function normalizeChecklistPostesData(postesData: any[] | undefined): any[] | undefined {
+  if (!postesData || !Array.isArray(postesData)) return postesData
+
+  return postesData.map((poste: any) => {
+    const normalized = { ...poste }
+
+    for (const field of CHECKLIST_POSTE_FIELDS) {
+      const source = Array.isArray(poste?.[field]) ? poste[field] : []
+      normalized[field] = source
+        .map((item: any) => {
+          const foto = toFotoInfoIfUrl(item)
+          if (foto) return foto
+
+          if (typeof item === 'object' && item !== null && typeof item.id === 'string') {
+            return {
+              id: item.id,
+              latitude: item.latitude ?? null,
+              longitude: item.longitude ?? null,
+              utmX: item.utmX ?? item.utm_x ?? null,
+              utmY: item.utmY ?? item.utm_y ?? null,
+              utmZone: item.utmZone ?? item.utm_zone ?? null
+            }
+          }
+
+          if (typeof item === 'string' && item.trim()) {
+            return { id: item }
+          }
+
+          return null
+        })
+        .filter(Boolean)
+    }
+
+    return normalized
+  })
+}
+
+function hydrateChecklistPostesDataFromFlatByCounts(
+  postesData: any[] | undefined,
+  flatPhotos: FotoInfo[] | undefined
+): any[] | undefined {
+  if (!postesData || !Array.isArray(postesData) || postesData.length === 0) return postesData
+  if (!flatPhotos || flatPhotos.length === 0) return postesData
+
+  const parsedPhotos = flatPhotos
+    .map(photo => {
+      const info = extractChecklistPostePhotoInfo(photo.url || '')
+      if (!info || !CHECKLIST_POSTE_TIPO_TO_FIELD[info.tipo]) return null
+      return { photo, info }
+    })
+    .filter(Boolean) as Array<{ photo: FotoInfo; info: { tipo: string; timestamp: number } }>
+
+  if (parsedPhotos.length === 0) return postesData
+
+  const byTipo: Record<string, FotoInfo[]> = {
+    inteiro: [],
+    engaste: [],
+    conexao1: [],
+    conexao2: [],
+    maior_esforco: [],
+    menor_esforco: []
+  }
+
+  for (const item of parsedPhotos.sort((a, b) => a.info.timestamp - b.info.timestamp)) {
+    if (byTipo[item.info.tipo]) {
+      byTipo[item.info.tipo].push(item.photo)
+    }
+  }
+
+  const cursors: Record<string, number> = {
+    inteiro: 0,
+    engaste: 0,
+    conexao1: 0,
+    conexao2: 0,
+    maior_esforco: 0,
+    menor_esforco: 0
+  }
+
+  return postesData.map((poste: any) => {
+    const hydrated = { ...poste }
+
+    for (const field of CHECKLIST_POSTE_FIELDS) {
+      const current = Array.isArray(poste?.[field]) ? poste[field] : []
+      const currentUrls = current.map(toFotoInfoIfUrl).filter(Boolean) as FotoInfo[]
+
+      if (currentUrls.length > 0) {
+        hydrated[field] = currentUrls
+        continue
+      }
+
+      const placeholderCount = current.length
+      if (placeholderCount === 0) {
+        hydrated[field] = []
+        continue
+      }
+
+      const tipo = CHECKLIST_POSTE_FIELD_TO_TIPO[field]
+      const source = byTipo[tipo] || []
+      const start = cursors[tipo] || 0
+      const end = Math.min(start + placeholderCount, source.length)
+      hydrated[field] = source.slice(start, end)
+      cursors[tipo] = end
+    }
+
+    return hydrated
+  })
+}
+
 /**
  * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
  * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
@@ -55,76 +227,33 @@ function mergePostesPhotosWithStructure(
   if (!postesData || postesData.length === 0) return postesData
   if (!flatPhotos || flatPhotos.length === 0) return postesData
 
-  // Extrair tipo de foto do nome do arquivo
-  // Padrão: checklist_poste_{tipo}_{timestamp}_{random}_{indice}.jpg
-  const extractPhotoInfo = (url: string) => {
-    const filename = url.split('/').pop() || ''
-    const match = filename.match(/checklist_poste_([a-z_]+\d?)_(\d+)_/)
-    if (!match) return null
-    return {
-      tipo: match[1], // inteiro, conexao1, conexao2, engaste, maior_esforco, menor_esforco
-      timestamp: parseInt(match[2])
-    }
-  }
+  const parsedPhotos = flatPhotos
+    .map(photo => {
+      const url = photo.url || ''
+      const info = extractChecklistPostePhotoInfo(url)
+      if (!info || !CHECKLIST_POSTE_TIPO_TO_FIELD[info.tipo]) return null
+      return { photo, info }
+    })
+    .filter(Boolean) as Array<{ photo: FotoInfo; info: { tipo: string; timestamp: number } }>
 
-  // Mapear tipos de foto para campos do poste
-  const tipoToField: Record<string, string> = {
-    'inteiro': 'posteInteiro',
-    'engaste': 'engaste',
-    'conexao1': 'conexao1',
-    'conexao2': 'conexao2',
-    'maior_esforco': 'maiorEsforco',
-    'menor_esforco': 'menorEsforco'
-  }
+  if (parsedPhotos.length === 0) return postesData
 
-  // ✅ NOVA LÓGICA: Usar sequência de fotos "inteiro" para delimitar postes
-  // Ordenar fotos por timestamp
-  const sortedPhotos = [...flatPhotos].sort((a, b) => {
-    const infoA = extractPhotoInfo(a.url)
-    const infoB = extractPhotoInfo(b.url)
-    if (!infoA || !infoB) return 0
-    return infoA.timestamp - infoB.timestamp
-  })
+  const sortedPhotos = [...parsedPhotos].sort((a, b) => a.info.timestamp - b.info.timestamp)
 
-  // Identificar timestamps das fotos "inteiro" (cada uma marca início de um poste)
-  const inteiroTimestamps: number[] = []
-  for (const photo of sortedPhotos) {
-    const info = extractPhotoInfo(photo.url)
-    if (info && info.tipo === 'inteiro') {
-      inteiroTimestamps.push(info.timestamp)
-    }
-  }
+  // Mapeamento confiável: precisa de um marcador "inteiro" por poste.
+  const inteiroTimestamps = sortedPhotos
+    .filter(item => item.info.tipo === 'inteiro')
+    .map(item => item.info.timestamp)
 
-  // Se não há fotos "inteiro", todas as fotos vão para o primeiro poste
-  if (inteiroTimestamps.length === 0) {
-    const firstPoste = {
-      ...postesData[0],
-      posteInteiro: [],
-      engaste: [],
-      conexao1: [],
-      conexao2: [],
-      maiorEsforco: [],
-      menorEsforco: []
-    }
-
-    for (const photo of sortedPhotos) {
-      const info = extractPhotoInfo(photo.url)
-      if (!info) continue
-      const field = tipoToField[info.tipo]
-      if (field && firstPoste[field]) {
-        firstPoste[field].push(photo)
-      }
-    }
-
-    return [firstPoste, ...postesData.slice(1)]
+  if (inteiroTimestamps.length !== postesData.length) {
+    return postesData
   }
 
   // Agrupar fotos por poste baseado nos timestamps "inteiro"
   const photoGroups: { posteIndex: number; tipo: string; photo: FotoInfo }[] = []
 
-  for (const photo of sortedPhotos) {
-    const info = extractPhotoInfo(photo.url)
-    if (!info) continue
+  for (const item of sortedPhotos) {
+    const { photo, info } = item
 
     // Determinar a qual poste esta foto pertence
     // Encontrar o índice do último "inteiro" que veio ANTES ou NO MESMO timestamp desta foto
@@ -147,6 +276,15 @@ function mergePostesPhotosWithStructure(
     }
   }
 
+  // Segurança: quando não há estrutura confiável por campo, evitar agrupar tudo em um único poste.
+  const nonInteiroGroups = photoGroups.filter(group => group.tipo !== 'inteiro')
+  if (postesData.length > 1 && nonInteiroGroups.length > 1) {
+    const uniquePostes = new Set(nonInteiroGroups.map(group => group.posteIndex))
+    if (uniquePostes.size === 1) {
+      return postesData
+    }
+  }
+
   // Criar cópia profunda dos postes e adicionar as fotos
   const mergedPostes = postesData.map((poste, index) => {
     const mergedPoste = {
@@ -162,10 +300,13 @@ function mergePostesPhotosWithStructure(
     // Adicionar fotos deste poste
     for (const group of photoGroups) {
       if (group.posteIndex === index) {
-        const field = tipoToField[group.tipo]
+        const field = CHECKLIST_POSTE_TIPO_TO_FIELD[group.tipo]
         if (field && mergedPoste[field]) {
           // Verificar se a foto já não existe (evitar duplicatas)
-          const exists = mergedPoste[field].some((f: FotoInfo) => f.url === group.photo.url)
+          const exists = mergedPoste[field]
+            .map(toFotoInfoIfUrl)
+            .filter(Boolean)
+            .some((f: FotoInfo | null) => f?.url === group.photo.url)
           if (!exists) {
             mergedPoste[field].push(group.photo)
           }
@@ -193,9 +334,55 @@ function hasRealPhotos(structuredData: any[] | undefined): boolean {
     const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
     return photoFields.some(field => {
       const value = item[field]
-      return Array.isArray(value) && value.length > 0
+      return Array.isArray(value) && value.some((photo: any) => !!toFotoInfoIfUrl(photo))
     })
   })
+}
+
+function clearChecklistPostesPhotos(postesData: any[] | undefined): any[] | undefined {
+  if (!postesData || !Array.isArray(postesData)) return postesData
+
+  return postesData.map((poste: any) => ({
+    ...poste,
+    posteInteiro: [],
+    engaste: [],
+    conexao1: [],
+    conexao2: [],
+    maiorEsforco: [],
+    menorEsforco: []
+  }))
+}
+
+function getChecklistPostesForDisplay(
+  postesData: any[] | undefined,
+  flatPhotos: FotoInfo[] | undefined
+): any[] | undefined {
+  const normalizedPostes = normalizeChecklistPostesData(postesData)
+  if (!normalizedPostes || !Array.isArray(normalizedPostes) || normalizedPostes.length === 0) {
+    return normalizedPostes
+  }
+
+  const hasFlat = !!flatPhotos && flatPhotos.length > 0
+
+  // Primeiro: tentar hidratar usando a própria estrutura (quantidade por poste/campo) + flat.
+  const hydratedByCount = hasFlat
+    ? hydrateChecklistPostesDataFromFlatByCounts(normalizedPostes, flatPhotos)
+    : normalizedPostes
+
+  if (hasRealPhotos(hydratedByCount)) {
+    return hydratedByCount
+  }
+
+  // Segundo: fallback por timestamp (requer "inteiro" para todos os postes).
+  if (hasFlat) {
+    const emptyPostes = clearChecklistPostesPhotos(normalizedPostes)
+    const remapped = mergePostesPhotosWithStructure(emptyPostes, flatPhotos)
+    if (hasRealPhotos(remapped)) {
+      return remapped
+    }
+  }
+
+  return clearChecklistPostesPhotos(normalizedPostes)
 }
 
 function getAterramentosFotos(obra: Obra): { titulo: string; fotos: FotoInfo[] }[] {
@@ -314,6 +501,32 @@ export default function ObraDetailPage() {
     }).filter(Boolean) as FotoInfo[]
   }
 
+  function convertChecklistPhotoRefs(photoField: any): any[] {
+    if (!Array.isArray(photoField) || photoField.length === 0) return []
+
+    return photoField.map((item: any) => {
+      const foto = toFotoInfoIfUrl(item)
+      if (foto) return foto
+
+      if (typeof item === 'object' && item !== null && typeof item.id === 'string') {
+        return {
+          id: item.id,
+          latitude: item.latitude ?? null,
+          longitude: item.longitude ?? null,
+          utmX: item.utmX ?? item.utm_x ?? null,
+          utmY: item.utmY ?? item.utm_y ?? null,
+          utmZone: item.utmZone ?? item.utm_zone ?? null
+        }
+      }
+
+      if (typeof item === 'string' && item.trim()) {
+        return { id: item }
+      }
+
+      return null
+    }).filter(Boolean)
+  }
+
   // Função para converter estruturas JSONB do checklist
   function convertChecklistJSONBPhotos(jsonbData: any): any {
     if (!jsonbData || !Array.isArray(jsonbData)) return jsonbData
@@ -324,12 +537,21 @@ export default function ObraDetailPage() {
       // Converter todos os campos que são arrays de IDs de fotos
       Object.keys(converted).forEach(key => {
         if (Array.isArray(converted[key])) {
-          converted[key] = convertPhotoIdsToFotoInfo(converted[key])
+          converted[key] = convertChecklistPhotoRefs(converted[key])
         }
       })
 
       return converted
     })
+  }
+
+  function convertChecklistPostesJSONBPhotos(
+    jsonbData: any,
+    flatPhotos: FotoInfo[]
+  ): any {
+    const normalized = normalizeChecklistPostesData(jsonbData)
+    if (!normalized || !Array.isArray(normalized)) return normalized
+    return getChecklistPostesForDisplay(normalized, flatPhotos)
   }
 
   async function loadObra(id: string) {
@@ -341,6 +563,8 @@ export default function ObraDetailPage() {
         .single()
 
       if (error) throw error
+
+      const fotosChecklistPostes = convertPhotoIdsToFotoInfo(data.fotos_checklist_postes)
 
       // ✅ CORREÇÃO: Converter IDs de fotos em objetos FotoInfo
       const obraComFotos = {
@@ -380,7 +604,7 @@ export default function ObraDetailPage() {
         fotos_checklist_padrao_geral: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_geral),
         fotos_checklist_padrao_interno: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_interno),
         fotos_checklist_panoramica_final: convertPhotoIdsToFotoInfo(data.fotos_checklist_panoramica_final),
-        fotos_checklist_postes: convertPhotoIdsToFotoInfo(data.fotos_checklist_postes),
+        fotos_checklist_postes: fotosChecklistPostes,
         fotos_checklist_seccionamentos: convertPhotoIdsToFotoInfo(data.fotos_checklist_seccionamentos),
         fotos_altimetria_lado_fonte: convertPhotoIdsToFotoInfo(data.fotos_altimetria_lado_fonte),
         fotos_altimetria_medicao_fonte: convertPhotoIdsToFotoInfo(data.fotos_altimetria_medicao_fonte),
@@ -394,7 +618,7 @@ export default function ObraDetailPage() {
         fotos_vazamento_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_instalado),
         fotos_vazamento_instalacao: convertPhotoIdsToFotoInfo(data.fotos_vazamento_instalacao),
         // Converter estruturas JSONB do checklist (formato novo)
-        checklist_postes_data: convertChecklistJSONBPhotos(data.checklist_postes_data),
+        checklist_postes_data: convertChecklistPostesJSONBPhotos(data.checklist_postes_data, fotosChecklistPostes),
         checklist_seccionamentos_data: convertChecklistJSONBPhotos(data.checklist_seccionamentos_data),
         checklist_aterramentos_cerca_data: convertChecklistJSONBPhotos(data.checklist_aterramentos_cerca_data),
         checklist_hastes_termometros_data: convertChecklistJSONBPhotos(data.checklist_hastes_termometros_data),
@@ -1075,10 +1299,10 @@ export default function ObraDetailPage() {
                 
                 {/* 4. Postes - Exibição estruturada */}
                 {(() => {
-                  // Tentar mesclar fotos flat com estrutura de postes
-                  const mergedPostes = !hasRealPhotos(obra.checklist_postes_data) && (obra.fotos_checklist_postes?.length ?? 0) > 0
-                    ? mergePostesPhotosWithStructure(obra.checklist_postes_data, obra.fotos_checklist_postes)
-                    : obra.checklist_postes_data;
+                  const mergedPostes = getChecklistPostesForDisplay(
+                    obra.checklist_postes_data,
+                    obra.fotos_checklist_postes
+                  )
 
                   const hasPostesWithPhotos = hasRealPhotos(mergedPostes);
 
