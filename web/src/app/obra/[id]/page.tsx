@@ -756,6 +756,34 @@ export default function ObraDetailPage() {
           dataHora: formatDateTime(new Date()),
         },
       }
+
+      const structuredMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
+      if (structuredMatch) {
+        const photoType = structuredMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro'
+        const pontoIndex = parseInt(structuredMatch[2], 10)
+        const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
+          ? [...obra.checklist_hastes_termometros_data]
+          : []
+
+        if (!Number.isInteger(pontoIndex) || pontoIndex < 0 || pontoIndex >= pontos.length) {
+          throw new Error('Ponto de haste/termômetro inválido para adicionar foto')
+        }
+
+        const pontoAtual = { ...pontos[pontoIndex] }
+        const currentPhotos = Array.isArray(pontoAtual[photoType]) ? [...pontoAtual[photoType]] : []
+        pontoAtual[photoType] = [...currentPhotos, newPhoto]
+        pontos[pontoIndex] = pontoAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_hastes_termometros_data: pontos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_hastes_termometros_data: pontos })
+        return newPhoto
+      }
+
       const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
       const nextPhotos = [...currentPhotos, newPhoto]
       const { error } = await supabase
@@ -779,6 +807,35 @@ export default function ObraDetailPage() {
   ): Promise<FotoInfo | null> {
     if (!obra) return null
     try {
+      const structuredMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
+      if (structuredMatch) {
+        const photoType = structuredMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro'
+        const pontoIndex = parseInt(structuredMatch[2], 10)
+        const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
+          ? [...obra.checklist_hastes_termometros_data]
+          : []
+
+        if (!Number.isInteger(pontoIndex) || pontoIndex < 0 || pontoIndex >= pontos.length) {
+          return null
+        }
+
+        const pontoAtual = { ...pontos[pontoIndex] }
+        const currentPhotos = Array.isArray(pontoAtual[photoType]) ? [...pontoAtual[photoType]] : []
+        if (!currentPhotos[index]) return null
+        currentPhotos[index] = updatedPhoto
+        pontoAtual[photoType] = currentPhotos
+        pontos[pontoIndex] = pontoAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_hastes_termometros_data: pontos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_hastes_termometros_data: pontos })
+        return updatedPhoto
+      }
+
       const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
       if (!currentPhotos[index]) return null
       const nextPhotos = [...currentPhotos]
@@ -805,6 +862,39 @@ export default function ObraDetailPage() {
     if (!obra) return null
     try {
       const url = await uploadPhotoFile(file, sectionKey)
+      const structuredMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
+      if (structuredMatch) {
+        const photoType = structuredMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro'
+        const pontoIndex = parseInt(structuredMatch[2], 10)
+        const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
+          ? [...obra.checklist_hastes_termometros_data]
+          : []
+
+        if (!Number.isInteger(pontoIndex) || pontoIndex < 0 || pontoIndex >= pontos.length) {
+          return null
+        }
+
+        const pontoAtual = { ...pontos[pontoIndex] }
+        const currentPhotos = Array.isArray(pontoAtual[photoType]) ? [...pontoAtual[photoType]] : []
+        if (!currentPhotos[index]) return null
+        const nextPhoto: FotoInfo = {
+          ...currentPhotos[index],
+          url,
+        }
+        currentPhotos[index] = nextPhoto
+        pontoAtual[photoType] = currentPhotos
+        pontos[pontoIndex] = pontoAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_hastes_termometros_data: pontos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_hastes_termometros_data: pontos })
+        return nextPhoto
+      }
+
       const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
       if (!currentPhotos[index]) return null
       const nextPhoto: FotoInfo = {
@@ -1410,7 +1500,7 @@ export default function ObraDetailPage() {
                 {/* 11. Hastes Aplicadas e Medição do Termômetro */}
                 <div className="mb-6">
                   <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 11. Hastes Aplicadas e Medição do Termômetro</h4>
-                  {hasRealPhotos(obra.checklist_hastes_termometros_data) ? (
+                  {(obra.checklist_hastes_termometros_data?.length ?? 0) > 0 ? (
                     <>
                       {obra.checklist_hastes_termometros_data?.map((ponto: any, pontoIndex: number) => {
                         const prefixo = ponto.isAditivo ? 'AD-P' : 'P';
@@ -1431,12 +1521,8 @@ export default function ObraDetailPage() {
                                 ({totalFotos} {totalFotos === 1 ? 'foto' : 'fotos'})
                               </span>
                             </div>
-                            {hasteFotos.length > 0 && (
-                              <PhotoGallery photos={hasteFotos} title="Haste Aplicada" sectionKey={`haste_${pontoIndex}`} {...galleryProps} />
-                            )}
-                            {termoFotos.length > 0 && (
-                              <PhotoGallery photos={termoFotos} title="Medição do Termômetro" sectionKey={`termo_${pontoIndex}`} {...galleryProps} />
-                            )}
+                            <PhotoGallery photos={hasteFotos} title="Haste Aplicada" sectionKey={`haste_${pontoIndex}`} {...galleryProps} />
+                            <PhotoGallery photos={termoFotos} title="Medição do Termômetro" sectionKey={`termo_${pontoIndex}`} {...galleryProps} />
                             {totalFotos === 0 && (
                               <p className="text-gray-500 text-sm italic">Nenhuma foto adicionada ainda.</p>
                             )}
@@ -1446,31 +1532,19 @@ export default function ObraDetailPage() {
                     </>
                   ) : (
                     <>
-                      {/* Fallback: tentar campos flat antigos */}
-                      {((obra as any).fotos_checklist_hastes_aplicadas?.length > 0 || (obra as any).fotos_checklist_medicao_termometro?.length > 0) ? (
-                        <>
-                          {(obra as any).fotos_checklist_hastes_aplicadas?.length > 0 && (
-                            <PhotoGallery
-                              photos={(obra as any).fotos_checklist_hastes_aplicadas || []}
-                              title="Hastes Aplicadas"
-                              sectionKey="fotos_checklist_hastes_aplicadas"
-                              {...galleryProps}
-                            />
-                          )}
-                          {(obra as any).fotos_checklist_medicao_termometro?.length > 0 && (
-                            <PhotoGallery
-                              photos={(obra as any).fotos_checklist_medicao_termometro || []}
-                              title="Medição do Termômetro"
-                              sectionKey="fotos_checklist_medicao_termometro"
-                              {...galleryProps}
-                            />
-                          )}
-                        </>
-                      ) : (
-                        <div className="p-6 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 text-center">
-                          <p className="text-gray-500">Nenhuma foto adicionada ainda.</p>
-                        </div>
-                      )}
+                      {/* Fallback: campos flat antigos - manter botão disponível mesmo vazio */}
+                      <PhotoGallery
+                        photos={(obra as any).fotos_checklist_hastes_aplicadas || []}
+                        title="Hastes Aplicadas"
+                        sectionKey="fotos_checklist_hastes_aplicadas"
+                        {...galleryProps}
+                      />
+                      <PhotoGallery
+                        photos={(obra as any).fotos_checklist_medicao_termometro || []}
+                        title="Medição do Termômetro"
+                        sectionKey="fotos_checklist_medicao_termometro"
+                        {...galleryProps}
+                      />
                     </>
                   )}
                 </div>
