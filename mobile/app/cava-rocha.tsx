@@ -7,26 +7,16 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
-  Modal,
-  Pressable,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { backupPhoto } from '../lib/photo-backup';
 import { saveObraLocal } from '../lib/offline-sync';
-
-const EQUIPES_DISPONIVEIS = [
-  'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
-  'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
-  'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
-  'APG 01', 'APG 02', 'APG 03',
-];
 
 type FotoData = {
   uri: string;
@@ -41,7 +31,6 @@ type Poste = {
   fotosAntes: FotoData[];
   fotosDurante: FotoData[];
   fotosDepois: FotoData[];
-  observacao: string;
   expandido: boolean;
 };
 
@@ -52,17 +41,12 @@ export default function CavaRocha() {
   // Dados do formulário
   const [data, setData] = useState(new Date().toISOString().split('T')[0]);
   const [obra, setObra] = useState('');
-  const [equipeExecutora, setEquipeExecutora] = useState('');
   const [responsavel, setResponsavel] = useState('');
-  const [observacaoGeral, setObservacaoGeral] = useState('');
 
   // Postes
   const [postes, setPostes] = useState<Poste[]>([]);
   const [proximoNumero, setProximoNumero] = useState(1);
   const [tempObraId] = useState(`local_cava_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
-
-  // Modal
-  const [showEquipeModal, setShowEquipeModal] = useState(false);
 
   useEffect(() => {
     checkCompLogin();
@@ -73,7 +57,7 @@ export default function CavaRocha() {
   const checkCompLogin = async () => {
     const role = await AsyncStorage.getItem('@user_role');
     if (role !== 'compressor') {
-      Alert.alert('Acesso Negado', 'Esta tela é exclusiva para o perfil COMP.');
+      Alert.alert('Acesso Negado', 'Esta tela é exclusiva para o perfil compressor.');
       router.replace('/login');
     }
   };
@@ -85,7 +69,6 @@ export default function CavaRocha() {
       fotosAntes: [],
       fotosDurante: [],
       fotosDepois: [],
-      observacao: '',
       expandido: true,
     };
     setPostes([...postes, novoPoste]);
@@ -224,8 +207,8 @@ export default function CavaRocha() {
 
   const handleSalvar = async () => {
     // Validações
-    if (!data || !obra || !equipeExecutora || !responsavel) {
-      Alert.alert('Erro', 'Preencha todos os campos obrigatórios (Data, Obra, Equipe e Encarregado)');
+    if (!data || !obra || !responsavel) {
+      Alert.alert('Erro', 'Preencha todos os campos obrigatórios (Data, Obra e Encarregado)');
       return;
     }
 
@@ -259,7 +242,8 @@ export default function CavaRocha() {
     setLoading(true);
 
     try {
-      const createdBy = await AsyncStorage.getItem('@user_logado') || 'COMP';
+      const equipeComp = (await AsyncStorage.getItem('@equipe_logada')) || 'COM-CZ';
+      const createdBy = (await AsyncStorage.getItem('@user_logado')) || equipeComp;
       const obraId = `comp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
       // Montar estrutura de postes com photoIds (para sincronização posterior)
@@ -269,7 +253,6 @@ export default function CavaRocha() {
         fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
         fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
         fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
-        observacao: poste.observacao,
       }));
 
       // Montar dados da obra para salvar localmente (offline-first)
@@ -278,14 +261,13 @@ export default function CavaRocha() {
         data,
         obra,
         responsavel,
-        equipe: equipeExecutora,
+        equipe: equipeComp,
         tipo_servico: 'Cava em Rocha',
         postes_data: postesData,
-        observacoes: observacaoGeral,
         created_by: createdBy,
         creator_role: 'compressor',
         created_at: new Date().toISOString(),
-        status: 'em_aberto', // Será 'finalizada' quando sincronizar
+        status: 'finalizada',
         origem: 'offline',
         sync_status: 'pending',
         photos_uploaded: false,
@@ -358,21 +340,19 @@ export default function CavaRocha() {
 
       Alert.alert(
         'Sucesso!',
-        `Book de Cava em Rocha salvo para a equipe ${equipeExecutora}\n\n${postes.length} poste(s) registrados.\n\nA obra será sincronizada automaticamente quando houver internet.`,
+        `Book de Cava em Rocha finalizado e salvo.\n\n${postes.length} poste(s) registrados.\n\nA obra será sincronizada automaticamente quando houver internet.`,
         [
           {
             text: 'OK',
             onPress: () => {
               // Limpar form
               setObra('');
-              setEquipeExecutora('');
               setResponsavel('');
-              setObservacaoGeral('');
               setPostes([]);
               setProximoNumero(1);
               adicionarPoste(); // Adicionar um poste novo
               // Navegar para o histórico
-              router.push('/(comp)');
+              router.push('/(tabs)/obras');
             },
           },
         ]
@@ -395,6 +375,8 @@ export default function CavaRocha() {
             '@equipe_logada',
             '@user_logado',
             '@user_role',
+            '@session_token',
+            '@session_expires_at',
             '@login_timestamp',
           ]);
           router.replace('/login');
@@ -410,7 +392,7 @@ export default function CavaRocha() {
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>📋 Book de Cava em Rocha</Text>
-            <Text style={styles.headerSubtitle}>Checklist de Fiscalização - Perfil COMP</Text>
+            <Text style={styles.headerSubtitle}>Checklist de Fiscalização - Perfil Compressor</Text>
           </View>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Ionicons name="log-out-outline" size={24} color="#dc3545" />
@@ -453,21 +435,6 @@ export default function CavaRocha() {
               </Text>
             </View>
 
-            {/* Equipe Executora */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Equipe Executora *</Text>
-              <TouchableOpacity
-                style={styles.dropdownButton}
-                onPress={() => setShowEquipeModal(true)}
-                disabled={loading}
-              >
-                <Text style={[styles.dropdownButtonText, !equipeExecutora && styles.placeholder]}>
-                  {equipeExecutora || 'Selecione a equipe'}
-                </Text>
-                <Text style={styles.dropdownIcon}>▼</Text>
-              </TouchableOpacity>
-            </View>
-
             {/* Encarregado */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Encarregado *</Text>
@@ -480,19 +447,6 @@ export default function CavaRocha() {
               />
             </View>
 
-            {/* Observação Geral */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Observações Gerais</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={observacaoGeral}
-                onChangeText={setObservacaoGeral}
-                placeholder="Observações sobre a obra (opcional)"
-                multiline
-                numberOfLines={3}
-                editable={!loading}
-              />
-            </View>
           </View>
 
           {/* Checklist de Postes */}
@@ -601,23 +555,6 @@ export default function CavaRocha() {
                         </TouchableOpacity>
                       </View>
 
-                      {/* Observação do Poste */}
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Observações</Text>
-                        <TextInput
-                          style={[styles.input, styles.textAreaSmall]}
-                          value={poste.observacao}
-                          onChangeText={(text) => {
-                            setPostes(postes.map(p =>
-                              p.id === poste.id ? { ...p, observacao: text } : p
-                            ));
-                          }}
-                          placeholder="Observações sobre este poste (opcional)"
-                          multiline
-                          numberOfLines={2}
-                          editable={!loading}
-                        />
-                      </View>
                     </View>
                   )}
                 </View>
@@ -653,54 +590,6 @@ export default function CavaRocha() {
         </View>
       </ScrollView>
 
-      {/* Modal Seleção de Equipe */}
-      <Modal
-        visible={showEquipeModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowEquipeModal(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowEquipeModal(false)}>
-          <View style={styles.modalContent}>
-            <Pressable>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Selecione a Equipe</Text>
-                <TouchableOpacity onPress={() => setShowEquipeModal(false)}>
-                  <Text style={styles.modalClose}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={styles.modalList}>
-                {EQUIPES_DISPONIVEIS.map((item) => (
-                  <TouchableOpacity
-                    key={item}
-                    style={[
-                      styles.modalItem,
-                      equipeExecutora === item && styles.modalItemSelected,
-                    ]}
-                    onPress={() => {
-                      setEquipeExecutora(item);
-                      setShowEquipeModal(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.modalItemText,
-                        equipeExecutora === item && styles.modalItemTextSelected,
-                      ]}
-                    >
-                      {item}
-                    </Text>
-                    {equipeExecutora === item && (
-                      <Text style={styles.checkmark}>✓</Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -798,27 +687,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginTop: 4,
-  },
-  dropdownButton: {
-    backgroundColor: '#f9fafb',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dropdownButtonText: {
-    fontSize: 15,
-    color: '#1a1a1a',
-  },
-  placeholder: {
-    color: '#999',
-  },
-  dropdownIcon: {
-    fontSize: 12,
-    color: '#999',
   },
   posteCard: {
     backgroundColor: '#f9fafb',
@@ -953,61 +821,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  modalClose: {
-    fontSize: 24,
-    color: '#666',
-    fontWeight: '300',
-  },
-  modalList: {
-    maxHeight: 400,
-  },
-  modalItem: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  modalItemSelected: {
-    backgroundColor: '#fff5f5',
-  },
-  modalItemText: {
-    fontSize: 16,
-    color: '#1a1a1a',
-  },
-  modalItemTextSelected: {
-    color: '#dc3545',
-    fontWeight: '600',
-  },
-  checkmark: {
-    fontSize: 18,
-    color: '#dc3545',
-    fontWeight: 'bold',
   },
 });

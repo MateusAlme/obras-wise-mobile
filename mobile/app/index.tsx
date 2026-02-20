@@ -13,21 +13,12 @@ export default function Index() {
 
   const checkLoginStatus = async () => {
     try {
-      // Verificar se há login por equipe salvo
       const equipeLogada = await AsyncStorage.getItem('@equipe_logada');
       const userLogado = await AsyncStorage.getItem('@user_logado');
-      const userRole = await AsyncStorage.getItem('@user_role');
 
       if (equipeLogada && userLogado) {
-        // Verificar se é usuário COMP
-        if (userRole === 'compressor' && equipeLogada === 'COMP') {
-          router.replace('/(comp)');
-        } else {
-          // Usuário está logado via sistema de equipes normal
-          router.replace('/(tabs)');
-        }
+        router.replace('/(tabs)');
       } else {
-        // Não há login salvo, ir para tela de login
         router.replace('/login');
       }
     } catch (error) {

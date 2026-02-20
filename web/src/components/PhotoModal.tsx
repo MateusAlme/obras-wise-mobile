@@ -14,6 +14,7 @@ interface PhotoModalProps {
   autoEdit?: boolean
   onSave?: (updatedPhoto: FotoInfo) => Promise<FotoInfo | null>
   onReplace?: (file: File) => Promise<FotoInfo | null>
+  onDelete?: () => Promise<boolean>
 }
 
 export default function PhotoModal({
@@ -26,11 +27,13 @@ export default function PhotoModal({
   autoEdit = false,
   onSave,
   onReplace,
+  onDelete,
 }: PhotoModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [draftPlaca, setDraftPlaca] = useState({
     obraNumero: '',
     tipoServico: '',
@@ -255,6 +258,22 @@ export default function PhotoModal({
     }
   }
 
+  async function handleDelete() {
+    if (!onDelete) return
+    const confirmed = window.confirm('Excluir esta foto?')
+    if (!confirmed) return
+
+    setDeleting(true)
+    try {
+      const deleted = await onDelete()
+      if (deleted) {
+        onClose()
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-90 backdrop-blur-sm"
@@ -285,6 +304,9 @@ export default function PhotoModal({
               equipe={previewPlaca.equipe}
               latitude={photo.latitude}
               longitude={photo.longitude}
+              utmX={photo.utmX ?? photo.utm_x}
+              utmY={photo.utmY ?? photo.utm_y}
+              utmZone={photo.utmZone ?? photo.utm_zone}
               dateTime={previewPlaca.dataHora}
               isFullscreen={true}
               className="w-full h-full"
@@ -309,9 +331,16 @@ export default function PhotoModal({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-semibold transition-colors"
-                disabled={uploading}
+                disabled={uploading || deleting}
               >
                 {uploading ? 'Enviando foto...' : 'Trocar foto'}
+              </button>
+              <button
+                onClick={() => void handleDelete()}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                disabled={deleting || saving || uploading || !onDelete}
+              >
+                {deleting ? 'Excluindo...' : 'Excluir foto'}
               </button>
               <input
                 ref={fileInputRef}

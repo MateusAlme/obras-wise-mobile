@@ -16,6 +16,7 @@ interface PhotoGalleryProps {
   onAddPhoto?: (sectionKey: string, file: File) => Promise<FotoInfo | null>
   onUpdatePhoto?: (sectionKey: string, index: number, updatedPhoto: FotoInfo) => Promise<FotoInfo | null>
   onReplacePhoto?: (sectionKey: string, index: number, file: File) => Promise<FotoInfo | null>
+  onDeletePhoto?: (sectionKey: string, index: number, photo: FotoInfo) => Promise<boolean>
 }
 
 export default function PhotoGallery({
@@ -29,6 +30,7 @@ export default function PhotoGallery({
   onAddPhoto,
   onUpdatePhoto,
   onReplacePhoto,
+  onDeletePhoto,
 }: PhotoGalleryProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<FotoInfo | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
@@ -111,6 +113,9 @@ export default function PhotoGallery({
                 equipe={photo.placaData?.equipe || equipe}
                 latitude={photo.latitude}
                 longitude={photo.longitude}
+                utmX={photo.utmX ?? photo.utm_x}
+                utmY={photo.utmY ?? photo.utm_y}
+                utmZone={photo.utmZone ?? photo.utm_zone}
                 dateTime={photo.placaData?.dataHora}
                 isFullscreen={false}
                 className="aspect-[4/3]"
@@ -161,6 +166,16 @@ export default function PhotoGallery({
             setAutoEdit(false)
           }
           return replaced
+        }}
+        onDelete={async () => {
+          if (selectedIndex === null || !sectionKey || !selectedPhoto || !onDeletePhoto) return false
+          const deleted = await onDeletePhoto(sectionKey, selectedIndex, selectedPhoto)
+          if (deleted) {
+            setSelectedPhoto(null)
+            setSelectedIndex(null)
+            setAutoEdit(false)
+          }
+          return deleted
         }}
       />
     </div>

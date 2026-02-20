@@ -10,6 +10,59 @@ import { ptBR } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 
+const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; lightColor: string }[] = [
+  { key: 'fotos_antes', label: 'Fotos Antes', color: 'blue', lightColor: 'blue' },
+  { key: 'fotos_durante', label: 'Fotos Durante', color: 'orange', lightColor: 'orange' },
+  { key: 'fotos_depois', label: 'Fotos Depois', color: 'green', lightColor: 'green' },
+  { key: 'fotos_abertura', label: 'Fotos Abertura de Chave', color: 'cyan', lightColor: 'cyan' },
+  { key: 'fotos_fechamento', label: 'Fotos Fechamento de Chave', color: 'teal', lightColor: 'teal' },
+  { key: 'fotos_ditais_abertura', label: 'DITAIS - Desligar/Abertura', color: 'indigo', lightColor: 'indigo' },
+  { key: 'fotos_ditais_impedir', label: 'DITAIS - Impedir Religamento', color: 'indigo', lightColor: 'indigo' },
+  { key: 'fotos_ditais_testar', label: 'DITAIS - Testar Ausência de Tensão', color: 'indigo', lightColor: 'indigo' },
+  { key: 'fotos_ditais_aterrar', label: 'DITAIS - Aterrar', color: 'indigo', lightColor: 'indigo' },
+  { key: 'fotos_ditais_sinalizar', label: 'DITAIS - Sinalizar/Isolar', color: 'indigo', lightColor: 'indigo' },
+  { key: 'fotos_aterramento_vala_aberta', label: 'Aterramento - Vala Aberta', color: 'emerald', lightColor: 'emerald' },
+  { key: 'fotos_aterramento_hastes', label: 'Aterramento - Hastes Aplicadas', color: 'emerald', lightColor: 'emerald' },
+  { key: 'fotos_aterramento_vala_fechada', label: 'Aterramento - Vala Fechada', color: 'emerald', lightColor: 'emerald' },
+  { key: 'fotos_aterramento_medicao', label: 'Aterramento - Medição Terrômetro', color: 'emerald', lightColor: 'emerald' },
+  { key: 'fotos_checklist_croqui', label: 'Checklist - Croqui', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_panoramica_inicial', label: 'Checklist - Panorâmica Inicial', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_chede', label: 'Checklist - Chave com Componente', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_postes', label: 'Checklist - Postes', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_seccionamentos', label: 'Checklist - Seccionamentos', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_aterramento_cerca', label: 'Checklist - Aterramento de Cerca', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_padrao_geral', label: 'Checklist - Padrão Geral', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_padrao_interno', label: 'Checklist - Padrão Interno', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_frying', label: 'Checklist - Flying', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_abertura_fechamento_pulo', label: 'Checklist - Abertura/Fechamento de Pulo', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_panoramica_final', label: 'Checklist - Panorâmica Final', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_altimetria_lado_fonte', label: 'Altimetria - Lado Fonte', color: 'sky', lightColor: 'sky' },
+  { key: 'fotos_altimetria_medicao_fonte', label: 'Altimetria - Medição Fonte', color: 'sky', lightColor: 'sky' },
+  { key: 'fotos_altimetria_lado_carga', label: 'Altimetria - Lado Carga', color: 'sky', lightColor: 'sky' },
+  { key: 'fotos_altimetria_medicao_carga', label: 'Altimetria - Medição Carga', color: 'sky', lightColor: 'sky' },
+  { key: 'fotos_vazamento_evidencia', label: 'Vazamento - Evidência', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_vazamento_equipamentos_limpeza', label: 'Vazamento - Equipamentos de Limpeza', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_vazamento_tombamento_retirado', label: 'Vazamento - Tombamento Retirado', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_vazamento_placa_retirado', label: 'Vazamento - Placa Retirado', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_vazamento_tombamento_instalado', label: 'Vazamento - Tombamento Instalado', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_vazamento_placa_instalado', label: 'Vazamento - Placa Instalado', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_vazamento_instalacao', label: 'Vazamento - Instalação', color: 'rose', lightColor: 'rose' },
+  { key: 'fotos_medidor_padrao', label: 'Medidor - Padrão', color: 'amber', lightColor: 'amber' },
+  { key: 'fotos_medidor_leitura', label: 'Medidor - Leitura', color: 'amber', lightColor: 'amber' },
+  { key: 'fotos_medidor_selo_born', label: 'Medidor - Selo Born', color: 'amber', lightColor: 'amber' },
+  { key: 'fotos_medidor_selo_caixa', label: 'Medidor - Selo Caixa', color: 'amber', lightColor: 'amber' },
+  { key: 'fotos_medidor_identificador_fase', label: 'Medidor - Identificador de Fase', color: 'amber', lightColor: 'amber' },
+  { key: 'fotos_transformador_laudo', label: 'Transformador - Laudo', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_componente_instalado', label: 'Transformador - Componente Instalado', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_tombamento_instalado', label: 'Transformador - Tombamento Instalado', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_tape', label: 'Transformador - Tape', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_placa_instalado', label: 'Transformador - Placa Instalada', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_instalado', label: 'Transformador - Instalado', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_antes_retirar', label: 'Transformador - Antes de Retirar', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_tombamento_retirado', label: 'Transformador - Tombamento Retirado', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa Retirada', color: 'red', lightColor: 'red' },
+]
+
 export default function ReportsPage() {
   const router = useRouter()
   const [obras, setObras] = useState<Obra[]>([])
@@ -25,6 +78,7 @@ export default function ReportsPage() {
   const [exportingAllPdf, setExportingAllPdf] = useState(false)
   const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [photoActionKey, setPhotoActionKey] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -227,6 +281,9 @@ export default function ReportsPage() {
           url: item.url,
           latitude: item.latitude || null,
           longitude: item.longitude || null,
+          utmX: item.utmX ?? item.utm_x ?? null,
+          utmY: item.utmY ?? item.utm_y ?? null,
+          utmZone: item.utmZone ?? item.utm_zone ?? null,
           placaData: item.placaData || item.placa_data || null
         } as FotoInfo
       }
@@ -237,6 +294,9 @@ export default function ReportsPage() {
           url: item,
           latitude: null,
           longitude: null,
+          utmX: null,
+          utmY: null,
+          utmZone: null,
           placaData: null
         } as FotoInfo
       }
@@ -257,6 +317,9 @@ export default function ReportsPage() {
           url: storageUrl,
           latitude: null,
           longitude: null,
+          utmX: null,
+          utmY: null,
+          utmZone: null,
           placaData: null
         } as FotoInfo
       }
@@ -265,17 +328,128 @@ export default function ReportsPage() {
     }).filter((item: FotoInfo | null): item is FotoInfo => item !== null)
   }
 
+  function formatDateTime(date: Date) {
+    const pad = (value: number) => String(value).padStart(2, '0')
+    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  }
+
+  function extractStoragePathFromPublicUrl(url: string): string | null {
+    const marker = '/storage/v1/object/public/obra-photos/'
+    const markerIndex = url.indexOf(marker)
+    if (markerIndex < 0) return null
+    const rawPath = url.slice(markerIndex + marker.length)
+    if (!rawPath) return null
+    try {
+      return decodeURIComponent(rawPath)
+    } catch {
+      return rawPath
+    }
+  }
+
+  async function uploadPhotoFileForReport(obraId: string, file: File, sectionKey: string) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const filePath = `${obraId}/${sectionKey}-${Date.now()}-${safeName}`
+    const { error: uploadError } = await supabase.storage
+      .from('obra-photos')
+      .upload(filePath, file, { contentType: file.type, upsert: false })
+    if (uploadError) throw uploadError
+    const { data } = supabase.storage.from('obra-photos').getPublicUrl(filePath)
+    return data.publicUrl
+  }
+
+  function updateObraPhotoSectionInState(obraId: string, sectionKey: keyof Obra, nextPhotos: FotoInfo[]) {
+    setSelectedObraForBook(prev => {
+      if (!prev || prev.id !== obraId) return prev
+      return { ...prev, [sectionKey]: nextPhotos }
+    })
+
+    setObras(prev =>
+      prev.map(obra => {
+        if (obra.id !== obraId) return obra
+        return { ...obra, [sectionKey]: nextPhotos }
+      })
+    )
+  }
+
+  async function handleAddPhotoToReport(sectionKey: keyof Obra, file: File) {
+    if (!selectedObraForBook) return
+    const actionKey = `${String(sectionKey)}:add`
+    setPhotoActionKey(actionKey)
+    try {
+      const url = await uploadPhotoFileForReport(selectedObraForBook.id, file, String(sectionKey))
+      const newPhoto: FotoInfo = {
+        url,
+        placaData: {
+          obraNumero: selectedObraForBook.obra || '',
+          tipoServico: selectedObraForBook.tipo_servico || '',
+          equipe: selectedObraForBook.equipe || '',
+          dataHora: formatDateTime(new Date()),
+        },
+      }
+
+      const currentPhotos = convertPhotoIdsToFotoInfo((selectedObraForBook as any)[sectionKey])
+      const nextPhotos = [...currentPhotos, newPhoto]
+      const { error } = await supabase
+        .from('obras')
+        .update({ [sectionKey]: nextPhotos })
+        .eq('id', selectedObraForBook.id)
+
+      if (error) throw error
+      updateObraPhotoSectionInState(selectedObraForBook.id, sectionKey, nextPhotos)
+    } catch (error) {
+      console.error('Erro ao adicionar foto no relatorio:', error)
+      alert('Erro ao adicionar foto. Verifique permissões de storage e tente novamente.')
+    } finally {
+      setPhotoActionKey(null)
+    }
+  }
+
+  async function handleDeletePhotoFromReport(sectionKey: keyof Obra, index: number, url: string) {
+    if (!selectedObraForBook) return
+    if (!window.confirm('Excluir esta foto?')) return
+
+    const actionKey = `${String(sectionKey)}:delete:${index}`
+    setPhotoActionKey(actionKey)
+    try {
+      const currentPhotos = convertPhotoIdsToFotoInfo((selectedObraForBook as any)[sectionKey])
+      if (!currentPhotos[index]) return
+
+      const nextPhotos = currentPhotos.filter((_, photoIndex) => photoIndex !== index)
+      const { error } = await supabase
+        .from('obras')
+        .update({ [sectionKey]: nextPhotos })
+        .eq('id', selectedObraForBook.id)
+
+      if (error) throw error
+
+      const storagePath = extractStoragePathFromPublicUrl(url)
+      if (storagePath) {
+        const { error: storageError } = await supabase.storage
+          .from('obra-photos')
+          .remove([storagePath])
+        if (storageError) {
+          console.warn('Nao foi possivel excluir do storage (registro removido da obra):', storageError.message)
+        }
+      }
+
+      updateObraPhotoSectionInState(selectedObraForBook.id, sectionKey, nextPhotos)
+    } catch (error) {
+      console.error('Erro ao excluir foto no relatorio:', error)
+      alert('Erro ao excluir foto.')
+    } finally {
+      setPhotoActionKey(null)
+    }
+  }
+
   function handleOpenBook(obraId: string) {
     const obra = obras.find(o => o.id === obraId)
     if (obra) {
       // Converter fotos para o formato correto antes de exibir
       const obraComFotosConvertidas: Obra = {
-        ...obra,
-        fotos_antes: convertPhotoIdsToFotoInfo(obra.fotos_antes),
-        fotos_durante: convertPhotoIdsToFotoInfo(obra.fotos_durante),
-        fotos_depois: convertPhotoIdsToFotoInfo(obra.fotos_depois),
-        fotos_abertura: convertPhotoIdsToFotoInfo(obra.fotos_abertura),
-        fotos_fechamento: convertPhotoIdsToFotoInfo(obra.fotos_fechamento),
+        ...obra
+      }
+      for (const section of REPORT_PHOTO_SECTIONS) {
+        ;(obraComFotosConvertidas as any)[section.key] = convertPhotoIdsToFotoInfo((obra as any)[section.key])
       }
       setSelectedObraForBook(obraComFotosConvertidas)
     }
@@ -892,10 +1066,6 @@ export default function ReportsPage() {
                 {/* Galerias de Fotos - Dinâmico por tipo de serviço */}
                 <div className="space-y-8">
                   {(() => {
-                    // ...existing code for photoSections, colorMap, lightColorMap
-                    const photoSections: { key: keyof Obra; label: string; color: string; lightColor: string }[] = [
-                      // ...existing code...
-                    ];
                     const colorMap: Record<string, string> = {
                       blue: 'bg-blue-600', orange: 'bg-orange-600', green: 'bg-green-600', cyan: 'bg-cyan-600', teal: 'bg-teal-600', red: 'bg-red-600', amber: 'bg-amber-600', purple: 'bg-purple-600', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', sky: 'bg-sky-600', rose: 'bg-rose-600',
                     };
@@ -903,17 +1073,38 @@ export default function ReportsPage() {
                       blue: 'from-blue-300', orange: 'from-orange-300', green: 'from-green-300', cyan: 'from-cyan-300', teal: 'from-teal-300', red: 'from-red-300', amber: 'from-amber-300', purple: 'from-purple-300', indigo: 'from-indigo-300', emerald: 'from-emerald-300', sky: 'from-sky-300', rose: 'from-rose-300',
                     };
 
-                    // Exibir todas as seções, mesmo sem fotos
-                    return photoSections.map((section) => {
-                      const fotos = (selectedObraForBook[section.key] as { url: string }[]) || [];
+                    return REPORT_PHOTO_SECTIONS.map((section) => {
+                      const sectionKey = String(section.key)
+                      const fotos = convertPhotoIdsToFotoInfo((selectedObraForBook as any)[section.key]);
+                      const addActionKey = `${sectionKey}:add`
                       return (
-                        <div key={section.key}>
+                        <div key={sectionKey}>
                           <div className="flex items-center gap-3 mb-4">
                             <div className={`bg-gradient-to-r ${section.color} text-white px-4 py-2 rounded-lg shadow-md`}>
                               <h4 className="font-bold text-sm uppercase tracking-wider">{section.label}</h4>
                             </div>
                             <div className={`flex-1 h-px bg-gradient-to-r ${lightColorMap[section.lightColor]} to-transparent`}></div>
                             <span className="text-sm font-semibold text-slate-500">{fotos.length} foto(s)</span>
+                            <button
+                              className="px-3 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                              disabled={photoActionKey === addActionKey}
+                              onClick={() => document.getElementById(`file-input-${sectionKey}`)?.click()}
+                            >
+                              {photoActionKey === addActionKey ? 'Enviando...' : 'Adicionar foto'}
+                            </button>
+                            <input
+                              id={`file-input-${sectionKey}`}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0]
+                                if (file) {
+                                  void handleAddPhotoToReport(section.key, file)
+                                }
+                                event.target.value = ''
+                              }}
+                            />
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                             {fotos.length > 0 ? (
@@ -938,31 +1129,24 @@ export default function ReportsPage() {
                                   <div className={`absolute top-2 left-2 ${colorMap[section.lightColor]} text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg`}>
                                     #{idx + 1}
                                   </div>
+                                  <button
+                                    type="button"
+                                    title="Excluir foto"
+                                    className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    disabled={photoActionKey === `${sectionKey}:delete:${idx}`}
+                                    onClick={(event) => {
+                                      event.preventDefault()
+                                      event.stopPropagation()
+                                      void handleDeletePhotoFromReport(section.key, idx, foto.url)
+                                    }}
+                                  >
+                                    {photoActionKey === `${sectionKey}:delete:${idx}` ? '...' : 'Excluir'}
+                                  </button>
                                 </div>
                               ))
                             ) : (
-                              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 col-span-full flex flex-col items-center gap-2">
+                              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 col-span-full">
                                 Nenhuma foto adicionada ainda.
-                                <button
-                                  className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-colors"
-                                  onClick={() => document.getElementById(`file-input-${section.key}`)?.click()}
-                                >
-                                  Adicionar foto
-                                </button>
-                                <input
-                                  id={`file-input-${section.key}`}
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={(event) => {
-                                    const file = event.target.files?.[0];
-                                    if (file) {
-                                      // TODO: implementar função de upload para cada seção
-                                      // Exemplo: handleAddPhoto(section.key, file)
-                                    }
-                                    event.target.value = '';
-                                  }}
-                                />
                               </div>
                             )}
                           </div>

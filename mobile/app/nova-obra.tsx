@@ -73,7 +73,6 @@ const EQUIPES_DISPONIVEIS = [
   'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
   'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
   'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
-  'APG 01', 'APG 02', 'APG 03',
 ];
 
 export default function NovaObra() {
@@ -89,13 +88,15 @@ export default function NovaObra() {
 
   // Detectar se é usuário COMP
   const [isCompUser, setIsCompUser] = useState(false);
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [isLinhaVivaUser, setIsLinhaVivaUser] = useState(false);
 
   // Dados da obra
   const [data, setData] = useState(new Date().toISOString().split('T')[0]);
   const [obra, setObra] = useState('');
   const [responsavel, setResponsavel] = useState('');
   const [equipe, setEquipe] = useState('');
-  const [equipeExecutora, setEquipeExecutora] = useState(''); // Para COMP selecionar
+  const [equipeExecutora, setEquipeExecutora] = useState(''); // Apenas admin seleciona
   const [tipoServico, setTipoServico] = useState<string>('');
 
   // Tipo para fotos com localização UTM
@@ -239,7 +240,7 @@ export default function NovaObra() {
   const [docMateriaisPrevisto, setDocMateriaisPrevisto] = useState<FotoData[]>([]);
   const [docMateriaisRealizado, setDocMateriaisRealizado] = useState<FotoData[]>([]);
 
-  // Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial)
+  // Identificação de Postes (Book de Aterramento, Fundação Especial)
   type PosteIdentificado = {
     numero: number;
     isAditivo: boolean;
@@ -248,30 +249,41 @@ export default function NovaObra() {
   const [posteIsAditivo, setPosteIsAditivo] = useState(false);
   const [postesIdentificados, setPostesIdentificados] = useState<PosteIdentificado[]>([]);
 
-  // Estados para CAVA EM ROCHA - Sistema de Múltiplos Postes
+  // Estados para Linha Viva / Cava em Rocha - Sistema de Múltiplos Postes
   type Poste = {
     id: string;
     numero: number;
+    isAditivo: boolean;
     fotosAntes: FotoData[];
     fotosDurante: FotoData[];
     fotosDepois: FotoData[];
-    observacao: string;
-    expandido: boolean;
+    fotosMedicao: FotoData[];
   };
 
   const [postesData, setPostesData] = useState<Poste[]>([
     {
       id: 'P1',
       numero: 1,
+      isAditivo: false,
       fotosAntes: [],
       fotosDurante: [],
       fotosDepois: [],
-      observacao: '',
-      expandido: true,
+      fotosMedicao: [],
     },
   ]);
   const [proximoNumeroPoste, setProximoNumeroPoste] = useState(2);
-  const [observacaoGeralCavaRocha, setObservacaoGeralCavaRocha] = useState('');
+
+  const getPosteCodigo = (poste: Poste): string => {
+    const numeroValido = Number.isFinite(poste.numero) && poste.numero > 0;
+    const prefixo = poste.isAditivo ? 'AD-P' : 'P';
+    return numeroValido ? `${prefixo}${poste.numero}` : `${prefixo}?`;
+  };
+
+  const getPosteIdPersistencia = (poste: Poste): string => {
+    const codigo = getPosteCodigo(poste);
+    return codigo.includes('?') ? poste.id : codigo;
+  };
+
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [tempObraId, setTempObraId] = useState<string>(`temp_${Date.now()}`);
@@ -421,9 +433,30 @@ export default function NovaObra() {
   const isServicoDocumentacao = tipoServico === 'Documentação';
   const isServicoAltimetria = tipoServico === 'Altimetria';
   const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
+  const isServicoLinhaViva = tipoServico === 'Linha Viva';
   const isServicoCavaRocha = tipoServico === 'Cava em Rocha';
-  const isServicoPostesIdentificacao = ['Linha Viva', 'Book de Aterramento', 'Fundação Especial'].includes(tipoServico);
-  const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoCavaRocha;
+  const isServicoFundacaoEspecial = tipoServico === 'Fundação Especial';
+  const isServicoPostesIdentificacao = ['Book de Aterramento (legado)', 'Fundação Especial (legado)'].includes(tipoServico);
+  const isServicoPostesComFotos = isServicoCavaRocha || isServicoLinhaViva || isServicoBookAterramento || isServicoFundacaoEspecial;
+  const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoFundacaoEspecial && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoPostesComFotos;
+
+  const getPostePhotoSections = () => {
+    if (isServicoBookAterramento) {
+      return {
+        primeira: 'Vala Aberta',
+        segunda: 'Hastes',
+        terceira: 'Vala Fechada',
+        quarta: 'Medição Terrômetro',
+      };
+    }
+
+    return {
+      primeira: 'Antes',
+      segunda: 'Durante',
+      terceira: 'Depois',
+      quarta: null,
+    } as const;
+  };
 
   // Carregar equipe da sessão automaticamente
   useEffect(() => {
@@ -432,13 +465,24 @@ export default function NovaObra() {
         const equipeLogada = await AsyncStorage.getItem('@equipe_logada');
         const userRole = await AsyncStorage.getItem('@user_role');
 
-        // Detectar se é COMP
+        const linhaVivaRegex = /^LV\b/i;
+
+        // Detectar perfis especiais
         if (userRole === 'compressor') {
           setIsCompUser(true);
-          setEquipe('COMP');
+          setEquipe(equipeLogada || '');
+          setEquipeExecutora('');
           setTipoServico('Cava em Rocha'); // Fixar serviço
+        } else if (userRole === 'admin') {
+          setIsAdminUser(true);
+          setEquipe('');
+          setEquipeExecutora('');
         } else if (equipeLogada) {
           setEquipe(equipeLogada);
+          if (linhaVivaRegex.test(equipeLogada.trim())) {
+            setIsLinhaVivaUser(true);
+            setTipoServico('Linha Viva'); // Fixar serviço para perfis LV
+          }
         } else {
           // Se não houver equipe logada, redirecionar para login
           Alert.alert('Sessão expirada', 'Por favor, faça login novamente.');
@@ -647,13 +691,14 @@ export default function NovaObra() {
       ...(currentServerId && { serverId: currentServerId }),
       obra: obra?.trim() || '',
       data: data || '',
-      responsavel: isCompUser ? 'COMP' : (responsavel || ''),
-      equipe: isCompUser ? (equipeExecutora || '') : (equipe || ''),
+      responsavel: isCompUser ? (equipe || 'COM-CZ') : (responsavel || ''),
+      equipe: isAdminUser ? (equipeExecutora || '') : (equipe || ''),
       tipo_servico: tipoServico || '',
       status: 'rascunho' as const,
       origem: 'offline' as const,
       created_at: new Date().toISOString(),
-      creator_role: isCompUser ? 'compressor' : 'equipe',
+      creator_role: isCompUser ? 'compressor' : (isAdminUser ? 'admin' : 'equipe'),
+      created_by_admin: isAdminUser ? equipe : null, // Salva código do admin (ex: Admin-Pereira)
       transformador_status: transformadorStatus,
       num_postes: numPostes,
       num_seccionamentos: numSeccionamentos,
@@ -668,19 +713,20 @@ export default function NovaObra() {
           fotos_antes: [],
           fotos_durante: [],
           fotos_depois: [],
+          fotos_medicao: [],
           observacao: '',
         })),
       }),
-      ...(isServicoCavaRocha && {
+      ...(isServicoPostesComFotos && {
         postes_data: postesData.map(poste => ({
-          id: poste.id,
+          id: getPosteIdPersistencia(poste),
           numero: poste.numero,
+          isAditivo: poste.isAditivo || false,
           fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
           fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
           fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
-          observacao: poste.observacao,
+          fotos_medicao: poste.fotosMedicao.map(f => f.photoId).filter(Boolean),
         })),
-        observacoes: observacaoGeralCavaRocha,
       }),
       ...(isServicoChecklist && {
         checklist_postes_data: fotosPostes.map((poste, index) => ({
@@ -730,7 +776,18 @@ export default function NovaObra() {
       }
 
       // ✅ Mostrar feedback visual discreto
-      const totalFotos = Object.values(photoIds).reduce((acc, arr) => acc + arr.length, 0);
+      const totalFotosPostes = isServicoPostesComFotos
+        ? postesData.reduce(
+            (acc, poste) =>
+              acc +
+              poste.fotosAntes.length +
+              poste.fotosDurante.length +
+              poste.fotosDepois.length +
+              (isServicoBookAterramento ? poste.fotosMedicao.length : 0),
+            0
+          )
+        : 0;
+      const totalFotos = Object.values(photoIds).reduce((acc, arr) => acc + arr.length, 0) + totalFotosPostes;
       const mensagem = totalFotos > 0
         ? `Rascunho salvo automaticamente (${totalFotos} foto${totalFotos > 1 ? 's' : ''})`
         : 'Rascunho salvo automaticamente';
@@ -744,11 +801,11 @@ export default function NovaObra() {
     }
   }, [
     showToast, // Adicionar showToast às dependências
-    data, obra, responsavel, equipe, equipeExecutora, tipoServico, isCompUser, isEditMode, obraId,
+    data, obra, responsavel, equipe, equipeExecutora, tipoServico, isCompUser, isAdminUser, isEditMode, obraId,
     currentServerId, transformadorStatus, numPostes, numSeccionamentos, numAterramentosCerca,
     backupObraId,
-    isServicoChecklist, isServicoCavaRocha, isServicoPostesIdentificacao,
-    postesData, observacaoGeralCavaRocha, postesIdentificados,
+    isServicoChecklist, isServicoCavaRocha, isServicoBookAterramento, isServicoPostesIdentificacao,
+    postesData, postesIdentificados,
     fotosAntes, fotosDurante, fotosDepois, fotosAbertura, fotosFechamento,
     fotosDitaisAbertura, fotosDitaisImpedir, fotosDitaisTestar, fotosDitaisAterrar, fotosDitaisSinalizar,
     fotosAterramentoValaAberta, fotosAterramentoHastes, fotosAterramentoValaFechada, fotosAterramentoMedicao,
@@ -800,40 +857,14 @@ export default function NovaObra() {
           setObra(obraData.obra);
           setResponsavel(obraData.responsavel);
           setTipoServico(obraData.tipo_servico);
+          if (obraData.equipe) {
+            setEquipeExecutora(obraData.equipe);
+          }
 
           // ✅ CRÍTICO: Guardar serverId para não criar duplicatas ao salvar
           if (obraData.serverId) {
             setCurrentServerId(obraData.serverId);
             console.log('📌 ServerId carregado:', obraData.serverId);
-          }
-
-          if (['Linha Viva', 'Book de Aterramento', 'Fundação Especial'].includes(obraData.tipo_servico) && Array.isArray(obraData.postes_data)) {
-            const postes = obraData.postes_data
-              .map((poste: any) => {
-                let numero: number | null = null;
-                if (typeof poste?.numero === 'number') {
-                  numero = poste.numero;
-                } else {
-                  const id = String(poste?.id || '').replace(/[^0-9]/g, '');
-                  numero = id ? parseInt(id, 10) : null;
-                }
-                if (!numero || numero <= 0) return null;
-                return {
-                  numero,
-                  isAditivo: poste?.isAditivo || false,
-                };
-              })
-              .filter((p: PosteIdentificado | null): p is PosteIdentificado => p !== null);
-            if (postes.length > 0) {
-              // Remover duplicatas baseado no número
-              const uniquePostes = postes.reduce((acc: PosteIdentificado[], curr: PosteIdentificado) => {
-                if (!acc.find(p => p.numero === curr.numero)) {
-                  acc.push(curr);
-                }
-                return acc;
-              }, []).sort((a: PosteIdentificado, b: PosteIdentificado) => a.numero - b.numero);
-              setPostesIdentificados(uniquePostes);
-            }
           }
 
           // ✅ Carregar fotos do photo-backup usando os IDs salvos na obra
@@ -922,6 +953,13 @@ export default function NovaObra() {
             ]),
             ...(obraData.checklist_seccionamentos_data || []).flatMap((sec: any) => sec.fotos || []),
             ...(obraData.checklist_aterramentos_cerca_data || []).flatMap((aterr: any) => aterr.fotos || []),
+            // Linha Viva / Cava em Rocha (postes_data)
+            ...(obraData.postes_data || []).flatMap((poste: any) => [
+              ...(poste.fotos_antes || []),
+              ...(poste.fotos_durante || []),
+              ...(poste.fotos_depois || []),
+              ...(poste.fotos_medicao || []),
+            ]),
           ].filter(id => typeof id === 'string');
 
           let localPhotos: any[] = [];
@@ -1225,6 +1263,94 @@ export default function NovaObra() {
             }
           } catch (err) {
             console.error('❌ Erro ao carregar fotos do checklist:', err);
+          }
+
+          // Serviços com múltiplos postes e fotos
+          try {
+            if (
+              ['Linha Viva', 'Cava em Rocha', 'Book de Aterramento', 'Fundação Especial'].includes(obraData.tipo_servico) &&
+              Array.isArray(obraData.postes_data) &&
+              obraData.postes_data.length > 0
+            ) {
+              const postesCarregados = obraData.postes_data.map((poste: any, index: number) => {
+                const numero = typeof poste?.numero === 'number'
+                  ? poste.numero
+                  : parseInt(
+                      String(poste?.numero ?? poste?.id ?? '').replace(/[^0-9]/g, ''),
+                      10
+                    ) || (index + 1);
+                const isAditivo = poste?.isAditivo === true || String(poste?.id || '').toUpperCase().startsWith('AD-P');
+                const fallbackBookValaAberta =
+                  obraData.tipo_servico === 'Book de Aterramento' && index === 0
+                    ? (obraData.fotos_aterramento_vala_aberta || [])
+                    : [];
+                const fallbackBookHastes =
+                  obraData.tipo_servico === 'Book de Aterramento' && index === 0
+                    ? (obraData.fotos_aterramento_hastes || [])
+                    : [];
+                const fallbackBookValaFechada =
+                  obraData.tipo_servico === 'Book de Aterramento' && index === 0
+                    ? (obraData.fotos_aterramento_vala_fechada || [])
+                    : [];
+                const fallbackBookMedicao =
+                  obraData.tipo_servico === 'Book de Aterramento' && index === 0
+                    ? (obraData.fotos_aterramento_medicao || [])
+                    : [];
+                const fotosAntesOrigem =
+                  Array.isArray(poste?.fotos_antes) && poste.fotos_antes.length > 0
+                    ? poste.fotos_antes
+                    : fallbackBookValaAberta;
+                const fotosDuranteOrigem =
+                  Array.isArray(poste?.fotos_durante) && poste.fotos_durante.length > 0
+                    ? poste.fotos_durante
+                    : fallbackBookHastes;
+                const fotosDepoisOrigem =
+                  Array.isArray(poste?.fotos_depois) && poste.fotos_depois.length > 0
+                    ? poste.fotos_depois
+                    : fallbackBookValaFechada;
+                const fotosMedicaoOrigem =
+                  Array.isArray(poste?.fotos_medicao) && poste.fotos_medicao.length > 0
+                    ? poste.fotos_medicao
+                    : fallbackBookMedicao;
+                return {
+                  id: `poste_${index + 1}_${Date.now()}`,
+                  numero,
+                  isAditivo,
+                  fotosAntes: mapPhotos(fotosAntesOrigem, `postes_${numero}_antes`),
+                  fotosDurante: mapPhotos(fotosDuranteOrigem, `postes_${numero}_durante`),
+                  fotosDepois: mapPhotos(fotosDepoisOrigem, `postes_${numero}_depois`),
+                  fotosMedicao: mapPhotos(fotosMedicaoOrigem, `postes_${numero}_medicao`),
+                };
+              });
+
+              setPostesData(postesCarregados);
+              const maxNumero = postesCarregados.reduce((max, p) => Math.max(max, p.numero || 0), 0);
+              setProximoNumeroPoste(maxNumero + 1);
+
+            } else if (
+              obraData.tipo_servico === 'Book de Aterramento' &&
+              (
+                (obraData.fotos_aterramento_vala_aberta?.length || 0) > 0 ||
+                (obraData.fotos_aterramento_hastes?.length || 0) > 0 ||
+                (obraData.fotos_aterramento_vala_fechada?.length || 0) > 0 ||
+                (obraData.fotos_aterramento_medicao?.length || 0) > 0
+              )
+            ) {
+              setPostesData([
+                {
+                  id: `poste_legacy_${Date.now()}`,
+                  numero: 1,
+                  isAditivo: false,
+                  fotosAntes: mapPhotos(obraData.fotos_aterramento_vala_aberta || [], 'postes_1_antes'),
+                  fotosDurante: mapPhotos(obraData.fotos_aterramento_hastes || [], 'postes_1_durante'),
+                  fotosDepois: mapPhotos(obraData.fotos_aterramento_vala_fechada || [], 'postes_1_depois'),
+                  fotosMedicao: mapPhotos(obraData.fotos_aterramento_medicao || [], 'postes_1_medicao'),
+                },
+              ]);
+              setProximoNumeroPoste(2);
+            }
+          } catch (err) {
+            console.error('❌ Erro ao carregar postes_data (serviços com múltiplos postes):', err);
           }
 
           // Altimetria
@@ -1531,18 +1657,18 @@ export default function NovaObra() {
     }
   };
 
-  // Funções para gerenciar postes (Cava em Rocha)
+  // Funções para gerenciar postes (Linha Viva / Cava em Rocha)
   const adicionarPoste = () => {
     setProximoNumeroPoste(prev => {
       const novoNumero = prev;
       const novoPoste: Poste = {
-        id: `P${novoNumero}`,
+        id: `poste_${Date.now()}_${novoNumero}`,
         numero: novoNumero,
+        isAditivo: false,
         fotosAntes: [],
         fotosDurante: [],
         fotosDepois: [],
-        observacao: '',
-        expandido: true,
+        fotosMedicao: [],
       };
       setPostesData(prevPostes => [...prevPostes, novoPoste]);
 
@@ -1589,9 +1715,11 @@ export default function NovaObra() {
         Alert.alert('Atenção', 'É necessário manter pelo menos 1 poste.');
         return prevPostes;
       }
+      const posteRemovido = prevPostes.find(p => p.id === posteId);
+      const nomePoste = posteRemovido ? getPosteCodigo(posteRemovido) : posteId;
       Alert.alert(
         'Confirmar Remoção',
-        `Deseja remover o poste ${posteId}? Todas as fotos dele serão perdidas.`,
+        `Deseja remover o poste ${nomePoste}? Todas as fotos dele serão perdidas.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -1607,25 +1735,21 @@ export default function NovaObra() {
     });
   };
 
-  const toggleExpandirPoste = (posteId: string) => {
-    setPostesData(prevPostes => prevPostes.map(p =>
-      p.id === posteId ? { ...p, expandido: !p.expandido } : p
-    ));
-  };
-
   const getPosteStatus = (poste: Poste): 'completo' | 'parcial' | 'pendente' => {
     const temAntes = poste.fotosAntes.length > 0;
     const temDurante = poste.fotosDurante.length > 0;
     const temDepois = poste.fotosDepois.length > 0;
+    const temMedicao = poste.fotosMedicao.length > 0;
+    const exigeMedicao = isServicoBookAterramento;
 
-    if (temAntes && temDurante && temDepois) return 'completo';
-    if (temAntes || temDurante || temDepois) return 'parcial';
+    if (temAntes && temDurante && temDepois && (!exigeMedicao || temMedicao)) return 'completo';
+    if (temAntes || temDurante || temDepois || (exigeMedicao && temMedicao)) return 'parcial';
     return 'pendente';
   };
 
   const takePicturePoste = async (
     posteId: string,
-    secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois'
+    secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois' | 'fotosMedicao'
   ) => {
     const source = await selectImageSource();
     if (!source) return;
@@ -1656,10 +1780,13 @@ export default function NovaObra() {
       const photoUri = result.assets[0].uri;
       const location = await getCurrentLocation();
 
+      const posteAtual = postesData.find(p => p.id === posteId);
+      const identificacaoPoste = posteAtual ? getPosteCodigo(posteAtual) : posteId;
+
       const placaData = {
         obraNumero: obra || tempObraId.substring(0, 8),
-        tipoServico: 'Cava em Rocha',
-        equipe: isCompUser ? equipeExecutora : equipe,
+        tipoServico: tipoServico || 'Linha Viva',
+        equipe: isAdminUser ? equipeExecutora : equipe,
         dataHora: new Date().toLocaleString('pt-BR', {
           day: '2-digit',
           month: '2-digit',
@@ -1669,7 +1796,7 @@ export default function NovaObra() {
         }),
         latitude: location.latitude,
         longitude: location.longitude,
-        posteId: posteId, // Adicionar ID do poste na placa
+        posteId: identificacaoPoste, // Adicionar identificação padronizada na placa
       };
 
       let finalPhotoUri = photoUri;
@@ -1680,15 +1807,15 @@ export default function NovaObra() {
       }
 
       // Mapear seção para tipo de foto do backup
-      const tipoFotoMap: Record<typeof secao, 'antes' | 'durante' | 'depois'> = {
+      const tipoFotoMap: Record<typeof secao, 'antes' | 'durante' | 'depois' | 'aterramento_medicao'> = {
         'fotosAntes': 'antes',
         'fotosDurante': 'durante',
         'fotosDepois': 'depois',
+        'fotosMedicao': 'aterramento_medicao',
       };
       const tipoFoto = tipoFotoMap[secao];
 
       // Obter índice atual de fotos nesta seção para este poste
-      const posteAtual = postesData.find(p => p.id === posteId);
       const indexFoto = posteAtual ? posteAtual[secao].length : 0;
 
       // Fazer backup da foto
@@ -1723,7 +1850,7 @@ export default function NovaObra() {
       }));
 
       setUploadingPhoto(false);
-      console.log(`✅ Foto adicionada ao ${posteId} - ${secao}`);
+      console.log(`✅ Foto adicionada ao ${identificacaoPoste} - ${secao}`);
     } catch (error) {
       console.error('❌ Erro ao adicionar foto do poste:', error);
       const message = error instanceof Error ? error.message : String(error);
@@ -1736,7 +1863,11 @@ export default function NovaObra() {
     }
   };
 
-  const removeFotoPoste = (posteId: string, secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois', fotoIndex: number) => {
+  const removeFotoPoste = (
+    posteId: string,
+    secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois' | 'fotosMedicao',
+    fotoIndex: number
+  ) => {
     setPostesData(prevPostes => prevPostes.map(p => {
       if (p.id === posteId) {
         return {
@@ -2894,16 +3025,42 @@ export default function NovaObra() {
       return;
     }
 
+    // Perfil Linha Viva: serviço fixo
+    if (isLinhaVivaUser && tipoServico !== 'Linha Viva') {
+      Alert.alert('Erro', 'Para perfil Linha Viva, o tipo de serviço deve ser "Linha Viva".');
+      return;
+    }
+
     // Validação específica para COMP
-    if (isCompUser && !equipeExecutora) {
-      Alert.alert('Erro', 'Selecione a equipe executora do serviço');
+    if (isAdminUser && !equipeExecutora) {
+      Alert.alert('Erro', 'Selecione a equipe do lançamento');
       return;
     }
 
     // Validação para equipes normais
-    if (!isCompUser && !equipe) {
+    if (!isAdminUser && !equipe) {
       Alert.alert('Erro', 'Equipe não identificada. Faça login novamente.');
       return;
+    }
+
+    // Linha Viva / Cava em Rocha - validar nomenclatura de postes (P / AD-P)
+    if (isServicoPostesComFotos) {
+      const codigos = new Set<string>();
+
+      for (let i = 0; i < postesData.length; i++) {
+        const poste = postesData[i];
+        if (!poste.numero || poste.numero <= 0) {
+          Alert.alert('Erro', `Informe o número do poste ${i + 1}.`);
+          return;
+        }
+
+        const codigo = getPosteCodigo(poste);
+        if (codigos.has(codigo)) {
+          Alert.alert('Erro', `Identificação duplicada: ${codigo}. Ajuste número/aditivo dos postes.`);
+          return;
+        }
+        codigos.add(codigo);
+      }
     }
 
     // Validar número da obra (EXATAMENTE 8 ou 10 dígitos numéricos)
@@ -3158,7 +3315,16 @@ export default function NovaObra() {
       fotosVazamentoEvidencia.length + fotosVazamentoEquipamentosLimpeza.length +
       fotosVazamentoTombamentoRetirado.length + fotosVazamentoPlacaRetirado.length +
       fotosVazamentoTombamentoInstalado.length + fotosVazamentoPlacaInstalado.length +
-      fotosVazamentoInstalacao.length;
+      fotosVazamentoInstalacao.length +
+      postesData.reduce(
+        (acc, p) =>
+          acc +
+          p.fotosAntes.length +
+          p.fotosDurante.length +
+          p.fotosDepois.length +
+          (isServicoBookAterramento ? p.fotosMedicao.length : 0),
+        0
+      );
 
     if (totalFotos === 0 && !isServicoDocumentacao) {
       // Apenas avisar, mas permitir salvar
@@ -3307,26 +3473,25 @@ export default function NovaObra() {
       const obraData: any = {
         data,
         obra,
-        // WORKAROUND: Usar responsável "COMP" para identificar obras criadas pelo COMP
-        // até que a migration 20250213_comp_role.sql seja aplicada
-        responsavel: isCompUser ? 'COMP' : responsavel,
-        equipe: isCompUser ? equipeExecutora : equipe, // COMP usa equipeExecutora
+        // Para compressor, registrar o código de login (ex: COM-CZ / COM-PT)
+        responsavel: isCompUser ? (equipe || 'COM-CZ') : responsavel,
+        equipe: isAdminUser ? equipeExecutora : equipe, // Admin escolhe equipe; compressor usa equipe da sessao
         tipo_servico: tipoServico,
         transformador_status: isServicoTransformador ? transformadorStatus : null,
         created_at: createdAt,
         data_abertura: createdAt, // Data de início do serviço
         data_fechamento: null, // NULL = Em aberto, será preenchido quando finalizar
-        // Cava em Rocha - Dados dos postes
-        ...(isServicoCavaRocha && {
+        // Linha Viva / Cava em Rocha - Dados dos postes
+        ...(isServicoPostesComFotos && {
           postes_data: postesData.map(poste => ({
-            id: poste.id,
+            id: getPosteIdPersistencia(poste),
             numero: poste.numero,
+            isAditivo: poste.isAditivo || false,
             fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
             fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
             fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
-            observacao: poste.observacao,
+            fotos_medicao: poste.fotosMedicao.map(f => f.photoId).filter(Boolean),
           })),
-          observacoes: observacaoGeralCavaRocha,
         }),
         ...(isServicoPostesIdentificacao && {
           postes_data: postesIdentificados.map(poste => ({
@@ -3336,6 +3501,7 @@ export default function NovaObra() {
             fotos_antes: [],
             fotos_durante: [],
             fotos_depois: [],
+            fotos_medicao: [],
             observacao: '',
           })),
         }),
@@ -3377,7 +3543,7 @@ export default function NovaObra() {
       // NOTA: Esses campos requerem a migration 20250213_comp_role.sql
       // Por enquanto, comentados para funcionar sem a migration
       // obraData.created_by = isCompUser ? 'COMP' : equipe;
-      // obraData.creator_role = isCompUser ? 'compressor' : 'equipe';
+      // obraData.creator_role = isCompUser ? 'compressor' : (isAdminUser ? 'admin' : 'equipe');
 
       if (!isConnected) {
         // MODO OFFLINE: Salvar obra com IDs das fotos
@@ -3412,7 +3578,18 @@ export default function NovaObra() {
           photoIds.checklist_panoramica_final.length + photoIds.checklist_postes.length + photoIds.checklist_seccionamentos.length +
           photoIds.doc_cadastro_medidor.length + photoIds.doc_laudo_transformador.length + photoIds.doc_laudo_regulador.length +
           photoIds.doc_laudo_religador.length + photoIds.doc_apr.length + photoIds.doc_fvbt.length + photoIds.doc_termo_desistencia_lpt.length +
-          photoIds.doc_autorizacao_passagem.length;
+          photoIds.doc_autorizacao_passagem.length +
+          (isServicoPostesComFotos
+            ? postesData.reduce(
+                (acc, poste) =>
+                  acc +
+                  poste.fotosAntes.length +
+                  poste.fotosDurante.length +
+                  poste.fotosDepois.length +
+                  (isServicoBookAterramento ? poste.fotosMedicao.length : 0),
+                0
+              )
+            : 0);
 
         const tipoArquivo = isServicoDocumentacao ? 'arquivo(s)' : 'foto(s)';
         Alert.alert(
@@ -3483,7 +3660,15 @@ export default function NovaObra() {
         ...photoIds.doc_apr,
         ...photoIds.doc_fvbt,
         ...photoIds.doc_termo_desistencia_lpt,
-        ...photoIds.doc_autorizacao_passagem
+        ...photoIds.doc_autorizacao_passagem,
+        ...(isServicoPostesComFotos
+          ? postesData.flatMap(poste => [
+              ...poste.fotosAntes.map(f => f.photoId).filter(Boolean) as string[],
+              ...poste.fotosDurante.map(f => f.photoId).filter(Boolean) as string[],
+              ...poste.fotosDepois.map(f => f.photoId).filter(Boolean) as string[],
+              ...(isServicoBookAterramento ? poste.fotosMedicao.map(f => f.photoId).filter(Boolean) as string[] : []),
+            ])
+          : [])
       ];
 
       // Processar uploads (a função já adiciona à fila internamente)
@@ -3556,15 +3741,17 @@ export default function NovaObra() {
         longitude: p.longitude
       }));
 
-      // Processar fotos dos postes (Cava em Rocha)
-      const postesDataUploaded = isServicoCavaRocha ? postesData.map(poste => {
+      // Processar fotos dos postes (Linha Viva / Cava em Rocha)
+      const postesDataUploaded = isServicoPostesComFotos ? postesData.map(poste => {
         const fotosAntesIds = poste.fotosAntes.map(f => f.photoId).filter(Boolean);
         const fotosDuranteIds = poste.fotosDurante.map(f => f.photoId).filter(Boolean);
         const fotosDepoisIds = poste.fotosDepois.map(f => f.photoId).filter(Boolean);
+        const fotosMedicaoIds = poste.fotosMedicao.map(f => f.photoId).filter(Boolean);
 
         return {
-          id: poste.id,
+          id: getPosteIdPersistencia(poste),
           numero: poste.numero,
+          isAditivo: poste.isAditivo || false,
           fotos_antes: allPhotos.filter(p => fotosAntesIds.includes(p.id) && p.uploaded).map(p => ({
             url: p.uploadUrl!,
             latitude: p.latitude,
@@ -3580,7 +3767,11 @@ export default function NovaObra() {
             latitude: p.latitude,
             longitude: p.longitude
           })),
-          observacao: poste.observacao,
+          fotos_medicao: allPhotos.filter(p => fotosMedicaoIds.includes(p.id) && p.uploaded).map(p => ({
+            url: p.uploadUrl!,
+            latitude: p.latitude,
+            longitude: p.longitude
+          })),
         };
       }) : null;
 
@@ -4131,9 +4322,8 @@ export default function NovaObra() {
           .insert([
             {
               ...obraData,
-              ...(isServicoCavaRocha && postesDataUploaded && {
+              ...(isServicoPostesComFotos && postesDataUploaded && {
                 postes_data: postesDataUploaded,
-                observacoes: observacaoGeralCavaRocha,
               }),
               fotos_antes: fotosAntesUploaded,
               fotos_durante: fotosDuranteUploaded,
@@ -4384,14 +4574,20 @@ export default function NovaObra() {
       return;
     }
 
+    // Perfil Linha Viva: serviço fixo
+    if (isLinhaVivaUser && tipoServico !== 'Linha Viva') {
+      Alert.alert('Erro', 'Para perfil Linha Viva, o tipo de serviço deve ser "Linha Viva".');
+      return;
+    }
+
     // Validação específica para COMP
-    if (isCompUser && !equipeExecutora) {
-      Alert.alert('❌ Campo Obrigatório', 'Selecione a equipe executora do serviço');
+    if (isAdminUser && !equipeExecutora) {
+      Alert.alert('❌ Campo Obrigatório', 'Selecione a equipe do lançamento');
       return;
     }
 
     // Validação para equipes normais
-    if (!isCompUser && !equipe) {
+    if (!isAdminUser && !equipe) {
       Alert.alert('Erro', 'Equipe não identificada. Faça login novamente.');
       return;
     }
@@ -4535,19 +4731,19 @@ export default function NovaObra() {
         doc_fvbt: extractPhotoData(docFvbt) as string[],
         doc_termo_desistencia_lpt: extractPhotoData(docTermoDesistenciaLpt) as string[],
         doc_autorizacao_passagem: extractPhotoData(docAutorizacaoPassagem) as string[],
-        // Cava em Rocha - Dados dos postes (condicional pois é estrutura diferente)
-        ...(isServicoCavaRocha && {
+        // Linha Viva / Cava em Rocha - Dados dos postes (condicional pois é estrutura diferente)
+        ...(isServicoPostesComFotos && {
           postes_data: postesData.map(poste => ({
-            id: poste.id,
+            id: getPosteIdPersistencia(poste),
             numero: poste.numero,
+            isAditivo: poste.isAditivo || false,
             fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
             fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
             fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
-            observacao: poste.observacao,
+            fotos_medicao: poste.fotosMedicao.map(f => f.photoId).filter(Boolean),
           })),
-          observacoes: observacaoGeralCavaRocha,
         }),
-        // Linha Viva, Book de Aterramento, Fundação Especial - Identificação de Postes
+        // Book de Aterramento e Fundação Especial - Identificação de Postes
         ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
           postes_data: postesIdentificados.map(poste => ({
             id: poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`,
@@ -4556,6 +4752,7 @@ export default function NovaObra() {
             fotos_antes: [],
             fotos_durante: [],
             fotos_depois: [],
+            fotos_medicao: [],
             observacao: '',
           })),
         }),
@@ -4573,19 +4770,20 @@ export default function NovaObra() {
         ...(currentServerId && { serverId: currentServerId }),
         obra: obra?.trim() || '',
         data: data || '',
-        responsavel: isCompUser ? 'COMP' : (responsavel || ''),
-        equipe: isCompUser ? (equipeExecutora || '') : (equipe || ''),
+        responsavel: isCompUser ? (equipe || 'COM-CZ') : (responsavel || ''),
+        equipe: isAdminUser ? (equipeExecutora || '') : (equipe || ''),
         tipo_servico: tipoServico || '',
         status: 'rascunho' as const,
         origem: 'offline' as const,
         created_at: new Date().toISOString(), // ✅ Campo obrigatório para sincronização
-        creator_role: isCompUser ? 'compressor' : 'equipe', // ✅ Identificador permanente do criador
+        creator_role: isCompUser ? 'compressor' : (isAdminUser ? 'admin' : 'equipe'),
+      created_by_admin: isAdminUser ? equipe : null, // Salva código do admin (ex: Admin-Pereira) // ✅ Identificador permanente do criador
         transformador_status: transformadorStatus,
         num_postes: numPostes,
         num_seccionamentos: numSeccionamentos,
         num_aterramento_cerca: numAterramentosCerca,
         ...photoIds,
-        // Postes identificados (Linha Viva, Book de Aterramento, Fundação Especial)
+        // Postes identificados (Book de Aterramento, Fundação Especial)
         ...(isServicoPostesIdentificacao && postesIdentificados.length > 0 && {
           postes_data: postesIdentificados.map(poste => ({
             id: poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`,
@@ -4594,20 +4792,21 @@ export default function NovaObra() {
             fotos_antes: [],
             fotos_durante: [],
             fotos_depois: [],
+            fotos_medicao: [],
             observacao: '',
           })),
         }),
-        // Cava em Rocha - Dados dos postes com fotos
-        ...(isServicoCavaRocha && {
+        // Linha Viva / Cava em Rocha - Dados dos postes com fotos
+        ...(isServicoPostesComFotos && {
           postes_data: postesData.map(poste => ({
-            id: poste.id,
+            id: getPosteIdPersistencia(poste),
             numero: poste.numero,
+            isAditivo: poste.isAditivo || false,
             fotos_antes: poste.fotosAntes.map(f => f.photoId).filter(Boolean),
             fotos_durante: poste.fotosDurante.map(f => f.photoId).filter(Boolean),
             fotos_depois: poste.fotosDepois.map(f => f.photoId).filter(Boolean),
-            observacao: poste.observacao,
+            fotos_medicao: poste.fotosMedicao.map(f => f.photoId).filter(Boolean),
           })),
-          observacoes: observacaoGeralCavaRocha,
         }),
         // Checklist de Fiscalização - Estrutura dos postes, seccionamentos e aterramentos
         ...(isServicoChecklist && {
@@ -4843,9 +5042,9 @@ export default function NovaObra() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Tipo de Serviço *</Text>
             <TouchableOpacity
-              style={[styles.dropdownButton, (isEditMode || isCompUser) && styles.inputDisabled]}
+              style={[styles.dropdownButton, (isEditMode || isCompUser || isLinhaVivaUser) && styles.inputDisabled]}
               onPress={() => setShowServicoModal(true)}
-              disabled={loading || isEditMode || isCompUser}
+              disabled={loading || isEditMode || isCompUser || isLinhaVivaUser}
             >
               <Text style={styles.dropdownButtonText}>
                 {!tipoServico ? 'Selecione o serviço' : tipoServico}
@@ -4854,15 +5053,20 @@ export default function NovaObra() {
             </TouchableOpacity>
             {isCompUser && (
               <Text style={styles.hint}>
-                Fixado em "Cava em Rocha" para perfil COMP
+                Fixado em "Cava em Rocha" para perfil compressor
+              </Text>
+            )}
+            {isLinhaVivaUser && (
+              <Text style={styles.hint}>
+                Fixado em "Linha Viva" para perfil Linha Viva
               </Text>
             )}
           </View>
 
-          {/* Equipe Executora - Apenas para COMP */}
-          {isCompUser && (
+          {/* Equipe de Lançamento - apenas Admin */}
+          {isAdminUser && (
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Equipe Executora *</Text>
+              <Text style={styles.label}>Equipe de Lançamento *</Text>
               <TouchableOpacity
                 style={[styles.dropdownButton, isEditMode && styles.inputDisabled]}
                 onPress={() => setShowEquipeModal(true)}
@@ -4873,9 +5077,7 @@ export default function NovaObra() {
                 </Text>
                 <Text style={styles.dropdownIcon}>▼</Text>
               </TouchableOpacity>
-              <Text style={styles.hint}>
-                Selecione a equipe que está executando o serviço
-              </Text>
+              <Text style={styles.hint}>Perfil administrativo: selecione a equipe para lançar o book.</Text>
             </View>
           )}
 
@@ -5080,7 +5282,9 @@ export default function NovaObra() {
                   : isServicoDitais
                   ? 'Fotos opcionais: DITAIS (Desligar, Impedir, Testar, Aterrar, Sinalizar)'
                   : isServicoBookAterramento
-                  ? 'Fotos opcionais: Aterramento (Vala Aberta, Hastes, Vala Fechada, Medição)'
+                  ? 'Registre os postes (P/AD-P) com fotos por poste em: Vala Aberta, Hastes, Vala Fechada e Medicao Terrometro.'
+                  : isServicoFundacaoEspecial
+                  ? 'Registre os postes (P/AD-P) com fotos por poste.'
                   : isServicoTransformador
                   ? 'Selecione o status do transformador. Fotos são opcionais'
                   : isServicoMedidor
@@ -5089,6 +5293,8 @@ export default function NovaObra() {
                   ? 'Fotos opcionais: Lado Fonte, Medição Fonte, Lado Carga, Medição Carga'
                   : isServicoVazamento
                   ? 'Fotos opcionais: Evidência, Limpeza, Tombamentos, Placas e Instalação'
+                  : isServicoPostesComFotos
+                  ? 'Adicione múltiplos postes e anexe fotos por poste (Antes, Durante e Depois).'
                   : isServicoChecklist
                   ? 'Fotos opcionais: Croqui, Panorâmicas, Postes, etc. Obras parciais permitidas'
                   : isServicoDocumentacao
@@ -5105,6 +5311,21 @@ export default function NovaObra() {
                   if (fotosAntes.length === 0) missing.push('📷 Fotos Antes');
                   if (fotosDurante.length === 0) missing.push('📷 Fotos Durante');
                   if (fotosDepois.length === 0) missing.push('📷 Fotos Depois');
+                }
+
+                if (isServicoPostesComFotos) {
+                  const totalFotosPostes = postesData.reduce(
+                    (acc, poste) =>
+                      acc +
+                      poste.fotosAntes.length +
+                      poste.fotosDurante.length +
+                      poste.fotosDepois.length +
+                      (isServicoBookAterramento ? poste.fotosMedicao.length : 0),
+                    0
+                  );
+                  if (totalFotosPostes === 0) {
+                    missing.push('📋 Registro de Postes (sem fotos)');
+                  }
                 }
 
                 // Fotos Abertura/Fechamento
@@ -5132,7 +5353,7 @@ export default function NovaObra() {
                 ) : null;
               })()}
 
-              {/* Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial) */}
+              {/* Identificação de Postes (Book de Aterramento, Fundação Especial) */}
               {isServicoPostesIdentificacao && (
                 <View style={styles.posteIdentificacaoSection}>
                   <Text style={styles.sectionTitle}>🪧 Identificação de Postes</Text>
@@ -5197,227 +5418,288 @@ export default function NovaObra() {
                 </View>
               )}
 
-              {/* CAVA EM ROCHA - Sistema de Múltiplos Postes */}
-              {isServicoCavaRocha && (
-                <View onLayout={(event) => {
+              {/* Linha Viva / Cava em Rocha - Sistema de Múltiplos Postes */}
+              {isServicoPostesComFotos && (
+                <View
+                  style={styles.checklistSection}
+                  onLayout={(event) => {
                   const { y } = event.nativeEvent.layout;
                   setSectionLayouts(prev => ({ ...prev, postes: y }));
-                }}>
-                  <Text style={styles.sectionTitle}>📋 Checklist de Postes</Text>
+                  }}
+                >
+                  <Text style={styles.checklistSectionTitle}>
+                    {isServicoLinhaViva
+                      ? '4️⃣ Registro dos Postes - Linha Viva'
+                      : isServicoCavaRocha
+                      ? '4️⃣ Registro dos Postes - Cava em Rocha'
+                      : isServicoBookAterramento
+                      ? '4️⃣ Registro dos Postes - Book de Aterramento'
+                      : '4️⃣ Registro dos Postes - Fundação Especial'}
+                  </Text>
+                  <Text style={styles.checklistHint}>
+                    {isServicoBookAterramento
+                      ? 'Recomendado: 4 categorias por poste (Vala Aberta, Hastes, Vala Fechada e Medicao Terrometro).'
+                      : 'Recomendado: 3 fotos por poste (Antes, Durante e Depois).'}
+                  </Text>
+
+                  <View style={styles.posteControls}>
+                    <Text style={styles.posteCount}>Pontos: {postesData.length}</Text>
+                    <TouchableOpacity style={styles.posteAddButton} onPress={adicionarPoste}>
+                      <Text style={styles.posteButtonText}>➕ Adicionar Poste</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {postesData.map((poste, index) => {
                     const status = getPosteStatus(poste);
-                    const statusColor = status === 'completo' ? '#28a745' : status === 'parcial' ? '#ffc107' : '#999';
-                    const statusIcon = status === 'completo' ? '✓' : status === 'parcial' ? '◐' : '○';
+                    const secoesPoste = getPostePhotoSections();
+                    const totalFotosPoste =
+                      poste.fotosAntes.length +
+                      poste.fotosDurante.length +
+                      poste.fotosDepois.length +
+                      (isServicoBookAterramento ? poste.fotosMedicao.length : 0);
+                    const identificacaoPoste = getPosteCodigo(poste);
 
                     return (
                       <View key={poste.id} style={styles.posteCard}>
-                        {/* Header do Poste */}
+                        <Text style={styles.posteTitle}>
+                          Poste {index + 1}{poste.numero > 0 ? ` - ${identificacaoPoste}` : ''}
+                          {status === 'completo' && ' ✓'}
+                        </Text>
+
+                        <View style={styles.posteNumeroSection}>
+                          <Text style={styles.posteNumeroLabel}>🪧 Número do Poste *</Text>
+                          <TextInput
+                            style={styles.posteNumeroInput}
+                            placeholder="Ex: 5, 12, 23..."
+                            placeholderTextColor="#999"
+                            keyboardType="numeric"
+                            value={poste.numero > 0 ? String(poste.numero) : ''}
+                            onChangeText={(text) => {
+                              const valorNumerico = text.replace(/[^0-9]/g, '');
+                              const novoNumero = valorNumerico ? parseInt(valorNumerico, 10) : 0;
+                              setPostesData(prevPostes => prevPostes.map(p =>
+                                p.id === poste.id ? { ...p, numero: novoNumero } : p
+                              ));
+                            }}
+                          />
+                          {!poste.numero && (
+                            <Text style={styles.hint}>Informe o número para identificar como P1, P2, etc.</Text>
+                          )}
+                        </View>
+
                         <TouchableOpacity
-                          style={styles.posteHeader}
-                          onPress={() => toggleExpandirPoste(poste.id)}
+                          style={styles.posteAditivoCheckbox}
+                          onPress={() => {
+                            setPostesData(prevPostes => prevPostes.map(p =>
+                              p.id === poste.id ? { ...p, isAditivo: !p.isAditivo } : p
+                            ));
+                          }}
                           activeOpacity={0.7}
                         >
-                          <View style={styles.posteHeaderLeft}>
-                            <View style={[styles.posteStatusIcon, { backgroundColor: statusColor }]}>
-                              <Text style={styles.posteStatusIconText}>{statusIcon}</Text>
-                            </View>
-                            <Text style={styles.posteTitle}>{poste.id}</Text>
+                          <View style={[styles.checkbox, poste.isAditivo && styles.checkboxChecked]}>
+                            {poste.isAditivo && <Text style={styles.checkboxCheck}>✓</Text>}
                           </View>
-                          <View style={styles.posteHeaderRight}>
-                            <Text style={[styles.posteStatusText, { color: statusColor }]}>
-                              {status === 'completo' ? 'Completo' : status === 'parcial' ? 'Parcial' : 'Pendente'}
-                            </Text>
-                            <Text style={styles.posteExpandIcon}>{poste.expandido ? '▼' : '▶'}</Text>
-                          </View>
+                          <Text style={styles.posteAditivoLabel}>🔧 Poste Aditivo (não previsto no croqui)</Text>
                         </TouchableOpacity>
 
-                        {/* Resumo quando colapsado */}
-                        {!poste.expandido && (
-                          <View style={styles.posteResumo}>
-                            <Text style={styles.posteResumoText}>
-                              Antes: {poste.fotosAntes.length} | Durante: {poste.fotosDurante.length} | Depois: {poste.fotosDepois.length}
+                        {!!poste.numero && (
+                          <Text style={styles.hint}>Identificação: {identificacaoPoste}</Text>
+                        )}
+
+                        <Text style={styles.hint}>
+                          Fotos: {totalFotosPoste} | Status: {status === 'completo' ? 'Completo' : status === 'parcial' ? 'Parcial' : 'Pendente'}
+                        </Text>
+
+                        {/* Fotos Antes */}
+                        <View style={styles.postePhotoSection}>
+                          <Text style={styles.postePhotoLabel}>
+                            📸 {secoesPoste.primeira} ({poste.fotosAntes.length}) {poste.fotosAntes.length > 0 && '✓'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.photoButtonSmall}
+                            onPress={() => takePicturePoste(poste.id, 'fotosAntes')}
+                            disabled={loading || uploadingPhoto}
+                          >
+                            <Text style={styles.photoButtonTextSmall}>
+                              {poste.fotosAntes.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
                             </Text>
+                          </TouchableOpacity>
+                          {poste.fotosAntes.length > 0 && (
+                            <View style={styles.photoGrid}>
+                              {poste.fotosAntes.map((foto, fotoIndex) => (
+                                <View key={fotoIndex} style={styles.photoCard}>
+                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                    <PhotoWithPlaca
+                                      uri={foto.uri}
+                                      obraNumero={obra}
+                                      tipoServico={tipoServico}
+                                      equipe={isAdminUser ? equipeExecutora : equipe}
+                                      latitude={foto.latitude}
+                                      longitude={foto.longitude}
+                                      utmX={foto.utmX}
+                                      utmY={foto.utmY}
+                                      utmZone={foto.utmZone}
+                                      style={styles.photoThumbnail}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.photoRemoveButton}
+                                    onPress={() => removeFotoPoste(poste.id, 'fotosAntes', fotoIndex)}
+                                  >
+                                    <Text style={styles.photoRemoveText}>×</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Fotos Durante */}
+                        <View style={styles.postePhotoSection}>
+                          <Text style={styles.postePhotoLabel}>
+                            📸 {secoesPoste.segunda} ({poste.fotosDurante.length}) {poste.fotosDurante.length > 0 && '✓'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.photoButtonSmall}
+                            onPress={() => takePicturePoste(poste.id, 'fotosDurante')}
+                            disabled={loading || uploadingPhoto}
+                          >
+                            <Text style={styles.photoButtonTextSmall}>
+                              {poste.fotosDurante.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
+                            </Text>
+                          </TouchableOpacity>
+                          {poste.fotosDurante.length > 0 && (
+                            <View style={styles.photoGrid}>
+                              {poste.fotosDurante.map((foto, fotoIndex) => (
+                                <View key={fotoIndex} style={styles.photoCard}>
+                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                    <PhotoWithPlaca
+                                      uri={foto.uri}
+                                      obraNumero={obra}
+                                      tipoServico={tipoServico}
+                                      equipe={isAdminUser ? equipeExecutora : equipe}
+                                      latitude={foto.latitude}
+                                      longitude={foto.longitude}
+                                      utmX={foto.utmX}
+                                      utmY={foto.utmY}
+                                      utmZone={foto.utmZone}
+                                      style={styles.photoThumbnail}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.photoRemoveButton}
+                                    onPress={() => removeFotoPoste(poste.id, 'fotosDurante', fotoIndex)}
+                                  >
+                                    <Text style={styles.photoRemoveText}>×</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Fotos Depois */}
+                        <View style={styles.postePhotoSection}>
+                          <Text style={styles.postePhotoLabel}>
+                            📸 {secoesPoste.terceira} ({poste.fotosDepois.length}) {poste.fotosDepois.length > 0 && '✓'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.photoButtonSmall}
+                            onPress={() => takePicturePoste(poste.id, 'fotosDepois')}
+                            disabled={loading || uploadingPhoto}
+                          >
+                            <Text style={styles.photoButtonTextSmall}>
+                              {poste.fotosDepois.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
+                            </Text>
+                          </TouchableOpacity>
+                          {poste.fotosDepois.length > 0 && (
+                            <View style={styles.photoGrid}>
+                              {poste.fotosDepois.map((foto, fotoIndex) => (
+                                <View key={fotoIndex} style={styles.photoCard}>
+                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                    <PhotoWithPlaca
+                                      uri={foto.uri}
+                                      obraNumero={obra}
+                                      tipoServico={tipoServico}
+                                      equipe={isAdminUser ? equipeExecutora : equipe}
+                                      latitude={foto.latitude}
+                                      longitude={foto.longitude}
+                                      utmX={foto.utmX}
+                                      utmY={foto.utmY}
+                                      utmZone={foto.utmZone}
+                                      style={styles.photoThumbnail}
+                                    />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={styles.photoRemoveButton}
+                                    onPress={() => removeFotoPoste(poste.id, 'fotosDepois', fotoIndex)}
+                                  >
+                                    <Text style={styles.photoRemoveText}>×</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </View>
+
+                        {isServicoBookAterramento && (
+                          <View style={styles.postePhotoSection}>
+                            <Text style={styles.postePhotoLabel}>
+                              📸 {secoesPoste.quarta} ({poste.fotosMedicao.length}) {poste.fotosMedicao.length > 0 && '✓'}
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.photoButtonSmall}
+                              onPress={() => takePicturePoste(poste.id, 'fotosMedicao')}
+                              disabled={loading || uploadingPhoto}
+                            >
+                              <Text style={styles.photoButtonTextSmall}>
+                                {poste.fotosMedicao.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
+                              </Text>
+                            </TouchableOpacity>
+                            {poste.fotosMedicao.length > 0 && (
+                              <View style={styles.photoGrid}>
+                                {poste.fotosMedicao.map((foto, fotoIndex) => (
+                                  <View key={fotoIndex} style={styles.photoCard}>
+                                    <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
+                                      <PhotoWithPlaca
+                                        uri={foto.uri}
+                                        obraNumero={obra}
+                                        tipoServico={tipoServico}
+                                        equipe={isAdminUser ? equipeExecutora : equipe}
+                                        latitude={foto.latitude}
+                                        longitude={foto.longitude}
+                                        utmX={foto.utmX}
+                                        utmY={foto.utmY}
+                                        utmZone={foto.utmZone}
+                                        style={styles.photoThumbnail}
+                                      />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={styles.photoRemoveButton}
+                                      onPress={() => removeFotoPoste(poste.id, 'fotosMedicao', fotoIndex)}
+                                    >
+                                      <Text style={styles.photoRemoveText}>×</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
                           </View>
                         )}
 
-                        {/* Conteúdo expandido */}
-                        {poste.expandido && (
-                          <View style={styles.posteContent}>
-                            {/* Fotos Antes */}
-                            <View style={styles.fotoSecaoPoste}>
-                              <Text style={styles.photoSectionLabel}>
-                                📷 Antes ({poste.fotosAntes.length})
-                                {poste.fotosAntes.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️</Text>}
-                              </Text>
-                              <TouchableOpacity
-                                style={styles.photoButtonSmall}
-                                onPress={() => takePicturePoste(poste.id, 'fotosAntes')}
-                                disabled={uploadingPhoto}
-                              >
-                                <Text style={styles.photoButtonTextSmall}>+ Foto</Text>
-                              </TouchableOpacity>
-                              {poste.fotosAntes.length > 0 && (
-                                <View style={styles.photoGridSmall}>
-                                  {poste.fotosAntes.map((foto, fotoIndex) => (
-                                    <View key={fotoIndex} style={styles.photoCardSmall}>
-                                      <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                        <PhotoWithPlaca
-                                          uri={foto.uri}
-                                          obraNumero={obra}
-                                          tipoServico={tipoServico}
-                                          equipe={isCompUser ? equipeExecutora : equipe}
-                                          latitude={foto.latitude}
-                                          longitude={foto.longitude}
-                                          utmX={foto.utmX}
-                                          utmY={foto.utmY}
-                                          utmZone={foto.utmZone}
-                                          style={styles.photoThumbnailSmall}
-                                        />
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        style={styles.photoRemoveButtonSmall}
-                                        onPress={() => removeFotoPoste(poste.id, 'fotosAntes', fotoIndex)}
-                                      >
-                                        <Text style={styles.photoRemoveText}>×</Text>
-                                      </TouchableOpacity>
-                                    </View>
-                                  ))}
-                                </View>
-                              )}
-                            </View>
-
-                            {/* Fotos Durante */}
-                            <View style={styles.fotoSecaoPoste}>
-                              <Text style={styles.photoSectionLabel}>
-                                📷 Durante ({poste.fotosDurante.length})
-                                {poste.fotosDurante.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️</Text>}
-                              </Text>
-                              <TouchableOpacity
-                                style={styles.photoButtonSmall}
-                                onPress={() => takePicturePoste(poste.id, 'fotosDurante')}
-                                disabled={uploadingPhoto}
-                              >
-                                <Text style={styles.photoButtonTextSmall}>+ Foto</Text>
-                              </TouchableOpacity>
-                              {poste.fotosDurante.length > 0 && (
-                                <View style={styles.photoGridSmall}>
-                                  {poste.fotosDurante.map((foto, fotoIndex) => (
-                                    <View key={fotoIndex} style={styles.photoCardSmall}>
-                                      <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                        <PhotoWithPlaca
-                                          uri={foto.uri}
-                                          obraNumero={obra}
-                                          tipoServico={tipoServico}
-                                          equipe={isCompUser ? equipeExecutora : equipe}
-                                          latitude={foto.latitude}
-                                          longitude={foto.longitude}
-                                          utmX={foto.utmX}
-                                          utmY={foto.utmY}
-                                          utmZone={foto.utmZone}
-                                          style={styles.photoThumbnailSmall}
-                                        />
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        style={styles.photoRemoveButtonSmall}
-                                        onPress={() => removeFotoPoste(poste.id, 'fotosDurante', fotoIndex)}
-                                      >
-                                        <Text style={styles.photoRemoveText}>×</Text>
-                                      </TouchableOpacity>
-                                    </View>
-                                  ))}
-                                </View>
-                              )}
-                            </View>
-
-                            {/* Fotos Depois */}
-                            <View style={styles.fotoSecaoPoste}>
-                              <Text style={styles.photoSectionLabel}>
-                                📷 Depois ({poste.fotosDepois.length})
-                                {poste.fotosDepois.length === 0 && <Text style={styles.missingPhotoIndicator}> ⚠️</Text>}
-                              </Text>
-                              <TouchableOpacity
-                                style={styles.photoButtonSmall}
-                                onPress={() => takePicturePoste(poste.id, 'fotosDepois')}
-                                disabled={uploadingPhoto}
-                              >
-                                <Text style={styles.photoButtonTextSmall}>+ Foto</Text>
-                              </TouchableOpacity>
-                              {poste.fotosDepois.length > 0 && (
-                                <View style={styles.photoGridSmall}>
-                                  {poste.fotosDepois.map((foto, fotoIndex) => (
-                                    <View key={fotoIndex} style={styles.photoCardSmall}>
-                                      <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                        <PhotoWithPlaca
-                                          uri={foto.uri}
-                                          obraNumero={obra}
-                                          tipoServico={tipoServico}
-                                          equipe={isCompUser ? equipeExecutora : equipe}
-                                          latitude={foto.latitude}
-                                          longitude={foto.longitude}
-                                          utmX={foto.utmX}
-                                          utmY={foto.utmY}
-                                          utmZone={foto.utmZone}
-                                          style={styles.photoThumbnailSmall}
-                                        />
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        style={styles.photoRemoveButtonSmall}
-                                        onPress={() => removeFotoPoste(poste.id, 'fotosDepois', fotoIndex)}
-                                      >
-                                        <Text style={styles.photoRemoveText}>×</Text>
-                                      </TouchableOpacity>
-                                    </View>
-                                  ))}
-                                </View>
-                              )}
-                            </View>
-
-                            {/* Observação do Poste */}
-                            <TextInput
-                              style={styles.observacaoInput}
-                              placeholder={`Observações do ${poste.id}...`}
-                              value={poste.observacao}
-                              onChangeText={(text) => {
-                                setPostesData(prevPostes => prevPostes.map(p =>
-                                  p.id === poste.id ? { ...p, observacao: text } : p
-                                ));
-                              }}
-                              multiline
-                            />
-
-                            {/* Botão Remover */}
-                            {postesData.length > 1 && (
-                              <TouchableOpacity
-                                style={styles.removePosteButton}
-                                onPress={() => removerPoste(poste.id)}
-                              >
-                                <Text style={styles.removePosteButtonText}>🗑️ Remover {poste.id}</Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
+                        {/* Botão Remover Poste */}
+                        {postesData.length > 1 && (
+                          <TouchableOpacity
+                            style={styles.posteRemoveButton}
+                            onPress={() => removerPoste(poste.id)}
+                          >
+                            <Text style={styles.posteButtonText}>🗑️ Remover Poste</Text>
+                          </TouchableOpacity>
                         )}
                       </View>
                     );
                   })}
 
-                  {/* Botão Adicionar Poste */}
-                  <TouchableOpacity style={styles.addPosteButton} onPress={adicionarPoste}>
-                    <Text style={styles.addPosteButtonText}>+ Adicionar Poste</Text>
-                  </TouchableOpacity>
-
-                  {/* Observação Geral */}
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Observações Gerais</Text>
-                    <TextInput
-                      style={[styles.input, styles.textArea]}
-                      placeholder="Observações gerais da obra..."
-                      value={observacaoGeralCavaRocha}
-                      onChangeText={setObservacaoGeralCavaRocha}
-                      multiline
-                      numberOfLines={4}
-                    />
-                  </View>
                 </View>
               )}
 
@@ -5449,7 +5731,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5495,7 +5777,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5541,7 +5823,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5591,7 +5873,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5637,7 +5919,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5688,7 +5970,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5734,7 +6016,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5780,7 +6062,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5826,7 +6108,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5872,7 +6154,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5895,7 +6177,7 @@ export default function NovaObra() {
             )}
 
             {/* SEÇÃO BOOK DE ATERRAMENTO - 4 FOTOS */}
-            {isServicoBookAterramento && (
+            {isServicoBookAterramento && !isServicoPostesComFotos && (
               <>
                 {/* Aterramento - Vala Aberta */}
                 <Text style={styles.photoSectionLabel}>🕳️ Vala Aberta ({fotosAterramentoValaAberta.length})</Text>
@@ -5920,7 +6202,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -5963,7 +6245,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6006,7 +6288,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6049,7 +6331,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6134,7 +6416,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6178,7 +6460,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6222,7 +6504,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6266,7 +6548,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6310,7 +6592,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6354,7 +6636,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6398,7 +6680,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6447,7 +6729,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6491,7 +6773,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6535,7 +6817,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6579,7 +6861,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6623,7 +6905,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6667,7 +6949,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6717,7 +6999,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6760,7 +7042,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6803,7 +7085,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6846,7 +7128,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6889,7 +7171,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6939,7 +7221,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -6982,7 +7264,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7025,7 +7307,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7068,7 +7350,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7118,7 +7400,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7161,7 +7443,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7204,7 +7486,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7247,7 +7529,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7290,7 +7572,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7333,7 +7615,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7376,7 +7658,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7429,7 +7711,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7474,7 +7756,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7519,7 +7801,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -7727,7 +8009,7 @@ export default function NovaObra() {
                                     uri={foto.uri}
                                     obraNumero={obra}
                                     tipoServico={tipoServico}
-                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    equipe={isAdminUser ? equipeExecutora : equipe}
                                     latitude={foto.latitude}
                                     longitude={foto.longitude}
                                     utmX={foto.utmX}
@@ -7773,7 +8055,7 @@ export default function NovaObra() {
                                       uri={foto.uri}
                                       obraNumero={obra}
                                       tipoServico={tipoServico}
-                                      equipe={isCompUser ? equipeExecutora : equipe}
+                                      equipe={isAdminUser ? equipeExecutora : equipe}
                                       latitude={foto.latitude}
                                       longitude={foto.longitude}
                                       utmX={foto.utmX}
@@ -7821,7 +8103,7 @@ export default function NovaObra() {
                                     uri={foto.uri}
                                     obraNumero={obra}
                                     tipoServico={tipoServico}
-                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    equipe={isAdminUser ? equipeExecutora : equipe}
                                     latitude={foto.latitude}
                                     longitude={foto.longitude}
                                     utmX={foto.utmX}
@@ -7865,7 +8147,7 @@ export default function NovaObra() {
                                     uri={foto.uri}
                                     obraNumero={obra}
                                     tipoServico={tipoServico}
-                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    equipe={isAdminUser ? equipeExecutora : equipe}
                                     latitude={foto.latitude}
                                     longitude={foto.longitude}
                                     utmX={foto.utmX}
@@ -7914,7 +8196,7 @@ export default function NovaObra() {
                                     uri={foto.uri}
                                     obraNumero={obra}
                                     tipoServico={tipoServico}
-                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    equipe={isAdminUser ? equipeExecutora : equipe}
                                     latitude={foto.latitude}
                                     longitude={foto.longitude}
                                     utmX={foto.utmX}
@@ -7958,7 +8240,7 @@ export default function NovaObra() {
                                     uri={foto.uri}
                                     obraNumero={obra}
                                     tipoServico={tipoServico}
-                                    equipe={isCompUser ? equipeExecutora : equipe}
+                                    equipe={isAdminUser ? equipeExecutora : equipe}
                                     latitude={foto.latitude}
                                     longitude={foto.longitude}
                                     utmX={foto.utmX}
@@ -8066,7 +8348,7 @@ export default function NovaObra() {
                                   uri={foto.uri}
                                   obraNumero={obra}
                                   tipoServico={tipoServico}
-                                  equipe={isCompUser ? equipeExecutora : equipe}
+                                  equipe={isAdminUser ? equipeExecutora : equipe}
                                   latitude={foto.latitude}
                                   longitude={foto.longitude}
                                   utmX={foto.utmX}
@@ -8172,7 +8454,7 @@ export default function NovaObra() {
                                   uri={foto.uri}
                                   obraNumero={obra}
                                   tipoServico={tipoServico}
-                                  equipe={isCompUser ? equipeExecutora : equipe}
+                                  equipe={isAdminUser ? equipeExecutora : equipe}
                                   latitude={foto.latitude}
                                   longitude={foto.longitude}
                                   utmX={foto.utmX}
@@ -8229,7 +8511,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -8274,7 +8556,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -8295,9 +8577,9 @@ export default function NovaObra() {
                   )}
                 </View>
 
-                {/* 9. Frying - OPCIONAL */}
+                {/* 9. Flying - OPCIONAL */}
                 <View style={styles.checklistSection}>
-                  <Text style={styles.checklistSectionTitle}>9️⃣ Frying (Opcional) {fotosChecklistFrying.length >= 2 && '✓'}</Text>
+                  <Text style={styles.checklistSectionTitle}>9️⃣ Flying (Opcional) {fotosChecklistFrying.length >= 2 && '✓'}</Text>
                   <Text style={styles.checklistHint}>Opcional - 2 fotos recomendadas</Text>
 
                   <TouchableOpacity
@@ -8319,7 +8601,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -8364,7 +8646,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -8474,7 +8756,7 @@ export default function NovaObra() {
                                       uri={foto.uri}
                                       obraNumero={obra}
                                       tipoServico={tipoServico}
-                                      equipe={isCompUser ? equipeExecutora : equipe}
+                                      equipe={isAdminUser ? equipeExecutora : equipe}
                                       latitude={foto.latitude}
                                       longitude={foto.longitude}
                                       utmX={foto.utmX}
@@ -8518,7 +8800,7 @@ export default function NovaObra() {
                                       uri={foto.uri}
                                       obraNumero={obra}
                                       tipoServico={tipoServico}
-                                      equipe={isCompUser ? equipeExecutora : equipe}
+                                      equipe={isAdminUser ? equipeExecutora : equipe}
                                       latitude={foto.latitude}
                                       longitude={foto.longitude}
                                       utmX={foto.utmX}
@@ -8579,7 +8861,7 @@ export default function NovaObra() {
                         uri={foto.uri}
                         obraNumero={obra}
                         tipoServico={tipoServico}
-                        equipe={isCompUser ? equipeExecutora : equipe}
+                        equipe={isAdminUser ? equipeExecutora : equipe}
                         latitude={foto.latitude}
                         longitude={foto.longitude}
                         utmX={foto.utmX}
@@ -9228,8 +9510,8 @@ export default function NovaObra() {
         </Pressable>
       </Modal>
 
-      {/* Modal de Seleção de Equipe Executora (COMP) */}
-      {isCompUser && (
+      {/* Modal de Seleção de Equipe de Lançamento (Admin) */}
+      {isAdminUser && (
         <Modal
           visible={showEquipeModal}
           transparent={true}
@@ -9243,7 +9525,9 @@ export default function NovaObra() {
             <View style={styles.modalContent}>
               <Pressable>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Selecione a Equipe Executora</Text>
+                  <Text style={styles.modalTitle}>
+                    Selecione a Equipe do Lançamento
+                  </Text>
                   <TouchableOpacity onPress={() => setShowEquipeModal(false)}>
                     <Text style={styles.modalClose}>✕</Text>
                   </TouchableOpacity>
@@ -9441,7 +9725,7 @@ export default function NovaObra() {
               uri={selectedPhotoForView.uri}
               obraNumero={obra}
               tipoServico={tipoServico}
-              equipe={isCompUser ? equipeExecutora : equipe}
+              equipe={isAdminUser ? equipeExecutora : equipe}
               latitude={selectedPhotoForView.latitude}
               longitude={selectedPhotoForView.longitude}
               utmX={selectedPhotoForView.utmX}
@@ -10890,7 +11174,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  // Identificação de Postes (Linha Viva, Book de Aterramento, Fundação Especial)
+  // Identificação de Postes (Book de Aterramento, Fundação Especial)
   posteIdentificacaoSection: {
     backgroundColor: '#f8fafc',
     borderRadius: 12,
@@ -10982,123 +11266,6 @@ const styles = StyleSheet.create({
   },
   postePrefixTextAditivo: {
     color: '#dc2626',
-  },
-  // Estilos adicionais para Cava em Rocha - Sistema de Múltiplos Postes
-  posteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#f9fafb',
-  },
-  posteHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  posteStatusIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  posteStatusIconText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  posteHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  posteStatusText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  posteExpandIcon: {
-    fontSize: 14,
-    color: '#666',
-  },
-  posteResumo: {
-    padding: 12,
-    paddingTop: 0,
-    paddingBottom: 16,
-  },
-  posteResumoText: {
-    fontSize: 13,
-    color: '#666',
-  },
-  posteContent: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  fotoSecaoPoste: {
-    marginBottom: 16,
-  },
-  photoGridSmall: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  photoCardSmall: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  photoRemoveButtonSmall: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: '#ef4444',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  observacaoInput: {
-    backgroundColor: '#f9fafb',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    minHeight: 60,
-    textAlignVertical: 'top',
-    marginTop: 8,
-  },
-  removePosteButton: {
-    backgroundColor: '#fee',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  removePosteButtonText: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  addPosteButton: {
-    backgroundColor: '#28a745',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  addPosteButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
   },
   // Estilos do Modal de Confirmação de Saída
   exitModalOverlay: {
@@ -11210,3 +11377,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+
+

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, useWindowDimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,12 +14,17 @@ import type { PendingObra } from '../../lib/offline-sync';
 
 export default function Dashboard() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [equipeLogada, setEquipeLogada] = useState('');
+  const [userRole, setUserRole] = useState('');
   const [totalObras, setTotalObras] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
+  const isCompressor = userRole === 'compressor';
+  const isSmallScreen = width < 380;
+  const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
 
   useEffect(() => {
     initializeDashboard();
@@ -50,21 +55,24 @@ export default function Dashboard() {
 
     const unsubscribe = startAutoSync(async result => {
       if (result.success > 0 || result.failed > 0) {
-        await loadPendingObras(equipeLogada);
-        await carregarEstatisticas(equipeLogada);
+        await loadPendingObras(equipeLogada, userRole);
+        await carregarEstatisticas(equipeLogada, userRole);
       }
     });
 
     return () => {
       unsubscribe?.();
     };
-  }, [equipeLogada]);
+  }, [equipeLogada, userRole]);
 
   const initializeDashboard = async () => {
     try {
       const equipe = await AsyncStorage.getItem('@equipe_logada');
+      const role = await AsyncStorage.getItem('@user_role');
       const equipeAtual = equipe || '';
+      const roleAtual = role || '';
       setEquipeLogada(equipeAtual);
+      setUserRole(roleAtual);
 
       if (!equipeAtual) {
         setTotalObras(0);
@@ -73,8 +81,8 @@ export default function Dashboard() {
       }
 
       await Promise.all([
-        carregarEstatisticas(equipeAtual),
-        loadPendingObras(equipeAtual),
+        carregarEstatisticas(equipeAtual, roleAtual),
+        loadPendingObras(equipeAtual, roleAtual),
       ]);
     } catch (error) {
       console.error('Erro ao inicializar dashboard:', error);
@@ -83,19 +91,25 @@ export default function Dashboard() {
     }
   };
 
-  const carregarEstatisticas = async (equipeParam?: string) => {
+  const carregarEstatisticas = async (equipeParam?: string, roleParam?: string) => {
     try {
       const equipe = equipeParam || equipeLogada;
+      const role = roleParam || userRole;
       if (!equipe) {
         setTotalObras(0);
         return;
       }
 
-      // Conta somente obras da equipe logada.
-      const { count, error } = await supabase
+      let query = supabase
         .from('obras')
         .select('*', { count: 'exact', head: true })
         .eq('equipe', equipe);
+
+      if (role === 'compressor') {
+        query = query.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
+      }
+
+      const { count, error } = await query;
 
       if (!error && count !== null) {
         setTotalObras(count);
@@ -105,16 +119,22 @@ export default function Dashboard() {
     }
   };
 
-  const loadPendingObras = async (equipeParam?: string) => {
+  const loadPendingObras = async (equipeParam?: string, roleParam?: string) => {
     try {
       const equipe = equipeParam || equipeLogada;
+      const role = roleParam || userRole;
       if (!equipe) {
         setPendingObras([]);
         return;
       }
 
       const obras = await getPendingObras();
-      const pendentesDaEquipe = obras.filter(obra => obra.equipe === equipe);
+      const pendentesDaEquipe = obras.filter(obra => {
+        const mesmaEquipe = obra.equipe === equipe;
+        if (!mesmaEquipe) return false;
+        if (role !== 'compressor') return true;
+        return obra.tipo_servico === 'Cava em Rocha' || (obra as any).creator_role === 'compressor';
+      });
       setPendingObras(pendentesDaEquipe);
     } catch (error) {
       console.error('Erro ao carregar pendencias:', error);
@@ -136,9 +156,9 @@ export default function Dashboard() {
       }
 
       if (result.failed > 0) {
-        Alert.alert('Atencao', `${result.failed} obra(s) ainda estao na fila. Tente novamente.`);
+        Alert.alert('Atencao', `${result.failed} item(ns) ainda estao na fila. Tente novamente.`);
       } else {
-        Alert.alert('Pronto', `${result.success} obra(s) sincronizadas.`);
+        Alert.alert('Pronto', `${result.success} item(ns) sincronizados.`);
       }
     } catch (error) {
       console.error('Erro ao sincronizar pendencias:', error);
@@ -150,13 +170,17 @@ export default function Dashboard() {
 
   const pendingMessage = isOnline
     ? pendingObras.length > 0
-      ? `${pendingObras.length} obra(s) da equipe aguardando sincronizacao`
+      ? isCompressor
+        ? `${pendingObras.length} book(s) de Cava em Rocha aguardando sincronizacao`
+        : `${pendingObras.length} obra(s) da equipe aguardando sincronizacao`
+      : isCompressor
+      ? 'Todos os books de Cava em Rocha estao sincronizados'
       : 'Tudo sincronizado para a sua equipe'
     : 'Cadastros ficam locais e sincronizam quando voltar a conexao';
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingHorizontal: horizontalPadding }]}>
         <View
           style={[
             styles.statusCard,
@@ -203,12 +227,12 @@ export default function Dashboard() {
           </Text>
         </View>
 
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
+        <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
+          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
             <Text style={styles.metricLabel}>Obras da equipe</Text>
             <Text style={styles.metricValue}>{loading ? '...' : totalObras}</Text>
           </View>
-          <View style={styles.metricCard}>
+          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
             <Text style={styles.metricLabel}>Pendencias</Text>
             <Text style={[styles.metricValue, pendingObras.length > 0 && styles.metricAlert]}>
               {loading ? '...' : pendingObras.length}
@@ -224,7 +248,9 @@ export default function Dashboard() {
             <View style={styles.iconCircle}>
               <Text style={styles.iconText}>+</Text>
             </View>
-            <Text style={styles.primaryButtonText}>Iniciar Nova Obra</Text>
+            <Text style={[styles.primaryButtonText, isSmallScreen && styles.primaryButtonTextSmall]}>
+              Iniciar Nova Obra
+            </Text>
           </View>
         </TouchableOpacity>
 
@@ -242,7 +268,9 @@ export default function Dashboard() {
           style={styles.secondaryButton}
           onPress={() => router.push('/(tabs)/obras')}
         >
-          <Text style={styles.secondaryButtonText}>Ver Historico Completo</Text>
+          <Text style={[styles.secondaryButtonText, isSmallScreen && styles.secondaryButtonTextSmall]}>
+            Ver Historico Completo
+          </Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -258,7 +286,8 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
   },
   content: {
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
   },
   header: {
     marginBottom: 14,
@@ -279,6 +308,10 @@ const styles = StyleSheet.create({
     marginHorizontal: -6,
     marginBottom: 14,
   },
+  metricsRowStacked: {
+    flexDirection: 'column',
+    marginHorizontal: 0,
+  },
   metricCard: {
     flex: 1,
     backgroundColor: '#ffffff',
@@ -290,6 +323,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 3,
     elevation: 2,
+  },
+  metricCardStacked: {
+    marginHorizontal: 0,
+    marginBottom: 10,
   },
   metricLabel: {
     fontSize: 12,
@@ -340,6 +377,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 19,
     fontWeight: '800',
+    flexShrink: 1,
+    textAlign: 'center',
+  },
+  primaryButtonTextSmall: {
+    fontSize: 16,
   },
   secondaryButton: {
     backgroundColor: '#fff',
@@ -355,6 +397,10 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontSize: 15,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  secondaryButtonTextSmall: {
+    fontSize: 14,
   },
   card: {
     backgroundColor: '#fff',

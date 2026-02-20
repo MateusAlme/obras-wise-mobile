@@ -71,6 +71,59 @@ const CHECKLIST_POSTE_FIELD_TO_TIPO: Record<(typeof CHECKLIST_POSTE_FIELDS)[numb
   menorEsforco: 'menor_esforco'
 }
 
+const CHECKLIST_POSTE_SECTION_TO_FIELD: Record<string, (typeof CHECKLIST_POSTE_FIELDS)[number]> = {
+  inteiro: 'posteInteiro',
+  engaste: 'engaste',
+  conexao1: 'conexao1',
+  conexao2: 'conexao2',
+  maior: 'maiorEsforco',
+  menor: 'menorEsforco',
+}
+
+type StructuredSectionTarget =
+  | { kind: 'haste_termo'; photoType: 'fotoHaste' | 'fotoTermometro'; index: number }
+  | { kind: 'poste'; field: (typeof CHECKLIST_POSTE_FIELDS)[number]; index: number }
+  | { kind: 'seccionamento'; index: number }
+  | { kind: 'aterramento'; index: number }
+
+function parseStructuredSectionKey(sectionKey: string): StructuredSectionTarget | null {
+  const hasteTermoMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
+  if (hasteTermoMatch) {
+    return {
+      kind: 'haste_termo',
+      photoType: hasteTermoMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro',
+      index: parseInt(hasteTermoMatch[2], 10),
+    }
+  }
+
+  const posteMatch = sectionKey.match(/^poste_(\d+)_(inteiro|engaste|conexao1|conexao2|maior|menor)$/)
+  if (posteMatch) {
+    return {
+      kind: 'poste',
+      index: parseInt(posteMatch[1], 10),
+      field: CHECKLIST_POSTE_SECTION_TO_FIELD[posteMatch[2]],
+    }
+  }
+
+  const seccMatch = sectionKey.match(/^secc_(\d+)_fotos$/)
+  if (seccMatch) {
+    return {
+      kind: 'seccionamento',
+      index: parseInt(seccMatch[1], 10),
+    }
+  }
+
+  const aterramentoMatch = sectionKey.match(/^fotos_aterramento_(\d+)$/)
+  if (aterramentoMatch) {
+    return {
+      kind: 'aterramento',
+      index: parseInt(aterramentoMatch[1], 10),
+    }
+  }
+
+  return null
+}
+
 function isHttpUrl(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('http')
 }
@@ -82,6 +135,9 @@ function toFotoInfoIfUrl(item: any): FotoInfo | null {
       url: item.url,
       latitude: item.latitude ?? null,
       longitude: item.longitude ?? null,
+      utmX: item.utmX ?? item.utm_x ?? null,
+      utmY: item.utmY ?? item.utm_y ?? null,
+      utmZone: item.utmZone ?? item.utm_zone ?? null,
       placaData: item.placaData || item.placa_data || null
     }
   }
@@ -91,6 +147,9 @@ function toFotoInfoIfUrl(item: any): FotoInfo | null {
       url: item,
       latitude: null,
       longitude: null,
+      utmX: null,
+      utmY: null,
+      utmZone: null,
       placaData: null
     }
   }
@@ -454,6 +513,9 @@ export default function ObraDetailPage() {
           url: item.url,
           latitude: item.latitude || null,
           longitude: item.longitude || null,
+          utmX: item.utmX ?? item.utm_x ?? null,
+          utmY: item.utmY ?? item.utm_y ?? null,
+          utmZone: item.utmZone ?? item.utm_zone ?? null,
           placaData: item.placaData || item.placa_data || null
         } as FotoInfo
       }
@@ -464,6 +526,9 @@ export default function ObraDetailPage() {
           url: item,
           latitude: null,
           longitude: null,
+          utmX: null,
+          utmY: null,
+          utmZone: null,
           placaData: null
         } as FotoInfo
       }
@@ -493,6 +558,9 @@ export default function ObraDetailPage() {
           url: storageUrl,
           latitude: null,
           longitude: null,
+          utmX: null,
+          utmY: null,
+          utmZone: null,
           placaData: null
         } as FotoInfo
       }
@@ -743,6 +811,29 @@ export default function ObraDetailPage() {
     return data.publicUrl
   }
 
+  function extractStoragePathFromPublicUrl(url: string): string | null {
+    const marker = '/storage/v1/object/public/obra-photos/'
+    const markerIndex = url.indexOf(marker)
+    if (markerIndex < 0) return null
+    const rawPath = url.slice(markerIndex + marker.length)
+    if (!rawPath) return null
+    try {
+      return decodeURIComponent(rawPath)
+    } catch {
+      return rawPath
+    }
+  }
+
+  async function tryRemovePhotoFromStorage(url?: string) {
+    if (!url) return
+    const storagePath = extractStoragePathFromPublicUrl(url)
+    if (!storagePath) return
+    const { error } = await supabase.storage.from('obra-photos').remove([storagePath])
+    if (error) {
+      console.warn('Nao foi possivel remover do storage:', error.message)
+    }
+  }
+
   async function handleAddPhoto(sectionKey: string, file: File): Promise<FotoInfo | null> {
     if (!obra) return null
     try {
@@ -757,10 +848,10 @@ export default function ObraDetailPage() {
         },
       }
 
-      const structuredMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
-      if (structuredMatch) {
-        const photoType = structuredMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro'
-        const pontoIndex = parseInt(structuredMatch[2], 10)
+      const structuredTarget = parseStructuredSectionKey(sectionKey)
+      if (structuredTarget?.kind === 'haste_termo') {
+        const photoType = structuredTarget.photoType
+        const pontoIndex = structuredTarget.index
         const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
           ? [...obra.checklist_hastes_termometros_data]
           : []
@@ -782,6 +873,81 @@ export default function ObraDetailPage() {
 
         setObra({ ...obra, checklist_hastes_termometros_data: pontos })
         return newPhoto
+      }
+
+      if (structuredTarget?.kind === 'poste') {
+        const posteIndex = structuredTarget.index
+        const field = structuredTarget.field
+        const postes = Array.isArray(obra.checklist_postes_data) ? [...obra.checklist_postes_data] : []
+        if (!Number.isInteger(posteIndex) || posteIndex < 0 || posteIndex >= postes.length) {
+          throw new Error('Poste inválido para adicionar foto')
+        }
+
+        const posteAtual = { ...postes[posteIndex] }
+        const currentPhotos = Array.isArray(posteAtual[field]) ? [...posteAtual[field]] : []
+        posteAtual[field] = [...currentPhotos, newPhoto]
+        postes[posteIndex] = posteAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_postes_data: postes })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_postes_data: postes })
+        return newPhoto
+      }
+
+      if (structuredTarget?.kind === 'seccionamento') {
+        const seccIndex = structuredTarget.index
+        const seccionamentos = Array.isArray(obra.checklist_seccionamentos_data)
+          ? [...obra.checklist_seccionamentos_data]
+          : []
+        if (!Number.isInteger(seccIndex) || seccIndex < 0 || seccIndex >= seccionamentos.length) {
+          throw new Error('Seccionamento inválido para adicionar foto')
+        }
+
+        const seccAtual = { ...seccionamentos[seccIndex] }
+        const currentPhotos = Array.isArray(seccAtual.fotos) ? [...seccAtual.fotos] : []
+        seccAtual.fotos = [...currentPhotos, newPhoto]
+        seccionamentos[seccIndex] = seccAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_seccionamentos_data: seccionamentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_seccionamentos_data: seccionamentos })
+        return newPhoto
+      }
+
+      if (structuredTarget?.kind === 'aterramento') {
+        const aterramentoIndex = structuredTarget.index
+        const aterramentos = Array.isArray(obra.checklist_aterramentos_cerca_data)
+          ? [...obra.checklist_aterramentos_cerca_data]
+          : []
+        if (!Number.isInteger(aterramentoIndex) || aterramentoIndex < 0 || aterramentoIndex >= aterramentos.length) {
+          throw new Error('Aterramento inválido para adicionar foto')
+        }
+
+        const aterrAtual = { ...aterramentos[aterramentoIndex] }
+        const currentPhotos = Array.isArray(aterrAtual.fotos) ? [...aterrAtual.fotos] : []
+        aterrAtual.fotos = [...currentPhotos, newPhoto]
+        aterramentos[aterramentoIndex] = aterrAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_aterramentos_cerca_data: aterramentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_aterramentos_cerca_data: aterramentos })
+        return newPhoto
+      }
+
+      if (!(sectionKey in obra)) {
+        throw new Error(`Secao de foto invalida: ${sectionKey}`)
       }
 
       const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
@@ -807,10 +973,10 @@ export default function ObraDetailPage() {
   ): Promise<FotoInfo | null> {
     if (!obra) return null
     try {
-      const structuredMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
-      if (structuredMatch) {
-        const photoType = structuredMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro'
-        const pontoIndex = parseInt(structuredMatch[2], 10)
+      const structuredTarget = parseStructuredSectionKey(sectionKey)
+      if (structuredTarget?.kind === 'haste_termo') {
+        const photoType = structuredTarget.photoType
+        const pontoIndex = structuredTarget.index
         const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
           ? [...obra.checklist_hastes_termometros_data]
           : []
@@ -834,6 +1000,87 @@ export default function ObraDetailPage() {
 
         setObra({ ...obra, checklist_hastes_termometros_data: pontos })
         return updatedPhoto
+      }
+
+      if (structuredTarget?.kind === 'poste') {
+        const posteIndex = structuredTarget.index
+        const field = structuredTarget.field
+        const postes = Array.isArray(obra.checklist_postes_data) ? [...obra.checklist_postes_data] : []
+        if (!Number.isInteger(posteIndex) || posteIndex < 0 || posteIndex >= postes.length) {
+          return null
+        }
+
+        const posteAtual = { ...postes[posteIndex] }
+        const currentPhotos = Array.isArray(posteAtual[field]) ? [...posteAtual[field]] : []
+        if (!currentPhotos[index]) return null
+        currentPhotos[index] = updatedPhoto
+        posteAtual[field] = currentPhotos
+        postes[posteIndex] = posteAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_postes_data: postes })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_postes_data: postes })
+        return updatedPhoto
+      }
+
+      if (structuredTarget?.kind === 'seccionamento') {
+        const seccIndex = structuredTarget.index
+        const seccionamentos = Array.isArray(obra.checklist_seccionamentos_data)
+          ? [...obra.checklist_seccionamentos_data]
+          : []
+        if (!Number.isInteger(seccIndex) || seccIndex < 0 || seccIndex >= seccionamentos.length) {
+          return null
+        }
+
+        const seccAtual = { ...seccionamentos[seccIndex] }
+        const currentPhotos = Array.isArray(seccAtual.fotos) ? [...seccAtual.fotos] : []
+        if (!currentPhotos[index]) return null
+        currentPhotos[index] = updatedPhoto
+        seccAtual.fotos = currentPhotos
+        seccionamentos[seccIndex] = seccAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_seccionamentos_data: seccionamentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_seccionamentos_data: seccionamentos })
+        return updatedPhoto
+      }
+
+      if (structuredTarget?.kind === 'aterramento') {
+        const aterramentoIndex = structuredTarget.index
+        const aterramentos = Array.isArray(obra.checklist_aterramentos_cerca_data)
+          ? [...obra.checklist_aterramentos_cerca_data]
+          : []
+        if (!Number.isInteger(aterramentoIndex) || aterramentoIndex < 0 || aterramentoIndex >= aterramentos.length) {
+          return null
+        }
+
+        const aterrAtual = { ...aterramentos[aterramentoIndex] }
+        const currentPhotos = Array.isArray(aterrAtual.fotos) ? [...aterrAtual.fotos] : []
+        if (!currentPhotos[index]) return null
+        currentPhotos[index] = updatedPhoto
+        aterrAtual.fotos = currentPhotos
+        aterramentos[aterramentoIndex] = aterrAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_aterramentos_cerca_data: aterramentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_aterramentos_cerca_data: aterramentos })
+        return updatedPhoto
+      }
+
+      if (!(sectionKey in obra)) {
+        throw new Error(`Secao de foto invalida: ${sectionKey}`)
       }
 
       const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
@@ -862,10 +1109,10 @@ export default function ObraDetailPage() {
     if (!obra) return null
     try {
       const url = await uploadPhotoFile(file, sectionKey)
-      const structuredMatch = sectionKey.match(/^(haste|termo)_(\d+)$/)
-      if (structuredMatch) {
-        const photoType = structuredMatch[1] === 'haste' ? 'fotoHaste' : 'fotoTermometro'
-        const pontoIndex = parseInt(structuredMatch[2], 10)
+      const structuredTarget = parseStructuredSectionKey(sectionKey)
+      if (structuredTarget?.kind === 'haste_termo') {
+        const photoType = structuredTarget.photoType
+        const pontoIndex = structuredTarget.index
         const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
           ? [...obra.checklist_hastes_termometros_data]
           : []
@@ -895,6 +1142,102 @@ export default function ObraDetailPage() {
         return nextPhoto
       }
 
+      if (structuredTarget?.kind === 'poste') {
+        const posteIndex = structuredTarget.index
+        const field = structuredTarget.field
+        const postes = Array.isArray(obra.checklist_postes_data) ? [...obra.checklist_postes_data] : []
+        if (!Number.isInteger(posteIndex) || posteIndex < 0 || posteIndex >= postes.length) {
+          return null
+        }
+
+        const posteAtual = { ...postes[posteIndex] }
+        const currentPhotos = Array.isArray(posteAtual[field]) ? [...posteAtual[field]] : []
+        if (!currentPhotos[index]) return null
+
+        const nextPhoto: FotoInfo = {
+          ...currentPhotos[index],
+          url,
+        }
+        currentPhotos[index] = nextPhoto
+        posteAtual[field] = currentPhotos
+        postes[posteIndex] = posteAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_postes_data: postes })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_postes_data: postes })
+        return nextPhoto
+      }
+
+      if (structuredTarget?.kind === 'seccionamento') {
+        const seccIndex = structuredTarget.index
+        const seccionamentos = Array.isArray(obra.checklist_seccionamentos_data)
+          ? [...obra.checklist_seccionamentos_data]
+          : []
+        if (!Number.isInteger(seccIndex) || seccIndex < 0 || seccIndex >= seccionamentos.length) {
+          return null
+        }
+
+        const seccAtual = { ...seccionamentos[seccIndex] }
+        const currentPhotos = Array.isArray(seccAtual.fotos) ? [...seccAtual.fotos] : []
+        if (!currentPhotos[index]) return null
+
+        const nextPhoto: FotoInfo = {
+          ...currentPhotos[index],
+          url,
+        }
+        currentPhotos[index] = nextPhoto
+        seccAtual.fotos = currentPhotos
+        seccionamentos[seccIndex] = seccAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_seccionamentos_data: seccionamentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_seccionamentos_data: seccionamentos })
+        return nextPhoto
+      }
+
+      if (structuredTarget?.kind === 'aterramento') {
+        const aterramentoIndex = structuredTarget.index
+        const aterramentos = Array.isArray(obra.checklist_aterramentos_cerca_data)
+          ? [...obra.checklist_aterramentos_cerca_data]
+          : []
+        if (!Number.isInteger(aterramentoIndex) || aterramentoIndex < 0 || aterramentoIndex >= aterramentos.length) {
+          return null
+        }
+
+        const aterrAtual = { ...aterramentos[aterramentoIndex] }
+        const currentPhotos = Array.isArray(aterrAtual.fotos) ? [...aterrAtual.fotos] : []
+        if (!currentPhotos[index]) return null
+
+        const nextPhoto: FotoInfo = {
+          ...currentPhotos[index],
+          url,
+        }
+        currentPhotos[index] = nextPhoto
+        aterrAtual.fotos = currentPhotos
+        aterramentos[aterramentoIndex] = aterrAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_aterramentos_cerca_data: aterramentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_aterramentos_cerca_data: aterramentos })
+        return nextPhoto
+      }
+
+      if (!(sectionKey in obra)) {
+        throw new Error(`Secao de foto invalida: ${sectionKey}`)
+      }
+
       const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
       if (!currentPhotos[index]) return null
       const nextPhoto: FotoInfo = {
@@ -918,6 +1261,145 @@ export default function ObraDetailPage() {
   }
 
   // Funções de exportação
+  async function handleDeletePhoto(
+    sectionKey: string,
+    index: number,
+    photo: FotoInfo
+  ): Promise<boolean> {
+    if (!obra) return false
+    try {
+      const structuredTarget = parseStructuredSectionKey(sectionKey)
+      if (structuredTarget?.kind === 'haste_termo') {
+        const photoType = structuredTarget.photoType
+        const pontoIndex = structuredTarget.index
+        const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
+          ? [...obra.checklist_hastes_termometros_data]
+          : []
+        if (!Number.isInteger(pontoIndex) || pontoIndex < 0 || pontoIndex >= pontos.length) {
+          return false
+        }
+
+        const pontoAtual = { ...pontos[pontoIndex] }
+        const currentPhotos = Array.isArray(pontoAtual[photoType]) ? [...pontoAtual[photoType]] : []
+        if (!currentPhotos[index]) return false
+        const nextPhotos = currentPhotos.filter((_, photoIndex) => photoIndex !== index)
+        pontoAtual[photoType] = nextPhotos
+        pontos[pontoIndex] = pontoAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_hastes_termometros_data: pontos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_hastes_termometros_data: pontos })
+        await tryRemovePhotoFromStorage(photo.url)
+        return true
+      }
+
+      if (structuredTarget?.kind === 'poste') {
+        const posteIndex = structuredTarget.index
+        const field = structuredTarget.field
+        const postes = Array.isArray(obra.checklist_postes_data) ? [...obra.checklist_postes_data] : []
+        if (!Number.isInteger(posteIndex) || posteIndex < 0 || posteIndex >= postes.length) {
+          return false
+        }
+
+        const posteAtual = { ...postes[posteIndex] }
+        const currentPhotos = Array.isArray(posteAtual[field]) ? [...posteAtual[field]] : []
+        if (!currentPhotos[index]) return false
+        const nextPhotos = currentPhotos.filter((_, photoIndex) => photoIndex !== index)
+        posteAtual[field] = nextPhotos
+        postes[posteIndex] = posteAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_postes_data: postes })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_postes_data: postes })
+        await tryRemovePhotoFromStorage(photo.url)
+        return true
+      }
+
+      if (structuredTarget?.kind === 'seccionamento') {
+        const seccIndex = structuredTarget.index
+        const seccionamentos = Array.isArray(obra.checklist_seccionamentos_data)
+          ? [...obra.checklist_seccionamentos_data]
+          : []
+        if (!Number.isInteger(seccIndex) || seccIndex < 0 || seccIndex >= seccionamentos.length) {
+          return false
+        }
+
+        const seccAtual = { ...seccionamentos[seccIndex] }
+        const currentPhotos = Array.isArray(seccAtual.fotos) ? [...seccAtual.fotos] : []
+        if (!currentPhotos[index]) return false
+        const nextPhotos = currentPhotos.filter((_, photoIndex) => photoIndex !== index)
+        seccAtual.fotos = nextPhotos
+        seccionamentos[seccIndex] = seccAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_seccionamentos_data: seccionamentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_seccionamentos_data: seccionamentos })
+        await tryRemovePhotoFromStorage(photo.url)
+        return true
+      }
+
+      if (structuredTarget?.kind === 'aterramento') {
+        const aterramentoIndex = structuredTarget.index
+        const aterramentos = Array.isArray(obra.checklist_aterramentos_cerca_data)
+          ? [...obra.checklist_aterramentos_cerca_data]
+          : []
+        if (!Number.isInteger(aterramentoIndex) || aterramentoIndex < 0 || aterramentoIndex >= aterramentos.length) {
+          return false
+        }
+
+        const aterrAtual = { ...aterramentos[aterramentoIndex] }
+        const currentPhotos = Array.isArray(aterrAtual.fotos) ? [...aterrAtual.fotos] : []
+        if (!currentPhotos[index]) return false
+        const nextPhotos = currentPhotos.filter((_, photoIndex) => photoIndex !== index)
+        aterrAtual.fotos = nextPhotos
+        aterramentos[aterramentoIndex] = aterrAtual
+
+        const { error } = await supabase
+          .from('obras')
+          .update({ checklist_aterramentos_cerca_data: aterramentos })
+          .eq('id', obra.id)
+        if (error) throw error
+
+        setObra({ ...obra, checklist_aterramentos_cerca_data: aterramentos })
+        await tryRemovePhotoFromStorage(photo.url)
+        return true
+      }
+
+      if (!(sectionKey in obra)) {
+        throw new Error(`Secao de foto invalida: ${sectionKey}`)
+      }
+
+      const currentPhotos = (obra as any)[sectionKey] as FotoInfo[] | undefined || []
+      if (!currentPhotos[index]) return false
+      const nextPhotos = currentPhotos.filter((_, photoIndex) => photoIndex !== index)
+      const { error } = await supabase
+        .from('obras')
+        .update({ [sectionKey]: nextPhotos })
+        .eq('id', obra.id)
+      if (error) throw error
+
+      setObra({ ...obra, [sectionKey]: nextPhotos })
+      await tryRemovePhotoFromStorage(photo.url)
+      return true
+    } catch (error) {
+      console.error('Erro ao excluir foto:', error)
+      alert('Erro ao excluir foto')
+      return false
+    }
+  }
+
   async function handleExportPdf() {
     if (!obra) return
     setExportingPdf(true)
@@ -1159,6 +1641,7 @@ export default function ObraDetailPage() {
     onAddPhoto: handleAddPhoto,
     onUpdatePhoto: handleUpdatePhoto,
     onReplacePhoto: handleReplacePhoto,
+    onDeletePhoto: handleDeletePhoto,
   }
 
   return (
@@ -1491,8 +1974,8 @@ export default function ObraDetailPage() {
                 {/* 8. Padrão Interno */}
                 <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="8. Padrão de Ligação - Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
                 
-                {/* 9. Frying */}
-                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="9. Frying" sectionKey="fotos_checklist_frying" {...galleryProps} />
+                {/* 9. Flying */}
+                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="9. Flying" sectionKey="fotos_checklist_frying" {...galleryProps} />
                 
                 {/* 10. Abertura e Fechamento de Pulo */}
                 <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="10. Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />

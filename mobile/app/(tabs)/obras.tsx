@@ -62,48 +62,62 @@ export default function Obras() {
   const [syncingPending, setSyncingPending] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [equipeLogada, setEquipeLogada] = useState<string>('');
+  const [userRole, setUserRole] = useState<string>('equipe');
   const insets = useSafeAreaInsets();
   const isSmallScreen = width < 380;
   const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
+  const isCompressor = userRole === 'compressor';
 
-  // Estado para modal de progresso de sincronização
+  // Estado para modal de progresso de sincronizaÃ§Ã£o
   const [syncModalVisible, setSyncModalVisible] = useState(false);
   const [syncProgress, setSyncProgress] = useState<ObraSyncProgress | null>(null);
   const cancellationTokenRef = useRef<CancellationToken>({ cancelled: false });
 
-  // Carregar equipe logada do AsyncStorage
+  const isCompressorBook = (obra: { tipo_servico?: string; creator_role?: string }) => {
+    return obra?.tipo_servico === 'Cava em Rocha' || obra?.creator_role === 'compressor';
+  };
+
+  // Carregar sessao do AsyncStorage
   useEffect(() => {
-    const loadEquipeLogada = async () => {
+    const loadSessionData = async () => {
       try {
         const equipe = await AsyncStorage.getItem('@equipe_logada');
+        const role = await AsyncStorage.getItem('@user_role');
         if (equipe) {
           setEquipeLogada(equipe);
         }
+        setUserRole(role || 'equipe');
       } catch (error) {
-        console.error('Erro ao carregar equipe logada:', error);
+        console.error('Erro ao carregar sessao:', error);
       }
     };
-    loadEquipeLogada();
+    loadSessionData();
   }, []);
 
   const combinedObras = useMemo<ObraListItem[]>(() => {
-    // ✅ CORREÇÃO: Preservar origem que já está salva em cada obra
+    // âœ… CORREÃ‡ÃƒO: Preservar origem que jÃ¡ estÃ¡ salva em cada obra
     const pendentes: ObraListItem[] = pendingObrasState
-      .filter((obra) => !!equipeLogada && obra.equipe === equipeLogada)
+      .filter((obra) => {
+        if (!equipeLogada || obra.equipe !== equipeLogada) return false;
+        if (!isCompressor) return true;
+        return isCompressorBook(obra as any);
+      })
       .map((obra) => ({
       ...obra,
       origem: obra.origem || 'offline', // Usar origem salva, ou 'offline' como fallback
     }));
 
-    // Garantir que onlineObras é sempre um array
-    const obrasOnlineArray = Array.isArray(onlineObras) ? onlineObras : [];
+    // Garantir que onlineObras Ã© sempre um array
+    const obrasOnlineArray = Array.isArray(onlineObras)
+      ? onlineObras.filter((obra) => !isCompressor || isCompressorBook(obra as any))
+      : [];
     const sincronizadas: ObraListItem[] = obrasOnlineArray.map((obra) => ({
       ...obra,
       origem: obra.origem || 'online', // Usar origem salva, ou 'online' como fallback
     }));
 
     return [...pendentes, ...sincronizadas];
-  }, [pendingObrasState, onlineObras, equipeLogada]);
+  }, [pendingObrasState, onlineObras, equipeLogada, isCompressor]);
 
   const filteredObras = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -115,15 +129,16 @@ export default function Obras() {
     });
   }, [combinedObras, searchTerm]);
 
-  // ✅ Filtrar obras pendentes apenas da equipe logada para contadores
+  // âœ… Filtrar obras pendentes apenas da equipe logada para contadores
   const pendingObrasDaEquipe = useMemo(() => {
     if (!equipeLogada) return [];
 
     return pendingObrasState.filter((obra) => {
-      // Comparar equipe da obra com equipe logada
-      return obra.equipe === equipeLogada;
+      if (obra.equipe !== equipeLogada) return false;
+      if (!isCompressor) return true;
+      return isCompressorBook(obra as any);
     });
-  }, [pendingObrasState, equipeLogada]);
+  }, [pendingObrasState, equipeLogada, isCompressor]);
 
   useEffect(() => {
     loadCachedObras();
@@ -160,20 +175,20 @@ export default function Obras() {
     return () => {
       unsubscribe?.();
     };
-  }, [equipeLogada]);
+  }, [equipeLogada, userRole]);
 
   useEffect(() => {
     if (!equipeLogada) return;
     loadPendingObras();
-  }, [equipeLogada]);
+  }, [equipeLogada, userRole]);
 
   /**
-   * Busca e sincroniza obras do Supabase para AsyncStorage (migração)
+   * Busca e sincroniza obras do Supabase para AsyncStorage (migraÃ§Ã£o)
    */
-  const migrateObrasDeSupabase = async (equipe: string) => {
+  const migrateObrasDeSupabase = async (equipe: string, role?: string) => {
     const online = await checkInternetConnection();
     if (!online) {
-      console.log('📴 Offline - pulando busca do Supabase');
+      console.log('ðŸ“´ Offline - pulando busca do Supabase');
       return;
     }
 
@@ -184,38 +199,44 @@ export default function Obras() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      console.log(`📊 Total de obras no Supabase: ${todasObras?.length || 0}`);
+      console.log(`ðŸ“Š Total de obras no Supabase: ${todasObras?.length || 0}`);
 
       if (todasObras && todasObras.length > 0) {
         const equipesUnicas = [...new Set(todasObras.map(o => o.equipe))];
-        console.log(`👥 Equipes encontradas: ${equipesUnicas.join(', ')}`);
+        console.log(`ðŸ‘¥ Equipes encontradas: ${equipesUnicas.join(', ')}`);
       }
 
       // Buscar obras da equipe logada
-      const { data, error } = await supabase
+      let query = supabase
         .from('obras')
         .select('*')
         .eq('equipe', equipe)
         .order('created_at', { ascending: false });
 
-      console.log(`🎯 Obras da equipe "${equipe}": ${data?.length || 0}`);
+      if ((role || userRole) === 'compressor') {
+        query = query.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
+      }
+
+      const { data, error } = await query;
+
+      console.log(`ðŸŽ¯ Obras da equipe "${equipe}": ${data?.length || 0}`);
 
       if (error) {
-        console.error('❌ Erro ao buscar obras:', error);
+        console.error('âŒ Erro ao buscar obras:', error);
         return;
       }
 
       if (!data || data.length === 0) {
-        console.log('⚠️ Nenhuma obra encontrada para esta equipe');
+        console.log('âš ï¸ Nenhuma obra encontrada para esta equipe');
         return;
       }
 
-      console.log(`📥 Migrando ${data.length} obra(s) do Supabase para AsyncStorage...`);
+      console.log(`ðŸ“¥ Migrando ${data.length} obra(s) do Supabase para AsyncStorage...`);
 
       let obrasLocais = await getLocalObras();
       for (const obra of data) {
         if (obrasLocais.find(o => o.id === obra.id)) {
-          console.log(`⚠️ Obra ${obra.id} já existe localmente - preservando versão local`);
+          console.log(`âš ï¸ Obra ${obra.id} jÃ¡ existe localmente - preservando versÃ£o local`);
           continue;
         }
 
@@ -234,7 +255,7 @@ export default function Obras() {
         await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasLocais));
       }
 
-      console.log(`✅ Migração completa: ${obrasLocais.length} obra(s)`);
+      console.log(`âœ… MigraÃ§Ã£o completa: ${obrasLocais.length} obra(s)`);
     } catch (error) {
       console.error('Erro ao migrar obras do Supabase:', error);
     }
@@ -246,7 +267,7 @@ export default function Obras() {
   const autoFixObraFields = async () => {
     try {
       let localObras = await getLocalObras();
-      console.log(`📊 Debug: Total de obras locais: ${localObras.length}`);
+      console.log(`ðŸ“Š Debug: Total de obras locais: ${localObras.length}`);
 
       const obrasComCamposFaltando = localObras.filter(
         obra => obra.synced && (!obra.origem || !obra.status)
@@ -254,18 +275,18 @@ export default function Obras() {
 
       if (obrasComCamposFaltando.length === 0) return;
 
-      console.log(`🔧 Auto-correção: ${obrasComCamposFaltando.length} obra(s) precisa(m) correção`);
+      console.log(`ðŸ”§ Auto-correÃ§Ã£o: ${obrasComCamposFaltando.length} obra(s) precisa(m) correÃ§Ã£o`);
 
       const { fixObraOrigemStatus } = await import('../../lib/fix-origem-status');
       const resultado = await fixObraOrigemStatus();
 
-      console.log(`📊 Resultado: total=${resultado.total}, corrigidas=${resultado.corrigidas}, erros=${resultado.erros}`);
+      console.log(`ðŸ“Š Resultado: total=${resultado.total}, corrigidas=${resultado.corrigidas}, erros=${resultado.erros}`);
 
       if (resultado.corrigidas > 0) {
-        console.log(`✅ ${resultado.corrigidas} obra(s) corrigida(s) automaticamente`);
+        console.log(`âœ… ${resultado.corrigidas} obra(s) corrigida(s) automaticamente`);
       }
     } catch (error) {
-      console.error('Erro na auto-correção:', error);
+      console.error('Erro na auto-correÃ§Ã£o:', error);
     }
   };
 
@@ -289,19 +310,24 @@ export default function Obras() {
   const carregarObras = async () => {
     try {
       const equipe = await AsyncStorage.getItem('@equipe_logada');
+      const role = (await AsyncStorage.getItem('@user_role')) || userRole || 'equipe';
+      const roleIsCompressor = role === 'compressor';
+      if (role !== userRole) {
+        setUserRole(role);
+      }
       if (!equipe) {
         console.log('Nenhuma equipe logada, redirecionando para login');
         router.replace('/login');
         return;
       }
 
-      console.log('📱 Carregando obras do AsyncStorage...');
+      console.log('ðŸ“± Carregando obras do AsyncStorage...');
       let localObras = await getLocalObras();
 
       // Se vazio, tentar migrar do Supabase
       if (localObras.length === 0) {
-        console.log(`⚠️ AsyncStorage vazio - migrando de Supabase para "${equipe}"...`);
-        await migrateObrasDeSupabase(equipe);
+        console.log(`âš ï¸ AsyncStorage vazio - migrando de Supabase para "${equipe}"...`);
+        await migrateObrasDeSupabase(equipe, role);
         localObras = await getLocalObras();
       }
 
@@ -309,14 +335,20 @@ export default function Obras() {
       await autoFixObraFields();
 
       // Filtrar, ordenar e formatar
-      const obrasEquipe = sortObrasByDate(localObras.filter(obra => obra.equipe === equipe));
+      const obrasEquipe = sortObrasByDate(
+        localObras.filter((obra) => {
+          if (obra.equipe !== equipe) return false;
+          if (!roleIsCompressor) return true;
+          return isCompressorBook(obra as any);
+        })
+      );
       const obrasFormatadas = obrasEquipe.map(obra => ({
         ...obra,
         status: obra.status || 'em_aberto',
       })) as Obra[];
 
       setOnlineObras(obrasFormatadas);
-      console.log(`✅ ${obrasFormatadas.length} obra(s) carregadas`);
+      console.log(`âœ… ${obrasFormatadas.length} obra(s) carregadas`);
     } catch (err) {
       console.error('Erro ao carregar obras:', err);
     } finally {
@@ -329,8 +361,12 @@ export default function Obras() {
     try {
       const cache = await AsyncStorage.getItem(HISTORY_CACHE_KEY);
       if (cache) {
+        const role = (await AsyncStorage.getItem('@user_role')) || userRole || 'equipe';
         const lista: Obra[] = JSON.parse(cache);
-        setOnlineObras(lista);
+        const listaFiltrada = role === 'compressor'
+          ? lista.filter((obra) => isCompressorBook(obra as any))
+          : lista;
+        setOnlineObras(listaFiltrada);
       }
     } catch (error) {
       console.error('Erro ao carregar cache de obras:', error);
@@ -339,9 +375,14 @@ export default function Obras() {
 
   const loadPendingObras = async () => {
     try {
+      const role = (await AsyncStorage.getItem('@user_role')) || userRole || 'equipe';
       const pendentes = await getPendingObras();
       const pendentesDaEquipe = equipeLogada
-        ? pendentes.filter((obra) => obra.equipe === equipeLogada)
+        ? pendentes.filter((obra) => {
+            if (obra.equipe !== equipeLogada) return false;
+            if (role !== 'compressor') return true;
+            return isCompressorBook(obra as any);
+          })
          : [];
       setPendingObrasState(pendentesDaEquipe);
     } catch (error) {
@@ -351,7 +392,7 @@ export default function Obras() {
 
   const reloadAllObras = async () => {
     await Promise.all([loadPendingObras(), loadCachedObras()]);
-    // ✅ CORREÇÃO: Sempre carregar obras locais, independente do estado online/offline
+    // âœ… CORREÃ‡ÃƒO: Sempre carregar obras locais, independente do estado online/offline
     // Rascunhos e obras offline devem aparecer imediatamente
     await carregarObras();
   };
@@ -359,7 +400,7 @@ export default function Obras() {
   useFocusEffect(
     useCallback(() => {
       reloadAllObras();
-    }, [isOnline, equipeLogada])
+    }, [isOnline, equipeLogada, userRole])
   );
 
   const onRefresh = () => {
@@ -369,13 +410,13 @@ export default function Obras() {
 
   const formatarData = (data: string) => {
     try {
-      // Se a data está no formato YYYY-MM-DD, tratamos como data local
+      // Se a data estÃ¡ no formato YYYY-MM-DD, tratamos como data local
       if (/^\d{4}-\d{2}-\d{2}$/.test(data)) {
         const [ano, mes, dia] = data.split('-').map(Number);
         const date = new Date(ano, mes - 1, dia);
         return date.toLocaleDateString('pt-BR');
       }
-      // Para outros formatos (ISO com timezone), usa o construtor padrão
+      // Para outros formatos (ISO com timezone), usa o construtor padrÃ£o
       const date = new Date(data);
       return date.toLocaleDateString('pt-BR');
     } catch {
@@ -383,9 +424,9 @@ export default function Obras() {
     }
   };
 
-  // FUNÇÃO REMOVIDA: calcularFotosPendentes
-  // Fotos agora são opcionais - obras parciais são permitidas
-  // A função foi removida para não indicar que fotos são obrigatórias
+  // FUNÃ‡ÃƒO REMOVIDA: calcularFotosPendentes
+  // Fotos agora sÃ£o opcionais - obras parciais sÃ£o permitidas
+  // A funÃ§Ã£o foi removida para nÃ£o indicar que fotos sÃ£o obrigatÃ³rias
 
   const subtitleText = isOnline
     ? `${filteredObras.length} de ${combinedObras.length} obra(s) cadastrada(s)`
@@ -396,7 +437,7 @@ export default function Obras() {
       return null;
     }
 
-    // ✅ CORREÇÃO: Não mostrar badge se já foi sincronizada (tem serverId)
+    // âœ… CORREÃ‡ÃƒO: NÃ£o mostrar badge se jÃ¡ foi sincronizada (tem serverId)
     if (obra.serverId && obra.synced !== false) {
       return null;
     }
@@ -406,6 +447,8 @@ export default function Obras() {
         ? styles.syncBadgeFailed
         : obra.sync_status === 'syncing'
         ? styles.syncBadgeSyncing
+        : obra.sync_status === 'partial'
+        ? styles.syncBadgePartial
         : styles.syncBadgePending;
 
     const label =
@@ -413,6 +456,8 @@ export default function Obras() {
         ? 'Falha ao sincronizar'
         : obra.sync_status === 'syncing'
         ? 'Sincronizando...'
+        : obra.sync_status === 'partial'
+        ? 'Sincronizacao parcial: fotos pendentes'
         : 'Aguardando sincronizacao';
 
     return (
@@ -425,34 +470,34 @@ export default function Obras() {
     );
   };
 
-  // ========== HELPERS PARA CONSOLIDAR CÓDIGO REPETITIVO ==========
+  // ========== HELPERS PARA CONSOLIDAR CÃ“DIGO REPETITIVO ==========
 
   /**
-   * Helper para mostrar alertas de sincronização com resultado comum
+   * Helper para mostrar alertas de sincronizaÃ§Ã£o com resultado comum
    */
   const showSyncAlert = (result: { success: number; failed: number }, context: 'pending' | 'local') => {
     if (result.success === 0 && result.failed === 0) {
       const message = context === 'pending'
-        ? 'Conecte-se à internet para sincronizar as obras pendentes.'
-        : 'Não foi possível conectar ao servidor.';
-      Alert.alert('Sem Conexão', message);
+        ? 'Conecte-se Ã  internet para sincronizar as obras pendentes.'
+        : 'NÃ£o foi possÃ­vel conectar ao servidor.';
+      Alert.alert('Sem ConexÃ£o', message);
     } else if (result.failed > 0) {
       if (context === 'pending') {
         Alert.alert(
-          'Atenção',
-          `${result.failed} obra(s) ainda aguardam sincronização. Verifique a conexão e tente novamente.`
+          'AtenÃ§Ã£o',
+          `${result.failed} obra(s) ainda aguardam sincronizaÃ§Ã£o. Verifique a conexÃ£o e tente novamente.`
         );
       } else {
         Alert.alert(
-          'Sincronização Parcial',
-          `✅ ${result.success} obra(s) sincronizada(s)\n❌ ${result.failed} falha(s)\n\nTente novamente para enviar as obras restantes.`
+          'SincronizaÃ§Ã£o Parcial',
+          `âœ… ${result.success} obra(s) sincronizada(s)\nâŒ ${result.failed} falha(s)\n\nTente novamente para enviar as obras restantes.`
         );
       }
     } else {
       const message = context === 'pending'
         ? `${result.success} obra(s) sincronizadas.`
         : `${result.success} obra(s) enviada(s) para a nuvem com sucesso!`;
-      const title = context === 'pending' ? 'Pronto!' : '✅ Sincronização Completa';
+      const title = context === 'pending' ? 'Pronto!' : 'âœ… SincronizaÃ§Ã£o Completa';
       Alert.alert(title, message);
     }
   };
@@ -463,12 +508,12 @@ export default function Obras() {
   const showErrorAlert = (message: string, context?: string) => {
     Alert.alert('Erro', message);
     if (context) {
-      console.error(`❌ ${context}:`, message);
+      console.error(`âŒ ${context}:`, message);
     }
   };
 
   /**
-   * Helper para executar operação com loading state
+   * Helper para executar operaÃ§Ã£o com loading state
    */
   const executeWithLoading = async <T,>(
     operation: () => Promise<T>,
@@ -483,7 +528,7 @@ export default function Obras() {
       }
       return result;
     } catch (error) {
-      console.error('Erro durante operação:', error);
+      console.error('Erro durante operaÃ§Ã£o:', error);
       return null;
     } finally {
       setState(false);
@@ -541,7 +586,7 @@ export default function Obras() {
     // Mostrar modal
     setSyncModalVisible(true);
 
-    // Iniciar sincronização com progresso
+    // Iniciar sincronizaÃ§Ã£o com progresso
     const result = await syncAllPendingObrasWithProgress(
       (progress) => {
         setSyncProgress(prev => ({
@@ -581,10 +626,12 @@ export default function Obras() {
           try {
             await AsyncStorage.removeItem('@equipe_logada');
             await AsyncStorage.removeItem('@equipe_id');
+            await AsyncStorage.removeItem('@session_token');
+            await AsyncStorage.removeItem('@session_expires_at');
             await AsyncStorage.removeItem('@login_timestamp');
             router.replace('/login');
           } catch (error) {
-            showErrorAlert('Não foi possível sair. Tente novamente.', 'handleLogout');
+            showErrorAlert('NÃ£o foi possÃ­vel sair. Tente novamente.', 'handleLogout');
           }
         },
         style: 'destructive',
@@ -618,13 +665,13 @@ export default function Obras() {
           </View>
         )}
 
-        <View style={styles.header}>
+        <View style={[styles.header, isSmallScreen && styles.headerSmall]}>
           <View style={styles.headerTop}>
             <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>Obras</Text>
             <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>{subtitleText}</Text>
           </View>
           {!isOnline && (
-            <View style={styles.offlinePill}>
+            <View style={[styles.offlinePill, isSmallScreen && styles.offlinePillSmall]}>
               <Text style={styles.offlineHint}>Modo Offline</Text>
             </View>
           )}
@@ -643,7 +690,7 @@ export default function Obras() {
           </View>
         </View>
 
-        {/* Botão Nova Obra */}
+        {/* BotÃ£o Nova Obra */}
         <TouchableOpacity
           style={styles.novaObraButton}
           onPress={() => router.push('/nova-obra')}
@@ -652,7 +699,7 @@ export default function Obras() {
           <Text style={styles.novaObraButtonLabel}>Nova Obra</Text>
         </TouchableOpacity>
 
-        {/* Botão Sincronizar Obras (só aparece quando há obras pendentes da equipe) */}
+        {/* BotÃ£o Sincronizar Obras (sÃ³ aparece quando hÃ¡ obras pendentes da equipe) */}
         {pendingObrasDaEquipe.length > 0 && (
           <TouchableOpacity
             style={[
@@ -672,7 +719,7 @@ export default function Obras() {
           <Text style={styles.searchPrefix}>Buscar</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar por obra, responsável ou equipe"
+            placeholder="Buscar por obra, responsavel ou equipe"
             value={searchTerm}
             onChangeText={setSearchTerm}
             autoCorrect={false}
@@ -684,10 +731,10 @@ export default function Obras() {
           <View style={styles.syncBanner}>
             <View style={styles.syncBannerInfo}>
               <Text style={styles.syncBannerTitle}>
-                {pendingObrasDaEquipe.length} obra(s) da sua equipe aguardando sincronização
+                {pendingObrasDaEquipe.length} obra(s) da sua equipe aguardando sincronizacao
               </Text>
               <Text style={styles.syncBannerSubtitle}>
-                {isOnline ? 'Envie agora para liberar espaço.' : 'Conecte-se para finalizar o envio.'}
+                {isOnline ? 'Envie agora para liberar espaÃ§o.' : 'Conecte-se para finalizar o envio.'}
               </Text>
             </View>
             <TouchableOpacity
@@ -732,8 +779,9 @@ export default function Obras() {
             const isAberta = obra.status === 'em_aberto' || !obra.status;
             const isFinalizada = obra.status === 'finalizada';
             const isRascunho = obra.status === 'rascunho';
-            // ✅ CORREÇÃO: Considerar sincronizada se tem serverId
+            // âœ… CORREÃ‡ÃƒO: Considerar sincronizada se tem serverId
             const isSynced = obra.serverId && obra.synced !== false;
+            const isPartialSync = obra.sync_status === 'partial' || (!!obra.serverId && obra.synced === false);
 
             return (
               <TouchableOpacity
@@ -745,22 +793,27 @@ export default function Obras() {
                 ]}
                 onPress={() => handleOpenObra(obra)}
               >
-                {/* Indicador de Sincronização */}
-                <View style={styles.syncIndicatorContainer}>
+                {/* Indicador de SincronizaÃ§Ã£o */}
+                <View style={[styles.syncIndicatorContainer, isSmallScreen && styles.syncIndicatorContainerSmall]}>
                   {isSynced ? (
                     <View style={styles.syncIndicatorSynced}>
-                      <Text style={styles.syncIndicatorIcon}>☁️</Text>
+                      <Text style={styles.syncIndicatorIcon}>â˜ï¸</Text>
                       <Text style={styles.syncIndicatorTextSynced}>Sincronizada</Text>
+                    </View>
+                  ) : isPartialSync ? (
+                    <View style={styles.syncIndicatorPartial}>
+                      <Text style={styles.syncIndicatorIcon}>âš ï¸</Text>
+                      <Text style={styles.syncIndicatorTextPartial}>Sync parcial</Text>
                     </View>
                   ) : (
                     <View style={styles.syncIndicatorPending}>
-                      <Text style={styles.syncIndicatorIcon}>📤</Text>
+                      <Text style={styles.syncIndicatorIcon}>ðŸ“¤</Text>
                       <Text style={styles.syncIndicatorTextPending}>Aguardando sync</Text>
                     </View>
                   )}
                 </View>
 
-                <View style={styles.obraHeader}>
+                <View style={[styles.obraHeader, isSmallScreen && styles.obraHeaderSmall]}>
                   <View style={styles.obraHeaderLeft}>
                     <Text style={styles.obraNumero}>Obra {obra.obra}</Text>
                     <Text style={styles.obraData}>{formatarData(obra.data)}</Text>
@@ -771,17 +824,17 @@ export default function Obras() {
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                   {isFinalizada && (
                     <View style={styles.statusBadgeFinalizada}>
-                      <Text style={styles.statusBadgeText}>✓ Finalizada</Text>
+                      <Text style={styles.statusBadgeText}>âœ“ Finalizada</Text>
                     </View>
                   )}
                   {isRascunho && (
                     <View style={styles.statusBadgeRascunho}>
-                      <Text style={styles.statusBadgeText}>⏸️ Rascunho</Text>
+                      <Text style={styles.statusBadgeText}>â¸ï¸ Rascunho</Text>
                     </View>
                   )}
                   {isAberta && !isRascunho && (
                     <View style={styles.statusBadgeAberta}>
-                      <Text style={styles.statusBadgeText}>⚠ Em aberto</Text>
+                      <Text style={styles.statusBadgeText}>âš  Em aberto</Text>
                     </View>
                   )}
                 </View>
@@ -819,7 +872,7 @@ export default function Obras() {
       </View>
       </ScrollView>
 
-      {/* Modal de Progresso de Sincronização */}
+      {/* Modal de Progresso de SincronizaÃ§Ã£o */}
       <SyncProgressModal
         visible={syncModalVisible}
         progress={syncProgress}
@@ -851,6 +904,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 14,
   },
+  headerSmall: {
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   title: {
     fontSize: 30,
     fontWeight: '800',
@@ -876,6 +933,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     marginLeft: 10,
+  },
+  offlinePillSmall: {
+    marginLeft: 0,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -986,6 +1046,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#fff',
     fontWeight: '800',
+    textAlign: 'center',
+    flexShrink: 1,
   },
   syncManualButton: {
     backgroundColor: '#2563eb',
@@ -1010,6 +1072,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
     fontWeight: '700',
+    textAlign: 'center',
+    flexShrink: 1,
   },
   headerButtons: {
     flexDirection: 'row',
@@ -1156,6 +1220,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eef2f7',
   },
+  obraHeaderSmall: {
+    paddingRight: 78,
+  },
   obraHeaderLeft: {
     flex: 1,
     flexDirection: 'row',
@@ -1212,6 +1279,11 @@ const styles = StyleSheet.create({
   syncBadgeSyncing: {
     backgroundColor: '#e3f2fd',
   },
+  syncBadgePartial: {
+    backgroundColor: '#fff3cd',
+    borderWidth: 1,
+    borderColor: '#ffe08a',
+  },
   syncBadgeFailed: {
     backgroundColor: '#ffebee',
   },
@@ -1260,6 +1332,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
     maxWidth: 100,
   },
+  syncIndicatorContainerSmall: {
+    right: 8,
+    maxWidth: 86,
+  },
   syncIndicatorSynced: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1280,6 +1356,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#ffc107',
   },
+  syncIndicatorPartial: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#ff9800',
+  },
   syncIndicatorIcon: {
     fontSize: 12,
     marginRight: 3,
@@ -1294,6 +1380,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     color: '#d97706',
+    flexShrink: 1,
+  },
+  syncIndicatorTextPartial: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#b45309',
     flexShrink: 1,
   },
   alertaFotosPendentes: {
@@ -1359,3 +1451,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+

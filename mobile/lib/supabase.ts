@@ -23,6 +23,15 @@ const getUserRole = async (): Promise<string | null> => {
   }
 };
 
+// Token de sessao emitido pelo backend no login online
+const getSessionToken = async (): Promise<string | null> => {
+  try {
+    return await AsyncStorage.getItem('@session_token');
+  } catch {
+    return null;
+  }
+};
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
@@ -34,10 +43,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     fetch: async (input, init?: RequestInit) => {
       const equipe = await getEquipeLogada();
       const role = await getUserRole();
+      const sessionToken = await getSessionToken();
 
       const headers = new Headers(init?.headers ?? {});
       if (equipe) headers.set('x-equipe', equipe);
       if (role) headers.set('x-role', role);
+      if (sessionToken) headers.set('x-session-token', sessionToken);
 
       return fetch(input, {
         ...(init ?? {}),

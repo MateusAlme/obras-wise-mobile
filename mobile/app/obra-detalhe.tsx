@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, RefreshControl, Modal, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Alert, RefreshControl, Modal, Dimensions, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
@@ -107,6 +107,7 @@ type OnlineObra = {
     fotos_antes: any[];
     fotos_durante: any[];
     fotos_depois: any[];
+    fotos_medicao?: any[];
     observacao?: string;
   }>;
   // CHECKLIST DE FISCALIZAÇÃO - Structured Data (aceita strings ou objetos com {id, url})
@@ -224,6 +225,7 @@ type ObraPayload = (PendingObra & {
     fotos_antes: any[];
     fotos_durante: any[];
     fotos_depois: any[];
+    fotos_medicao?: any[];
     observacao?: string;
   }>;
   // HASTES E TERMÔMETROS DATA (aceita strings ou objetos com {id, url})
@@ -293,7 +295,7 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_checklist_aterramento_cerca', label: '6️⃣ Aterramento de Cerca' },
   { key: 'fotos_checklist_padrao_geral', label: '7️⃣ Padrão de Ligação - Vista Geral' },
   { key: 'fotos_checklist_padrao_interno', label: '8️⃣ Padrão de Ligação - Interno' },
-  { key: 'fotos_checklist_frying', label: '9️⃣ Frying' },
+  { key: 'fotos_checklist_frying', label: '9️⃣ Flying' },
   { key: 'fotos_checklist_abertura_fechamento_pulo', label: '🔟 Abertura e Fechamento de Pulo' },
   { key: 'fotos_checklist_hastes_termometros', label: '1️⃣1️⃣ Hastes Aplicadas e Medição do Termômetro' },
   { key: 'fotos_checklist_panoramica_final', label: '1️⃣2️⃣ Panorâmica Final' },
@@ -357,6 +359,13 @@ export default function ObraDetalhe() {
   const [isFinalizando, setIsFinalizando] = useState(false);
   const [isSincronizando, setIsSincronizando] = useState(false);
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
+  const isSmallScreen = screenWidth < 390;
+  const isVerySmallScreen = screenWidth < 350;
+  const contentPaddingHorizontal = isSmallScreen ? 14 : 20;
+  const actionButtonsStacked = screenWidth < 400;
+  const headerPlaceholderWidth = isVerySmallScreen ? 40 : 72;
+  const thumbSize = screenWidth < 360 ? 78 : screenWidth < 430 ? 84 : 90;
 
   // Monitor internet connection
   useEffect(() => {
@@ -443,20 +452,22 @@ export default function ObraDetalhe() {
               hasLocalUrls(localObra.checklist_hastes_termometros_data)
             ));
 
-          if (precisaCorrecao && localObra.synced) {
-            console.log('⚠️ Obra sincronizada mas com problemas nos dados - buscando do Supabase...');
+          const deveAtualizarDoServidor = !!localObra.synced && (precisaCorrecao || isOnline);
+
+          if (deveAtualizarDoServidor) {
+            console.log('🔄 Obra sincronizada - atualizando do Supabase para refletir mudanças recentes...');
             // Usar serverId se disponível, caso contrário usar o ID local
             const idParaBuscar = (localObra as any).serverId || parsed.id;
             console.log('🔍 Buscando obra do Supabase com ID:', idParaBuscar);
             const corrigida = await forceUpdateObraFromSupabase(idParaBuscar);
 
             if (corrigida) {
-              console.log('✅ Obra corrigida automaticamente');
+              console.log('✅ Obra atualizada automaticamente do Supabase');
               // Recarregar obra atualizada
-              const obraAtualizada = await getLocalObraById(parsed.id);
+              const obraAtualizada = await getLocalObraById(idParaBuscar);
               if (obraAtualizada) {
                 setObra({ ...obraAtualizada, origem: obraAtualizada.origem || 'offline' } as ObraDetalheData);
-                loadLocalPhotos(parsed.id, obraAtualizada);
+                loadLocalPhotos(obraAtualizada.id, obraAtualizada);
                 return;
               }
             }
@@ -493,6 +504,17 @@ export default function ObraDetalhe() {
       const localObra = await getLocalObraById(obra.id);
 
       if (localObra) {
+        if (isOnline && localObra.synced) {
+          const idParaBuscar = (localObra as any).serverId || localObra.id;
+          await forceUpdateObraFromSupabase(idParaBuscar);
+          const obraAtualizada = await getLocalObraById(idParaBuscar);
+          if (obraAtualizada) {
+            setObra({ ...obraAtualizada, origem: obraAtualizada.origem || 'online' } as ObraDetalheData);
+            loadLocalPhotos(obraAtualizada.id, obraAtualizada);
+            return;
+          }
+        }
+
         console.log('🔄 Atualizando obra do AsyncStorage:', obra.id);
         // ✅ CORREÇÃO: Preservar origem do AsyncStorage (pode ser 'online' ou 'offline')
         setObra({ ...localObra, origem: localObra.origem || 'offline' } as ObraDetalheData);
@@ -626,6 +648,7 @@ export default function ObraDetalhe() {
           ...(poste.fotos_antes || []),
           ...(poste.fotos_durante || []),
           ...(poste.fotos_depois || []),
+          ...(poste.fotos_medicao || []),
         ]),
         // Adicionar photoIds de checklist_postes_data
         ...(sourceObra.checklist_postes_data || []).flatMap((poste: any) => [
@@ -1080,7 +1103,10 @@ export default function ObraDetalhe() {
   };
 
   // Helper para obter fotos de um poste específico
-  const getPhotosForPoste = (poste: any, secao: 'fotos_antes' | 'fotos_durante' | 'fotos_depois'): FotoInfo[] => {
+  const getPhotosForPoste = (
+    poste: any,
+    secao: 'fotos_antes' | 'fotos_durante' | 'fotos_depois' | 'fotos_medicao'
+  ): FotoInfo[] => {
     if (!poste || !poste[secao]) return [];
 
     const photoData = poste[secao];
@@ -1139,10 +1165,39 @@ export default function ObraDetalhe() {
           if (!getPhotosForSection('fotos_ditais_sinalizar').length) faltantes.push('DITAIS - Sinalizar');
           break;
         case 'Book de Aterramento':
-          if (!getPhotosForSection('fotos_aterramento_vala_aberta').length) faltantes.push('Vala Aberta');
-          if (!getPhotosForSection('fotos_aterramento_hastes').length) faltantes.push('Hastes');
-          if (!getPhotosForSection('fotos_aterramento_vala_fechada').length) faltantes.push('Vala Fechada');
-          if (!getPhotosForSection('fotos_aterramento_medicao').length) faltantes.push('Medição');
+          if (Array.isArray(obra.postes_data) && obra.postes_data.length > 0) {
+            const totalValaAberta = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_antes').length, 0);
+            const totalHastes = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_durante').length, 0);
+            const totalValaFechada = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_depois').length, 0);
+            const totalMedicao = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_medicao').length, 0);
+
+            if (totalValaAberta === 0) faltantes.push('Vala Aberta');
+            if (totalHastes === 0) faltantes.push('Hastes');
+            if (totalValaFechada === 0) faltantes.push('Vala Fechada');
+            if (totalMedicao === 0) faltantes.push('Medicao');
+          } else {
+            if (!getPhotosForSection('fotos_aterramento_vala_aberta').length) faltantes.push('Vala Aberta');
+            if (!getPhotosForSection('fotos_aterramento_hastes').length) faltantes.push('Hastes');
+            if (!getPhotosForSection('fotos_aterramento_vala_fechada').length) faltantes.push('Vala Fechada');
+            if (!getPhotosForSection('fotos_aterramento_medicao').length) faltantes.push('Medicao');
+          }
+          break;
+        case 'Linha Viva':
+        case 'Cava em Rocha':
+        case 'Fundação Especial':
+          if (Array.isArray(obra.postes_data) && obra.postes_data.length > 0) {
+            const totalAntes = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_antes').length, 0);
+            const totalDurante = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_durante').length, 0);
+            const totalDepois = obra.postes_data.reduce((acc, poste: any) => acc + getPhotosForPoste(poste, 'fotos_depois').length, 0);
+
+            if (totalAntes === 0) faltantes.push('Antes');
+            if (totalDurante === 0) faltantes.push('Durante');
+            if (totalDepois === 0) faltantes.push('Depois');
+          } else {
+            if (!getPhotosForSection('fotos_antes').length) faltantes.push('Antes');
+            if (!getPhotosForSection('fotos_durante').length) faltantes.push('Durante');
+            if (!getPhotosForSection('fotos_depois').length) faltantes.push('Depois');
+          }
           break;
         case 'Transformador':
           // ⚡ LAUDO TRANSFORMADOR - OBRIGATÓRIO
@@ -1282,19 +1337,40 @@ export default function ObraDetalhe() {
                 const obras = JSON.parse(obrasJson);
                 const obraAtualizada = obras.find((o: any) => o.id === obra.id);
                 if (obraAtualizada?.serverId) {
-                  // Atualizar o estado local da obra com o serverId
-                  setObra((prev: any) => prev ? { ...prev, serverId: obraAtualizada.serverId, synced: true } : prev);
+                  // Atualizar estado local respeitando sync parcial (não forçar synced=true)
+                  setObra((prev: any) => prev ? {
+                    ...prev,
+                    serverId: obraAtualizada.serverId,
+                    synced: obraAtualizada.synced,
+                    sync_status: obraAtualizada.sync_status,
+                  } : prev);
                 }
               }
 
-              console.log('✅ Obra sincronizada com sucesso!');
-              Alert.alert(
-                'Sucesso',
-                isReSync
-                  ? 'Alterações enviadas para o servidor com sucesso!'
-                  : 'Obra sincronizada! Agora ela pode ser acompanhada no sistema web.\n\nQuando terminar, clique em "Finalizar" para concluir.',
-                [{ text: 'OK' }]
-              );
+              const AsyncStorage2 = (await import('@react-native-async-storage/async-storage')).default;
+              const obrasJson2 = await AsyncStorage2.getItem(LOCAL_OBRAS_KEY);
+              const obraSincronizada = obrasJson2
+                ? JSON.parse(obrasJson2).find((o: any) => o.id === obra.id)
+                : null;
+              const syncCompleta = obraSincronizada?.synced !== false;
+
+              if (syncCompleta) {
+                console.log('✅ Obra sincronizada com sucesso!');
+                Alert.alert(
+                  'Sucesso',
+                  isReSync
+                    ? 'Alterações enviadas para o servidor com sucesso!'
+                    : 'Obra sincronizada! Agora ela pode ser acompanhada no sistema web.\n\nQuando terminar, clique em "Finalizar" para concluir.',
+                  [{ text: 'OK' }]
+                );
+              } else {
+                console.warn('⚠️ Sincronização parcial: ainda há fotos pendentes de upload');
+                Alert.alert(
+                  'Sincronização Parcial',
+                  'A obra foi enviada, mas ainda existem fotos pendentes de sincronização.\n\nSincronize novamente antes de finalizar.',
+                  [{ text: 'OK' }]
+                );
+              }
             } catch (error: any) {
               console.error('❌ Erro ao sincronizar obra:', error);
               Alert.alert('Erro', `Não foi possível sincronizar a obra: ${error.message}`);
@@ -1326,6 +1402,23 @@ export default function ObraDetalhe() {
       Alert.alert(
         'Sincronize Primeiro',
         'Esta obra precisa ser sincronizada antes de finalizar.\n\nClique em "Sincronizar" primeiro.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const syncPendente = obra.origem === 'offline' && (
+      obra.synced === false ||
+      (obra as any).sync_status === 'pending' ||
+      (obra as any).sync_status === 'failed' ||
+      (obra as any).sync_status === 'partial' ||
+      (obra as any).sync_status === 'syncing'
+    );
+
+    if (syncPendente) {
+      Alert.alert(
+        'Sincronize Primeiro',
+        'Existem alterações/fotos pendentes de sincronização.\n\nClique em "Sincronizar" e depois finalize a obra.',
         [{ text: 'OK' }]
       );
       return;
@@ -1449,22 +1542,26 @@ export default function ObraDetalhe() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.header}>
+      <View style={[styles.header, isSmallScreen && styles.headerCompact]}>
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, isSmallScreen && styles.backButtonCompact]}
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
           <Ionicons name="chevron-back" size={20} color="#0f172a" />
-          <Text style={styles.backButtonText}>Voltar</Text>
+          {!isVerySmallScreen && (
+            <Text style={[styles.backButtonText, isSmallScreen && styles.backButtonTextCompact]}>
+              Voltar
+            </Text>
+          )}
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>
+        <Text style={[styles.headerTitle, isSmallScreen && styles.headerTitleCompact]} numberOfLines={1}>
           Detalhes da Obra
         </Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           {obra.origem !== 'offline' && (
             <TouchableOpacity
-              style={styles.refreshButton}
+              style={[styles.refreshButton, isSmallScreen && styles.refreshButtonCompact]}
               onPress={onRefresh}
               disabled={refreshing}
               activeOpacity={0.7}
@@ -1476,13 +1573,21 @@ export default function ObraDetalhe() {
               />
             </TouchableOpacity>
           )}
-          {obra.origem === 'offline' && <View style={styles.headerActionPlaceholder} />}
+          {obra.origem === 'offline' && (
+            <View style={[styles.headerActionPlaceholder, { width: headerPlaceholderWidth }]} />
+          )}
         </View>
       </View>
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 40 + insets.bottom }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingHorizontal: contentPaddingHorizontal,
+            paddingBottom: 40 + insets.bottom,
+          },
+        ]}
         refreshControl={
           obra.origem !== 'offline' ? (
             <RefreshControl
@@ -1495,8 +1600,10 @@ export default function ObraDetalhe() {
         }
       >
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Obra {obra.obra || '-'}</Text>
-          <Text style={styles.cardSubtitle}>Criada em {formatDate(obra.created_at || obra.data)}</Text>
+          <Text style={[styles.cardTitle, isSmallScreen && styles.cardTitleCompact]}>Obra {obra.obra || '-'}</Text>
+          <Text style={[styles.cardSubtitle, isSmallScreen && styles.cardSubtitleCompact]}>
+            Criada em {formatDate(obra.created_at || obra.data)}
+          </Text>
           {statusInfo && (
             <View style={[styles.statusBadge, statusInfo.style]}>
               <Text style={styles.statusBadgeText}>{statusInfo.label}</Text>
@@ -1537,6 +1644,10 @@ export default function ObraDetalhe() {
           // 2. OU tem serverId MAS synced=false (foi editada após sync)
           const primeiraSync = isLocalDraft && !obra.serverId;
           const reSync = obra.serverId && obra.synced === false;
+          const syncStatus = (obra as any).sync_status;
+          const syncEmAndamento = syncStatus === 'syncing';
+          const syncPendenteStatus = syncStatus === 'pending' || syncStatus === 'failed' || syncStatus === 'partial' || syncStatus === 'syncing';
+          const syncPendente = primeiraSync || reSync || syncPendenteStatus || syncEmAndamento;
           const podeSincronizar = isOnline && (primeiraSync || reSync);
           const textoSincronizar = reSync ? '🔄 Atualizar' : '📤 Sincronizar';
 
@@ -1557,9 +1668,13 @@ export default function ObraDetalhe() {
               )}
 
               {/* Primeira linha de botões: Adicionar Fotos */}
-              <View style={styles.actionButtons}>
+              <View style={[styles.actionButtons, actionButtonsStacked && styles.actionButtonsStacked]}>
                 <TouchableOpacity
-                  style={[styles.continuarButton, { flex: 1 }]}
+                  style={[
+                    styles.continuarButton,
+                    { flex: 1 },
+                    actionButtonsStacked && styles.actionButtonFullWidth,
+                  ]}
                   onPress={() => {
                     router.push({
                       pathname: '/nova-obra',
@@ -1577,13 +1692,14 @@ export default function ObraDetalhe() {
               </View>
 
               {/* Segunda linha de botões: Sincronizar e/ou Finalizar */}
-              <View style={[styles.actionButtons, { marginTop: 8 }]}>
+              <View style={[styles.actionButtons, { marginTop: 8 }, actionButtonsStacked && styles.actionButtonsStacked]}>
                 {/* Botão SINCRONIZAR - aparece para primeira sync OU re-sync após edição */}
                 {(primeiraSync || reSync) && (
                   <TouchableOpacity
                     style={[
                       styles.sincronizarButton,
                       { flex: 1 },
+                      actionButtonsStacked && styles.actionButtonFullWidth,
                       (!podeSincronizar || isSincronizando) && styles.sincronizarButtonDisabled
                     ]}
                     onPress={handleSincronizar}
@@ -1608,24 +1724,27 @@ export default function ObraDetalhe() {
                   style={[
                     styles.finalizarButton,
                     { flex: 1 },
-                    (!podeFinalizar || isFinalizando) && styles.finalizarButtonDisabled
+                    actionButtonsStacked && styles.actionButtonFullWidth,
+                    (!(podeFinalizar && !syncPendente) || isFinalizando) && styles.finalizarButtonDisabled
                   ]}
                   onPress={handleFinalizarObra}
-                  activeOpacity={podeFinalizar && !isFinalizando ? 0.7 : 1}
-                  disabled={!podeFinalizar || isFinalizando}
+                  activeOpacity={podeFinalizar && !syncPendente && !isFinalizando ? 0.7 : 1}
+                  disabled={!podeFinalizar || syncPendente || isFinalizando}
                 >
                   {isFinalizando ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <>
                       <Ionicons
-                        name={podeFinalizar ? "checkmark-circle" : "alert-circle"}
+                        name={podeFinalizar && !syncPendente ? "checkmark-circle" : "alert-circle"}
                         size={20}
                         color="#fff"
                       />
                       <Text style={styles.finalizarButtonText}>
                         {!jaSincronizada
                           ? '⏳ Sincronize primeiro'
+                          : syncPendente
+                            ? '🔄 Sincronize atualizações'
                           : fotosFaltantes > 0
                             ? `Faltam ${fotosFaltantes} foto(s)`
                             : '✅ Finalizar Obra'}
@@ -1648,16 +1767,18 @@ export default function ObraDetalhe() {
         {/* Checklist/Identificação de Postes (Cava em Rocha, Linha Viva, etc) */}
         {obra?.postes_data && obra.postes_data.length > 0 && (
           (() => {
+            const isBookAterramentoPostes = obra?.tipo_servico === 'Book de Aterramento';
             const allSemFotos = obra.postes_data.every((poste: any) =>
               (poste?.fotos_antes?.length || 0) === 0 &&
               (poste?.fotos_durante?.length || 0) === 0 &&
-              (poste?.fotos_depois?.length || 0) === 0
+              (poste?.fotos_depois?.length || 0) === 0 &&
+              (!isBookAterramentoPostes || (poste?.fotos_medicao?.length || 0) === 0)
             );
 
             if (allSemFotos) {
               return (
                 <>
-                  <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+                  <Text style={[styles.photoSectionTitle, { paddingHorizontal: contentPaddingHorizontal, marginTop: 8 }]}>
                     🏷️ Postes Identificados
                   </Text>
                   <View style={styles.posteIdentificacaoCard}>
@@ -1683,18 +1804,24 @@ export default function ObraDetalhe() {
 
             return (
               <>
-                <Text style={[styles.photoSectionTitle, { paddingHorizontal: 20, marginTop: 8 }]}>
+                <Text style={[styles.photoSectionTitle, { paddingHorizontal: contentPaddingHorizontal, marginTop: 8 }]}>
                   📋 Checklist de Postes
                 </Text>
                 {obra.postes_data.map((poste: any) => {
                   const fotosAntes = getPhotosForPoste(poste, 'fotos_antes');
                   const fotosDurante = getPhotosForPoste(poste, 'fotos_durante');
                   const fotosDepois = getPhotosForPoste(poste, 'fotos_depois');
-                  const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length;
-                  const statusCompleto = fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
+                  const fotosMedicao = getPhotosForPoste(poste, 'fotos_medicao');
+                  const totalFotos = fotosAntes.length + fotosDurante.length + fotosDepois.length + (isBookAterramentoPostes ? fotosMedicao.length : 0);
+                  const statusCompleto = isBookAterramentoPostes
+                    ? fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0 && fotosMedicao.length > 0
+                    : fotosAntes.length > 0 && fotosDurante.length > 0 && fotosDepois.length > 0;
                   const statusParcial = totalFotos > 0 && !statusCompleto;
                   const statusIcon = statusCompleto ? '✓' : statusParcial ? '◐' : '○';
                   const statusColor = statusCompleto ? '#28a745' : statusParcial ? '#ffc107' : '#999';
+                  const labelAntes = isBookAterramentoPostes ? 'Vala Aberta' : 'Antes';
+                  const labelDurante = isBookAterramentoPostes ? 'Hastes' : 'Durante';
+                  const labelDepois = isBookAterramentoPostes ? 'Vala Fechada' : 'Depois';
 
                   return (
                     <View key={poste.id} style={styles.posteCard}>
@@ -1707,7 +1834,8 @@ export default function ObraDetalhe() {
                           <View>
                             <Text style={styles.posteHeaderTitle}>Poste {poste.id}</Text>
                             <Text style={styles.posteHeaderSubtitle}>
-                              {totalFotos} foto(s) • {fotosAntes.length} Antes • {fotosDurante.length} Durante • {fotosDepois.length} Depois
+                              {totalFotos} foto(s) • {fotosAntes.length} {labelAntes} • {fotosDurante.length} {labelDurante} • {fotosDepois.length} {labelDepois}
+                              {isBookAterramentoPostes ? ` • ${fotosMedicao.length} Medicao` : ''}
                             </Text>
                           </View>
                         </View>
@@ -1717,7 +1845,7 @@ export default function ObraDetalhe() {
                       <View style={styles.posteContent}>
                         {/* Seção: Fotos Antes */}
                         <View style={styles.posteSection}>
-                          <Text style={styles.posteSectionTitle}>📸 Fotos Antes ({fotosAntes.length})</Text>
+                          <Text style={styles.posteSectionTitle}>📸 Fotos {labelAntes} ({fotosAntes.length})</Text>
                           {fotosAntes.length > 0 ? (
                             <View style={styles.photoGrid}>
                               {fotosAntes.map((foto, index) => {
@@ -1729,7 +1857,7 @@ export default function ObraDetalhe() {
                                     onPress={() => openPhotoModal(foto, `poste_${poste.id}_antes`)}
                                     activeOpacity={0.8}
                                   >
-                                    <Image source={source} style={styles.photoThumb} />
+                                    <Image source={source} style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]} />
                                   </TouchableOpacity>
                                 );
                               })}
@@ -1741,7 +1869,7 @@ export default function ObraDetalhe() {
 
                         {/* Seção: Fotos Durante */}
                         <View style={styles.posteSection}>
-                          <Text style={styles.posteSectionTitle}>🔨 Fotos Durante ({fotosDurante.length})</Text>
+                          <Text style={styles.posteSectionTitle}>🔨 Fotos {labelDurante} ({fotosDurante.length})</Text>
                           {fotosDurante.length > 0 ? (
                             <View style={styles.photoGrid}>
                               {fotosDurante.map((foto, index) => {
@@ -1753,7 +1881,7 @@ export default function ObraDetalhe() {
                                     onPress={() => openPhotoModal(foto, `poste_${poste.id}_durante`)}
                                     activeOpacity={0.8}
                                   >
-                                    <Image source={source} style={styles.photoThumb} />
+                                    <Image source={source} style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]} />
                                   </TouchableOpacity>
                                 );
                               })}
@@ -1765,7 +1893,7 @@ export default function ObraDetalhe() {
 
                         {/* Seção: Fotos Depois */}
                         <View style={styles.posteSection}>
-                          <Text style={styles.posteSectionTitle}>✅ Fotos Depois ({fotosDepois.length})</Text>
+                          <Text style={styles.posteSectionTitle}>✅ Fotos {labelDepois} ({fotosDepois.length})</Text>
                           {fotosDepois.length > 0 ? (
                             <View style={styles.photoGrid}>
                               {fotosDepois.map((foto, index) => {
@@ -1777,7 +1905,7 @@ export default function ObraDetalhe() {
                                     onPress={() => openPhotoModal(foto, `poste_${poste.id}_depois`)}
                                     activeOpacity={0.8}
                                   >
-                                    <Image source={source} style={styles.photoThumb} />
+                                    <Image source={source} style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]} />
                                   </TouchableOpacity>
                                 );
                               })}
@@ -1786,6 +1914,31 @@ export default function ObraDetalhe() {
                             <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
                           )}
                         </View>
+
+                        {isBookAterramentoPostes && (
+                          <View style={styles.posteSection}>
+                            <Text style={styles.posteSectionTitle}>Fotos Medicao Terrometro ({fotosMedicao.length})</Text>
+                            {fotosMedicao.length > 0 ? (
+                              <View style={styles.photoGrid}>
+                                {fotosMedicao.map((foto, index) => {
+                                  const source = getPhotoSource(foto);
+                                  if (!source) return null;
+                                  return (
+                                    <TouchableOpacity
+                                      key={`${poste.id}-medicao-${index}`}
+                                      onPress={() => openPhotoModal(foto, `poste_${poste.id}_medicao`)}
+                                      activeOpacity={0.8}
+                                    >
+                                      <Image source={source} style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]} />
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            ) : (
+                              <Text style={styles.noPhotosHint}>Nenhuma foto adicionada</Text>
+                            )}
+                          </View>
+                        )}
 
                         {/* Observação do Poste */}
                         {poste.observacao && (
@@ -1809,6 +1962,8 @@ export default function ObraDetalhe() {
           const isServicoChave = tipoServico === 'Abertura e Fechamento de Chave';
           const isServicoDitais = tipoServico === 'Ditais';
           const isServicoBookAterramento = tipoServico === 'Book de Aterramento';
+          const isServicoFundacaoEspecial = tipoServico === 'Fundação Especial';
+          const isServicoLinhaViva = tipoServico === 'Linha Viva';
           const isServicoTransformador = tipoServico === 'Transformador';
           const isServicoMedidor = tipoServico === 'Instalação do Medidor';
           const isServicoChecklist = tipoServico === 'Checklist de Fiscalização';
@@ -1816,9 +1971,13 @@ export default function ObraDetalhe() {
           const isServicoAltimetria = tipoServico === 'Altimetria';
           const isServicoVazamento = tipoServico === 'Vazamento e Limpeza de Transformador';
           const isServicoCavaRocha = tipoServico === 'Cava em Rocha';
+          const isServicoPostesData = isServicoCavaRocha || isServicoLinhaViva || isServicoBookAterramento || isServicoFundacaoEspecial;
+          const hasPostesData = Array.isArray(obra?.postes_data) && obra.postes_data.length > 0;
+          const usarPostesDataComoPrimario = isServicoPostesData && hasPostesData;
           const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento &&
             !isServicoTransformador && !isServicoMedidor && !isServicoChecklist &&
-            !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoCavaRocha;
+            !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento &&
+            (!isServicoPostesData || !usarPostesDataComoPrimario);
 
           const relevantSections = PHOTO_SECTIONS.filter(section => {
             // Serviço Padrão: Antes, Durante, Depois
@@ -1835,7 +1994,7 @@ export default function ObraDetalhe() {
             }
             // Book Aterramento: 4 fotos
             if (isServicoBookAterramento && section.key.startsWith('fotos_aterramento_')) {
-              return true;
+              return !usarPostesDataComoPrimario;
             }
             // Transformador - Filtrar por status (Instalado/Retirado)
             if (isServicoTransformador && section.key.startsWith('fotos_transformador_')) {
@@ -1900,7 +2059,7 @@ export default function ObraDetalhe() {
             return getPhotosForSection(section.key);
           }).flat();
 
-          if (allPhotos.length === 0 && relevantSections.length === 0) {
+          if (allPhotos.length === 0 && relevantSections.length === 0 && !usarPostesDataComoPrimario) {
             return (
               <View style={styles.infoCard}>
                 <Text style={styles.noPhotosTitle}>Nenhuma foto disponível</Text>
@@ -1977,7 +2136,7 @@ export default function ObraDetalhe() {
                                     >
                                       <Image
                                         source={source}
-                                        style={styles.photoThumb}
+                                        style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]}
                                       />
                                     </TouchableOpacity>
                                   );
@@ -2021,7 +2180,7 @@ export default function ObraDetalhe() {
                               >
                                 <Image
                                   source={source}
-                                  style={styles.photoThumb}
+                                  style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]}
                                 />
                               </TouchableOpacity>
                             );
@@ -2061,7 +2220,7 @@ export default function ObraDetalhe() {
                               >
                                 <Image
                                   source={source}
-                                  style={styles.photoThumb}
+                                  style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]}
                                 />
                               </TouchableOpacity>
                             );
@@ -2116,7 +2275,7 @@ export default function ObraDetalhe() {
                                     >
                                       <Image
                                         source={source}
-                                        style={styles.photoThumb}
+                                        style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]}
                                       />
                                     </TouchableOpacity>
                                   );
@@ -2152,7 +2311,7 @@ export default function ObraDetalhe() {
                         >
                           <Image
                             source={source}
-                            style={styles.photoThumb}
+                            style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]}
                           />
                         </TouchableOpacity>
                       );
@@ -2254,6 +2413,10 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f2f2f2',
     backgroundColor: '#fff',
   },
+  headerCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2270,10 +2433,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
+  backButtonCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
   backButtonText: {
     color: '#0f172a',
     fontWeight: '600',
     fontSize: 15,
+  },
+  backButtonTextCompact: {
+    fontSize: 13,
   },
   headerTitle: {
     flex: 1,
@@ -2281,6 +2452,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1a1a1a',
     textAlign: 'center',
+  },
+  headerTitleCompact: {
+    fontSize: 16,
+    marginHorizontal: 6,
   },
   headerActionPlaceholder: {
     width: 72,
@@ -2294,6 +2469,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: '#edeff5',
+  },
+  refreshButtonCompact: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
   },
   container: {
     flex: 1,
@@ -2316,9 +2496,15 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     marginBottom: 4,
   },
+  cardTitleCompact: {
+    fontSize: 19,
+  },
   cardSubtitle: {
     fontSize: 14,
     color: '#777',
+  },
+  cardSubtitleCompact: {
+    fontSize: 13,
   },
   statusBadge: {
     alignSelf: 'flex-start',
@@ -2369,6 +2555,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
+    flexShrink: 1,
   },
   section: {
     marginTop: 10,
@@ -2477,6 +2664,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 12,
   },
+  actionButtonsStacked: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  actionButtonFullWidth: {
+    width: '100%',
+  },
   continuarButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2494,8 +2688,10 @@ const styles = StyleSheet.create({
   },
   continuarButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   finalizarButton: {
     flexDirection: 'row',
@@ -2519,8 +2715,10 @@ const styles = StyleSheet.create({
   },
   finalizarButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   // Estilos do botão Sincronizar
   sincronizarButton: {
@@ -2537,7 +2735,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
-    marginRight: 8,
   },
   sincronizarButtonDisabled: {
     backgroundColor: '#90CAF9',
@@ -2546,8 +2743,10 @@ const styles = StyleSheet.create({
   },
   sincronizarButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   dicaText: {
     textAlign: 'center',
@@ -2721,3 +2920,5 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 });
+
+

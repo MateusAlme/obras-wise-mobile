@@ -203,13 +203,92 @@ async function loadPhotoWithDimensions(
 /**
  * Renderiza a placa de informações abaixo da imagem no PDF
  */
+function toNumberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/[^\d.-]/g, '')
+    if (!cleaned) return null
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function getUtmDisplayFromCoords(
+  utmX: number | null,
+  utmY: number | null,
+  utmZoneRaw: string | null | undefined
+): string {
+  if (utmX == null || utmY == null) return ''
+  const zone = String(utmZoneRaw || '').trim() || 'UTM'
+  return `${zone} ${Math.round(utmX)} ${Math.round(utmY)}`
+}
+
+function getUtmDisplayFromPhotoData(photo: FotoInfo | any): string {
+  const photoData = photo as any
+  const photoUtmX = toNumberOrNull(photoData.utmX ?? photoData.utm_x)
+  const photoUtmY = toNumberOrNull(photoData.utmY ?? photoData.utm_y)
+  const photoUtmZoneRaw = photoData.utmZone ?? photoData.utm_zone ?? null
+
+  const utmFromPhoto = getUtmDisplayFromCoords(photoUtmX, photoUtmY, photoUtmZoneRaw)
+  if (utmFromPhoto) return utmFromPhoto
+
+  if (photoData.latitude != null && photoData.longitude != null) {
+    const utm = latLongToUTM(photo.latitude, photo.longitude)
+    return formatUTM(utm)
+  }
+
+  return ''
+}
+
+function findFirstUtmDisplayInAny(value: unknown, depth = 0): string {
+  if (value == null || depth > 8) return ''
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findFirstUtmDisplayInAny(item, depth + 1)
+      if (found) return found
+    }
+    return ''
+  }
+
+  if (typeof value === 'object') {
+    const asObj = value as any
+    const direct = getUtmDisplayFromPhotoData(asObj)
+    if (direct) return direct
+
+    for (const nestedValue of Object.values(asObj)) {
+      const found = findFirstUtmDisplayInAny(nestedValue, depth + 1)
+      if (found) return found
+    }
+  }
+
+  return ''
+}
+
+function getObraFallbackUtmDisplay(obra: Obra): string {
+  const obraUtmLeste = toNumberOrNull(obra.utm_leste)
+  const obraUtmNorte = toNumberOrNull(obra.utm_norte)
+  const fromObraFields = getUtmDisplayFromCoords(obraUtmLeste, obraUtmNorte, null)
+  if (fromObraFields) return fromObraFields
+
+  return findFirstUtmDisplayInAny(obra)
+}
+
+function getUtmDisplayForPhoto(photo: FotoInfo, fallbackUtmDisplay: string): string {
+  const direct = getUtmDisplayFromPhotoData(photo)
+  if (direct) return direct
+  return fallbackUtmDisplay
+}
+
 function renderPlacaBelowImage(
   pdf: jsPDF,
   photo: FotoInfo,
   obra: Obra,
   xPos: number,
   yPos: number,
-  placaWidth: number
+  placaWidth: number,
+  fallbackUtmDisplay: string
 ): number {
   // Preparar dados da placa
   const obraNumero = photo.placaData?.obraNumero || obra.obra
@@ -217,12 +296,8 @@ function renderPlacaBelowImage(
   const equipe = photo.placaData?.equipe || obra.equipe
   const dataHora = photo.placaData?.dataHora || format(parseISO(obra.data), "dd/MM/yyyy")
 
-  // Calcular UTM se tiver GPS
-  let utmDisplay = ''
-  if (photo.latitude && photo.longitude) {
-    const utm = latLongToUTM(photo.latitude, photo.longitude)
-    utmDisplay = formatUTM(utm)
-  }
+  // Prioridade: UTM/GPS da foto -> fallback de UTM da obra
+  const utmDisplay = getUtmDisplayForPhoto(photo, fallbackUtmDisplay)
 
   // Altura da placa
   const placaHeight = utmDisplay ? 18 : 14
@@ -686,6 +761,8 @@ export async function generatePDF(obra: Obra) {
   // ========== PÁGINAS DE FOTOS ==========
   // Cada foto em uma página dedicada
 
+  const obraUtmFallback = getObraFallbackUtmDisplay(obra)
+
   const addPhotosSection = async (photos: FotoInfo[] | undefined, title: string) => {
     if (!photos || photos.length === 0) return
 
@@ -741,7 +818,7 @@ export async function generatePDF(obra: Obra) {
         yPos += finalImageHeight + 2
 
         // Renderizar placa ABAIXO da imagem
-        renderPlacaBelowImage(pdf, photo, obra, imageX, yPos, finalImageWidth)
+        renderPlacaBelowImage(pdf, photo, obra, imageX, yPos, finalImageWidth, obraUtmFallback)
 
       } catch (error) {
         console.error('Erro ao adicionar foto:', error)
@@ -855,8 +932,8 @@ export async function generatePDF(obra: Obra) {
   // 8. Padrão Interno
   await addPhotosSection(obra.fotos_checklist_padrao_interno, 'Checklist - 8. Padrão de Ligação - Interno')
 
-  // 9. Frying
-  await addPhotosSection(obra.fotos_checklist_frying, 'Checklist - 9. Frying')
+  // 9. Flying
+  await addPhotosSection(obra.fotos_checklist_frying, 'Checklist - 9. Flying')
 
   // 10. Abertura e Fechamento de Pulo
   await addPhotosSection(obra.fotos_checklist_abertura_fechamento_pulo, 'Checklist - 10. Abertura e Fechamento de Pulo')

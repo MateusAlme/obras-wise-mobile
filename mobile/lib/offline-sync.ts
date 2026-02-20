@@ -87,13 +87,15 @@ export interface PendingObra {
   fotos_vazamento_tombamento_instalado: string[];
   fotos_vazamento_placa_instalado: string[];
   fotos_vazamento_instalacao: string[];
-  // Cava em Rocha - Dados dos postes
+  // Linha Viva / Cava em Rocha - Dados dos postes
   postes_data?: Array<{
     id: string;
     numero: number;
+    isAditivo?: boolean;
     fotos_antes: string[];
     fotos_durante: string[];
     fotos_depois: string[];
+    fotos_medicao?: string[];
     observacao?: string;
   }>;
   // Checklist de Fiscalização - Dados estruturados dos postes e seccionamentos
@@ -130,9 +132,10 @@ export interface PendingObra {
   fotos_checklist_frying?: string[];
   fotos_checklist_abertura_fechamento_pulo?: string[];
   // Identificação do criador
-  creator_role?: 'compressor' | 'equipe'; // Identificador permanente de quem criou
+  creator_role?: 'compressor' | 'admin' | 'equipe'; // Identificador permanente de quem criou
+  created_by_admin?: string | null; // Código do admin que criou (ex: Admin-Pereira, Coord-Silva)
   created_at: string;
-  sync_status: 'pending' | 'syncing' | 'failed';
+  sync_status?: 'pending' | 'syncing' | 'failed' | 'partial';
   error_message?: string;
   sync_attempts?: number; // Número de tentativas de sync falhadas (para backup de emergência)
   photos_uploaded: boolean; // Nova flag
@@ -153,6 +156,91 @@ export interface LocalObra extends PendingObra {
   serverId?: string; // ID no servidor (após sync)
   locallyModified: boolean; // Se foi modificada localmente após sync
 }
+
+const hasPendingPhotosForObra = (
+  obra: { id: string; serverId?: string },
+  pendingPhotos: PhotoMetadata[]
+): boolean => {
+  if (!pendingPhotos.length) return false;
+  return pendingPhotos.some(
+    (photo) => photo.obraId === obra.id || (!!obra.serverId && photo.obraId === obra.serverId)
+  );
+};
+
+const extractPhotoIdFromItem = (item: unknown): string | null => {
+  if (typeof item === 'string') {
+    if (
+      item.startsWith('http://') ||
+      item.startsWith('https://') ||
+      item.startsWith('file://')
+    ) {
+      return null;
+    }
+    return item;
+  }
+
+  if (
+    typeof item === 'object' &&
+    item !== null &&
+    'id' in item &&
+    typeof (item as any).id === 'string'
+  ) {
+    const candidate = (item as any).id as string;
+    if (
+      candidate.startsWith('http://') ||
+      candidate.startsWith('https://') ||
+      candidate.startsWith('file://')
+    ) {
+      return null;
+    }
+    return candidate;
+  }
+
+  return null;
+};
+
+const collectObraReferencedPhotoIds = (obra: PendingObra): string[] => {
+  const ids = new Set<string>();
+
+  const isPhotoArrayKey = (key: string) =>
+    key.startsWith('fotos_') || key.startsWith('doc_') || key.startsWith('foto');
+
+  const visit = (value: unknown, key = ''): void => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      if (isPhotoArrayKey(key)) {
+        value.forEach((item) => {
+          const photoId = extractPhotoIdFromItem(item);
+          if (photoId) {
+            ids.add(photoId);
+          }
+        });
+        return;
+      }
+
+      if (key.endsWith('_data')) {
+        value.forEach((item) => {
+          if (item && typeof item === 'object') {
+            visit(item, key);
+          }
+        });
+      }
+      return;
+    }
+
+    if (typeof value !== 'object') return;
+
+    Object.entries(value as Record<string, unknown>).forEach(([nestedKey, nestedValue]) => {
+      if (Array.isArray(nestedValue) || (nestedValue && typeof nestedValue === 'object')) {
+        visit(nestedValue, nestedKey);
+      }
+    });
+  };
+
+  visit(obra as unknown as Record<string, unknown>);
+  return Array.from(ids);
+};
 
 type PhotoGroupIds = {
   antes: string[];
@@ -308,7 +396,45 @@ export const saveObraLocal = async (
 export const getLocalObras = async (): Promise<LocalObra[]> => {
   try {
     const data = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
-    return data ? JSON.parse(data) : [];
+    const localObras: LocalObra[] = data ? JSON.parse(data) : [];
+
+    if (!localObras.length) {
+      return [];
+    }
+
+    const pendingPhotos = await getPendingPhotos();
+    if (!pendingPhotos.length) {
+      return localObras;
+    }
+
+    let changed = false;
+    const normalized = localObras.map((obra) => {
+      if (!hasPendingPhotosForObra(obra, pendingPhotos)) {
+        return obra;
+      }
+
+      if (obra.synced === false && obra.locallyModified && obra.sync_status === 'partial') {
+        return obra;
+      }
+
+      changed = true;
+      console.warn(
+        `⚠️ [getLocalObras] Obra ${obra.obra} estava marcada como sincronizada, mas ainda tem fotos pendentes. Ajustando status para parcial.`
+      );
+
+      return {
+        ...obra,
+        synced: false,
+        locallyModified: true,
+        sync_status: 'partial',
+      } as LocalObra;
+    });
+
+    if (changed) {
+      await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(normalized));
+    }
+
+    return normalized;
   } catch (error) {
     console.error('Erro ao obter obras locais:', error);
     return [];
@@ -548,10 +674,17 @@ export const syncLocalObra = async (
       return false;
     }
 
-    // Se já está sincronizada e não foi modificada, pular
-    if (obra.synced && !obra.locallyModified) {
+    const pendingPhotosSnapshot = await getPendingPhotos();
+    const hasPendingSnapshot = hasPendingPhotosForObra(obra, pendingPhotosSnapshot);
+
+    // Se já está sincronizada, sem modificações e sem fotos pendentes, pular
+    if (obra.synced && !obra.locallyModified && !hasPendingSnapshot) {
       console.log(`✅ Obra já sincronizada: ${obraId}`);
       return true;
+    }
+
+    if (hasPendingSnapshot) {
+      console.log(`🔄 Obra ${obraId} possui fotos pendentes e será re-sincronizada.`);
     }
 
     console.log(`🔄 Sincronizando obra local: ${obraId}`);
@@ -588,14 +721,15 @@ export const syncLocalObra = async (
       }
 
       // ✅ CORREÇÃO: Verificar se há fotos pendentes antes de marcar como synced
-      const { getPendingPhotos, getZombiePhotos } = await import('./photo-backup');
+      const { getZombiePhotos } = await import('./photo-backup');
       const pendingPhotos = await getPendingPhotos();
-      const zombiePhotos = await getZombiePhotos(obraId);
+      const zombiePhotos = await getZombiePhotos();
       const obraPendingPhotos = pendingPhotos.filter(p => p.obraId === obraId || p.obraId === finalId);
+      const obraZombiePhotos = zombiePhotos.filter(p => p.obraId === obraId || p.obraId === finalId);
 
-      const hasPendingPhotos = obraPendingPhotos.length > 0 || zombiePhotos.length > 0;
+      const hasPendingPhotos = obraPendingPhotos.length > 0 || obraZombiePhotos.length > 0;
       if (hasPendingPhotos) {
-        console.warn(`⚠️ Obra ${obraId} tem ${obraPendingPhotos.length} foto(s) pendente(s) e ${zombiePhotos.length} foto(s) zombie`);
+        console.warn(`⚠️ Obra ${obraId} tem ${obraPendingPhotos.length} foto(s) pendente(s) e ${obraZombiePhotos.length} foto(s) zombie`);
         console.warn(`⚠️ Obra NÃO será marcada como totalmente sincronizada - permitindo re-sync`);
       }
 
@@ -624,7 +758,7 @@ export const syncLocalObra = async (
 
           if (hasPendingPhotos) {
             console.log(`⚠️ Obra parcialmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
-            console.log(`   Fotos pendentes: ${obraPendingPhotos.length}, Fotos zombie: ${zombiePhotos.length}`);
+            console.log(`   Fotos pendentes: ${obraPendingPhotos.length}, Fotos zombie: ${obraZombiePhotos.length}`);
           } else {
             console.log(`✅ Obra totalmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
           }
@@ -633,6 +767,7 @@ export const syncLocalObra = async (
           console.warn(`⚠️ Não foi possível buscar dados atualizados, marcando apenas como sincronizada`);
           localObras[index].synced = !hasPendingPhotos;
           localObras[index].locallyModified = hasPendingPhotos;
+          localObras[index].sync_status = hasPendingPhotos ? 'partial' : undefined;
           // ✅ Ainda assim, guardar o serverId se disponível
           if (finalId && finalId !== obraId) {
             (localObras[index] as any).serverId = finalId;
@@ -1397,6 +1532,25 @@ const convertChecklistHastesTermometrosData = async (hastesData: any[]): Promise
   return result;
 };
 
+/**
+ * Converte estruturas de postes_data para ter URLs nas fotos (Linha Viva, Cava, Book, Fundação)
+ */
+const convertPostesData = async (postesData: any[]): Promise<any[]> => {
+  if (!postesData || !Array.isArray(postesData)) return postesData;
+
+  const result = [];
+  for (const poste of postesData) {
+    result.push({
+      ...poste,
+      fotos_antes: await convertPhotoIdsToUrls(poste?.fotos_antes || []),
+      fotos_durante: await convertPhotoIdsToUrls(poste?.fotos_durante || []),
+      fotos_depois: await convertPhotoIdsToUrls(poste?.fotos_depois || []),
+      fotos_medicao: await convertPhotoIdsToUrls(poste?.fotos_medicao || []),
+    });
+  }
+  return result;
+};
+
 const translateErrorMessage = (message?: string): string => {
   if (!message) {
     return 'Erro desconhecido. Tente novamente.';
@@ -1436,7 +1590,13 @@ export const syncObra = async (
 
     // Processar upload das fotos através da fila
     console.log(`🚀 [syncObra] Iniciando upload de fotos para obra ${obra.obra}`);
-    const uploadResult = await processObraPhotos(obra.id, onProgress);
+    const referencedPhotoIds = collectObraReferencedPhotoIds(obra);
+    console.log(`📌 [syncObra] IDs de fotos referenciados na obra: ${referencedPhotoIds.length}`);
+    const uploadResult = await processObraPhotos(
+      obra.id,
+      onProgress,
+      referencedPhotoIds.length > 0 ? referencedPhotoIds : undefined
+    );
     console.log(`📊 [syncObra] Upload concluído: ${uploadResult.success} sucesso, ${uploadResult.failed} falhas`);
 
     // SYNC PARCIAL: Permitir salvar obra mesmo se algumas fotos falharem
@@ -1469,6 +1629,7 @@ export const syncObra = async (
     const checklistSeccionamentosDataConverted = await convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data);
     const checklistAterramentosDataConverted = await convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data);
     const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
+    const postesDataConverted = await convertPostesData((obra as any).postes_data);
 
     // Obter URLs das fotos uploadadas
     console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas...`);
@@ -1733,9 +1894,10 @@ export const syncObra = async (
           fotos_vazamento_placa_instalado: replaceOrKeep(fotosVazamentoPlacaInstaladoData, existingObra.fotos_vazamento_placa_instalado),
           fotos_vazamento_instalacao: replaceOrKeep(fotosVazamentoInstalacaoData, existingObra.fotos_vazamento_instalacao),
           // Cava em Rocha - Dados dos postes
-          postes_data: obra.postes_data || existingObra.postes_data || null,
+          postes_data: postesDataConverted ?? existingObra.postes_data ?? null,
           observacoes: (obra as any).observacoes || existingObra.observacoes || null,
           creator_role: (obra as any).creator_role || existingObra.creator_role || null,
+          created_by_admin: (obra as any).created_by_admin || existingObra.created_by_admin || null,
           // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
           checklist_postes_data: checklistPostesDataConverted || existingObra.checklist_postes_data || null,
           checklist_seccionamentos_data: checklistSeccionamentosDataConverted || existingObra.checklist_seccionamentos_data || null,
@@ -1854,8 +2016,9 @@ export const syncObra = async (
           fotos_vazamento_tombamento_instalado: fotosVazamentoTombamentoInstaladoData,
           fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstaladoData,
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
-          postes_data: obra.postes_data || null,
+          postes_data: postesDataConverted ?? null,
           observacoes: (obra as any).observacoes || null,
+          created_by_admin: (obra as any).created_by_admin || null,
           // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
           checklist_postes_data: checklistPostesDataConverted || null,
           checklist_seccionamentos_data: checklistSeccionamentosDataConverted || null,
@@ -1883,7 +2046,6 @@ export const syncObra = async (
         const localObraIndex = localObras.findIndex(o => o.id === obra.id);
         if (localObraIndex !== -1) {
           localObras[localObraIndex].serverId = existingByNumero.id;
-          localObras[localObraIndex].synced = true;
           await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
           console.log(`✅ [syncObra] serverId atualizado na obra local: ${existingByNumero.id}`);
         }
@@ -1968,9 +2130,10 @@ export const syncObra = async (
           fotos_vazamento_placa_instalado: fotosVazamentoPlacaInstaladoData,
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
           // Cava em Rocha - Dados dos postes
-          postes_data: obra.postes_data || null,
+          postes_data: postesDataConverted ?? null,
           observacoes: (obra as any).observacoes || null,
           creator_role: (obra as any).creator_role || null,
+          created_by_admin: (obra as any).created_by_admin || null,
           // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
           checklist_postes_data: checklistPostesDataConverted || null,
           checklist_seccionamentos_data: checklistSeccionamentosDataConverted || null,
@@ -2100,28 +2263,16 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
 
     // 2. Sincronizar obras de @obras_local que não foram sincronizadas
     const localObras = await getLocalObras();
-    const localObrasToSync = localObras.filter(o => !o.synced && o.sync_status !== 'syncing');
+    const pendingPhotos = await getPendingPhotos();
+    const localObrasToSync = localObras.filter(
+      o => (!o.synced || hasPendingPhotosForObra(o, pendingPhotos)) && o.sync_status !== 'syncing'
+    );
     console.log(`📊 [syncAllPendingObras] Obras locais não sincronizadas: ${localObrasToSync.length}`);
 
     for (const localObra of localObrasToSync) {
       try {
-        // Converter LocalObra para PendingObra para usar syncObra
-        const pendingObra: PendingObra = {
-          ...localObra,
-          sync_status: 'pending',
-          photos_uploaded: false,
-        };
-
-        const result = await syncObra(pendingObra);
-        if (result.success) {
-          // Marcar como sincronizada em @obras_local
-          const updatedLocalObras = await getLocalObras();
-          const index = updatedLocalObras.findIndex(o => o.id === localObra.id);
-          if (index !== -1) {
-            updatedLocalObras[index].synced = true;
-            updatedLocalObras[index].serverId = result.newId;
-            await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(updatedLocalObras));
-          }
+        const synced = await syncLocalObra(localObra.id);
+        if (synced) {
           success++;
           console.log(`✅ [syncAllPendingObras] Obra local sincronizada: ${localObra.obra}`);
         } else {
@@ -2225,8 +2376,9 @@ export const syncAllPendingObrasWithProgress = async (
     );
 
     const localObras = await getLocalObras();
+    const pendingPhotos = await getPendingPhotos();
     const obrasToSyncLocal = localObras.filter(
-      o => !o.synced && o.sync_status !== 'syncing'
+      o => (!o.synced || hasPendingPhotosForObra(o, pendingPhotos)) && o.sync_status !== 'syncing'
     );
 
     // Combinar todas as obras que precisam sincronizar
@@ -2251,12 +2403,13 @@ export const syncAllPendingObrasWithProgress = async (
       }
 
       const obra = allObrasToSync[i];
+      const isLocalObra = obrasToSyncLocal.some(o => o.id === obra.id);
 
       try {
         console.log(`🔄 [syncAllPendingObrasWithProgress] Sincronizando obra ${i + 1}/${totalObras}: ${obra.obra}`);
 
         // Sincronizar obra com callback de progresso de fotos
-        const result = await syncObra(obra, (photoProgress) => {
+        const progressHandler = (photoProgress: UploadProgress) => {
           // Notificar progresso ao callback principal
           onProgress?.({
             currentObraIndex: i,
@@ -2268,21 +2421,13 @@ export const syncAllPendingObrasWithProgress = async (
             },
             status: 'syncing',
           });
-        });
+        };
+
+        const result = isLocalObra
+          ? { success: await syncLocalObra(obra.id, progressHandler) }
+          : await syncObra(obra, progressHandler);
 
         if (result.success) {
-          // Se era obra local, marcar como sincronizada
-          const isLocalObra = obrasToSyncLocal.find(o => o.id === obra.id);
-          if (isLocalObra) {
-            const updatedLocalObras = await getLocalObras();
-            const index = updatedLocalObras.findIndex(o => o.id === obra.id);
-            if (index !== -1) {
-              updatedLocalObras[index].synced = true;
-              updatedLocalObras[index].serverId = result.newId;
-              await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(updatedLocalObras));
-            }
-          }
-
           success++;
           console.log(`✅ [syncAllPendingObrasWithProgress] Obra ${obra.obra} sincronizada com sucesso`);
         } else {

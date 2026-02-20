@@ -46,12 +46,11 @@ export default function Login() {
       const isConnected = await checkInternetConnection();
 
       if (isConnected) {
-        // Buscar equipes do banco de dados
+        // Buscar perfis de login ativos (equipe/admin/compressor)
         const { data, error } = await supabase
-          .from('equipes')
-          .select('codigo')
-          .eq('ativa', true)
-          .order('codigo');
+          .from('equipe_credenciais')
+          .select('equipe_codigo, role')
+          .eq('ativo', true);
 
         if (error) {
           console.error('❌ Erro ao carregar equipes do banco:', error);
@@ -62,13 +61,25 @@ export default function Login() {
           await loadEquipesFromCache();
         } else {
           console.log(`✅ ${data.length} equipes carregadas do banco`);
-          const equipesCarregadas = data.map(e => e.codigo);
-          // Sempre adicionar COMP no início
-          const equipesComComp = ['COMP', ...equipesCarregadas];
-          setEquipes(equipesComComp);
-          console.log('📋 Equipes disponíveis:', equipesComComp.slice(0, 5).join(', '), '...');
+          const roleWeight: Record<string, number> = { admin: 0, compressor: 1, equipe: 2 };
+          const equipesComPerfis = data
+            .map((item: any) => ({
+              codigo: String(item?.equipe_codigo || '').trim(),
+              role: String(item?.role || 'equipe').trim().toLowerCase(),
+            }))
+            .filter(item => item.codigo.length > 0)
+            .sort((a, b) => {
+              const aWeight = roleWeight[a.role] ?? 99;
+              const bWeight = roleWeight[b.role] ?? 99;
+              if (aWeight !== bWeight) return aWeight - bWeight;
+              return a.codigo.localeCompare(b.codigo);
+            })
+            .map(item => item.codigo);
+          const listaFinal = Array.from(new Set(equipesComPerfis));
+          setEquipes(listaFinal);
+          console.log('📋 Equipes disponíveis:', listaFinal.slice(0, 5).join(', '), '...');
           // Salvar em cache para uso offline
-          await AsyncStorage.setItem('@equipes_cache', JSON.stringify(equipesComComp));
+          await AsyncStorage.setItem('@equipes_cache', JSON.stringify(listaFinal));
         }
       } else {
         // Modo offline - carregar do cache
@@ -90,7 +101,9 @@ export default function Login() {
       } else {
         // Fallback para lista padrão se não houver cache
         setEquipes([
-          'COMP',
+          'ADMIN',
+          'COM-CZ',
+          'COM-PT',
           'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
           'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
           'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
@@ -100,7 +113,9 @@ export default function Login() {
       console.error('Erro ao carregar cache de equipes:', error);
       // Última opção: lista hardcoded
       setEquipes([
-        'COMP',
+        'ADMIN',
+        'COM-CZ',
+        'COM-PT',
         'CNT 01', 'CNT 02', 'CNT 03', 'CNT 04', 'CNT 06', 'CNT 07', 'CNT 10', 'CNT 11', 'CNT 12',
         'MNT 01', 'MNT 02', 'MNT 03', 'MNT 04', 'MNT 05', 'MNT 06',
         'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
@@ -113,126 +128,96 @@ export default function Login() {
       Alert.alert('Erro', 'Por favor, selecione a equipe e digite a senha');
       return;
     }
-
     setLoading(true);
     const isOnline = await checkInternetConnection();
-
     try {
-      // VERIFICAR SE É LOGIN DO COMP (usuário especial)
-      if (equipe === 'COMP' && password === 'Teccel2025') {
-        // Login COMP - Perfil Compressor (Cava em Rocha)
-        await AsyncStorage.setItem('@equipe_logada', 'COMP');
-        await AsyncStorage.setItem('@user_logado', 'COMP');
-        await AsyncStorage.setItem('@user_role', 'compressor');
-        await AsyncStorage.setItem('@login_timestamp', new Date().toISOString());
-
-        // Gerar hash da senha para armazenamento seguro
-        const passwordHash = await hashPassword(password);
-
-        // Salvar em cache para login offline
-        await AsyncStorage.setItem('@cached_credentials', JSON.stringify({
-          equipe: 'COMP',
-          password_hash: passwordHash,
-          role: 'compressor',
-          last_validated: new Date().toISOString(),
-        }));
-
-        console.log('Login COMP realizado com sucesso! Role: compressor');
-        router.replace('/(comp)'); // Rota exclusiva para COMP (tabs)
-        setLoading(false);
-        return;
-      }
-
       if (isOnline) {
         // LOGIN ONLINE - Validar com servidor
         const { data, error } = await supabase.rpc('validar_login_equipe', {
           p_equipe_codigo: equipe,
           p_senha: password,
         });
-
         if (error) {
           console.error('Erro ao validar login:', error);
           Alert.alert('Erro', 'Erro ao validar credenciais. Tente novamente.');
           return;
         }
-
         const resultado = Array.isArray(data) ? data[0] : data;
-
         if (!resultado || !resultado.valido) {
           Alert.alert('Erro', 'Equipe ou senha incorretos');
           return;
         }
-
-        // Gerar hash da senha para armazenamento seguro
+        const roleFromBackend = resultado?.role || 'equipe';
+        const sessionTokenFromBackend = resultado?.session_token || null;
+        const sessionExpiresAtFromBackend = resultado?.session_expires_at || null;
+        if (!sessionTokenFromBackend) {
+          Alert.alert(
+            'Erro de Sessao',
+            'Login validado, mas o servidor nao retornou token de sessao. Atualize o backend e tente novamente.'
+          );
+          return;
+        }
         const passwordHash = await hashPassword(password);
-
-        // Salvar credenciais em cache para login offline futuro
         await AsyncStorage.setItem('@cached_credentials', JSON.stringify({
-          equipe: equipe,
+          equipe,
           password_hash: passwordHash,
-          role: 'equipe',
+          role: roleFromBackend,
+          session_token: sessionTokenFromBackend,
+          session_expires_at: sessionExpiresAtFromBackend,
           last_validated: new Date().toISOString(),
         }));
-
-        // Salvar informações da sessão
         await AsyncStorage.setItem('@equipe_logada', equipe);
         await AsyncStorage.setItem('@user_logado', equipe);
-        await AsyncStorage.setItem('@user_role', 'equipe');
+        await AsyncStorage.setItem('@user_role', roleFromBackend);
         await AsyncStorage.setItem('@equipe_id', resultado.equipe_id);
-        await AsyncStorage.setItem('@login_timestamp', new Date().toISOString());
-
-        // Registrar sessão de login (opcional, para auditoria)
-        try {
-          await supabase.from('equipe_sessoes').insert({
-            equipe_codigo: equipe,
-            device_id: await AsyncStorage.getItem('@device_id'),
-            login_at: new Date().toISOString(),
-          });
-        } catch (err) {
-          console.warn('Erro ao registrar sessão:', err);
+        await AsyncStorage.setItem('@session_token', sessionTokenFromBackend);
+        if (sessionExpiresAtFromBackend) {
+          await AsyncStorage.setItem('@session_expires_at', String(sessionExpiresAtFromBackend));
+        } else {
+          await AsyncStorage.removeItem('@session_expires_at');
         }
-
-        console.log('Login online realizado com sucesso! Equipe:', equipe);
+        await AsyncStorage.setItem('@login_timestamp', new Date().toISOString());
+        console.log('Login online realizado com sucesso! Equipe:', equipe, 'Role:', roleFromBackend);
         router.replace('/(tabs)');
       } else {
         // LOGIN OFFLINE - Validar com cache
         const cachedCredentialsStr = await AsyncStorage.getItem('@cached_credentials');
-
         if (!cachedCredentialsStr) {
           Alert.alert(
-            'Login offline indisponível',
-            'Você precisa fazer login com internet pelo menos uma vez antes de usar o modo offline.'
+            'Login offline indisponivel',
+            'Voce precisa fazer login com internet pelo menos uma vez antes de usar o modo offline.'
           );
           return;
         }
-
         const cachedCredentials = JSON.parse(cachedCredentialsStr);
-
-        // Verificar se as credenciais coincidem
         const passwordMatches = await verifyPassword(password, cachedCredentials.password_hash);
-
         if (cachedCredentials.equipe === equipe && passwordMatches) {
-          // Login offline bem-sucedido
           await AsyncStorage.setItem('@equipe_logada', equipe);
           await AsyncStorage.setItem('@user_logado', equipe);
           await AsyncStorage.setItem('@user_role', cachedCredentials.role || 'equipe');
+          if (cachedCredentials.session_token) {
+            await AsyncStorage.setItem('@session_token', cachedCredentials.session_token);
+          } else {
+            await AsyncStorage.removeItem('@session_token');
+          }
+          if (cachedCredentials.session_expires_at) {
+            await AsyncStorage.setItem('@session_expires_at', String(cachedCredentials.session_expires_at));
+          } else {
+            await AsyncStorage.removeItem('@session_expires_at');
+          }
           await AsyncStorage.setItem('@login_timestamp', new Date().toISOString());
           await AsyncStorage.setItem('@login_mode', 'offline');
-
           console.log('Login offline realizado com sucesso! Equipe:', equipe, 'Role:', cachedCredentials.role);
-
-          // Redirecionar para a rota correta baseado no role
-          const targetRoute = cachedCredentials.role === 'compressor' ? '/(comp)' : '/(tabs)';
-
+          const targetRoute = '/(tabs)';
           Alert.alert(
             'Modo Offline',
-            'Login realizado com credenciais em cache. Conecte-se à internet para sincronizar.',
+            'Login realizado com credenciais em cache. Conecte-se a internet para sincronizar.',
             [{ text: 'OK', onPress: () => router.replace(targetRoute) }]
           );
         } else {
           Alert.alert(
             'Credenciais incorretas',
-            'Equipe ou senha não correspondem às credenciais salvas.'
+            'Equipe ou senha nao correspondem as credenciais salvas.'
           );
         }
       }
@@ -346,7 +331,7 @@ export default function Login() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.modalList}>
+              <ScrollView style={styles.modalList} contentContainerStyle={{ paddingBottom: 30 }}>
                 {loadingEquipes ? (
                   <View style={styles.modalLoading}>
                     <ActivityIndicator size="large" color="#FF0000" />
@@ -512,6 +497,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '70%',
+    paddingBottom: 40, // Espaço extra para botões de navegação do Android
   },
   modalHeader: {
     flexDirection: 'row',
@@ -533,6 +519,7 @@ const styles = StyleSheet.create({
   },
   modalList: {
     maxHeight: 400,
+    paddingBottom: 20, // Espaço extra para scroll até o último item
   },
   modalItem: {
     padding: 16,

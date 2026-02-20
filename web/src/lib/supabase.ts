@@ -23,6 +23,8 @@ export interface Obra {
   utm_norte?: string | null
   utm_leste?: string | null
   observacoes?: string | null
+  creator_role?: 'compressor' | 'admin' | 'equipe' | null
+  created_by_admin?: string | null  // Código do admin que criou (ex: Admin-Pereira, Coord-Silva)
   fotos_antes?: FotoInfo[]
   fotos_durante?: FotoInfo[]
   fotos_depois?: FotoInfo[]
@@ -105,6 +107,12 @@ export interface FotoInfo {
   url: string
   latitude?: number | null
   longitude?: number | null
+  utmX?: number | null
+  utmY?: number | null
+  utmZone?: string | null
+  utm_x?: number | null
+  utm_y?: number | null
+  utm_zone?: string | null
   placaData?: {
     obraNumero?: string
     tipoServico?: string

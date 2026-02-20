@@ -1,21 +1,32 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
   Alert,
+  ScrollView,
+  TextInput,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase';
-import { getPendingObras, PendingObra, syncAllPendingObras, startAutoSync, getLocalObras } from '../../lib/offline-sync';
-import { checkInternetConnection } from '../../lib/offline-sync';
+import {
+  getPendingObras,
+  syncAllPendingObras,
+  startAutoSync,
+  getLocalObras,
+  checkInternetConnection,
+} from '../../lib/offline-sync';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+type ObraStatus = 'em_aberto' | 'finalizada' | 'rascunho';
+type ObraFilter = 'todas' | 'em_aberto' | 'finalizada';
+type SyncStatus = 'pending' | 'syncing' | 'failed' | 'partial';
 
 type Obra = {
   id: string;
@@ -23,42 +34,45 @@ type Obra = {
   obra: string;
   responsavel: string;
   equipe: string;
-  status: 'em_aberto' | 'finalizada';
+  status: ObraStatus;
   created_at: string;
+  tipo_servico?: string;
   created_by?: string;
-  sync_status?: 'pending' | 'syncing' | 'failed'; // Para obras offline
-  origem?: 'online' | 'offline'; // Para identificar origem
+  sync_status?: SyncStatus;
+  origem?: 'online' | 'offline';
+  serverId?: string;
 };
 
 export default function CompIndex() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [obras, setObras] = useState<Obra[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'todas' | 'em_aberto' | 'finalizada'>('todas');
+  const [filter, setFilter] = useState<ObraFilter>('todas');
+  const [searchTerm, setSearchTerm] = useState('');
   const [isOnline, setIsOnline] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [syncingPending, setSyncingPending] = useState(false);
+  const [equipeLogada, setEquipeLogada] = useState('');
+
+  const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
+  const isSmallScreen = width < 380;
 
   useEffect(() => {
+    loadCompSession();
     checkCompAccess();
     loadObras();
     checkConnection();
 
-    // Auto-sync quando conectar à internet
     const unsubscribe = startAutoSync(async (result) => {
       if (result.success > 0) {
-        Alert.alert(
-          'Sincronização Concluída',
-          `${result.success} obra(s) sincronizada(s) com sucesso!`
-        );
+        Alert.alert('Sincronizacao concluida', `${result.success} obra(s) sincronizada(s).`);
         await loadObras();
       }
       if (result.failed > 0) {
-        Alert.alert(
-          'Atenção',
-          `${result.failed} obra(s) não puderam ser sincronizadas. Tente novamente.`
-        );
+        Alert.alert('Atencao', `${result.failed} obra(s) nao puderam ser sincronizadas.`);
       }
     });
 
@@ -67,17 +81,45 @@ export default function CompIndex() {
     };
   }, []);
 
-  // Recarregar quando a tela recebe foco
   useFocusEffect(
     useCallback(() => {
+      loadCompSession();
       loadObras();
       checkConnection();
     }, [])
   );
 
+  const filteredObras = useMemo(() => {
+    const byStatus = filter === 'todas' ? obras : obras.filter((o) => o.status === filter);
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return byStatus;
+
+    return byStatus.filter((obra) => {
+      const target = `${obra.obra} ${obra.responsavel} ${obra.equipe}`.toLowerCase();
+      return target.includes(term);
+    });
+  }, [obras, filter, searchTerm]);
+
+  const openCount = useMemo(() => obras.filter((o) => o.status === 'em_aberto').length, [obras]);
+  const doneCount = useMemo(() => obras.filter((o) => o.status === 'finalizada').length, [obras]);
+
+  const loadCompSession = async () => {
+    try {
+      const equipe = await AsyncStorage.getItem('@equipe_logada');
+      setEquipeLogada(equipe || '');
+    } catch (error) {
+      console.error('Erro ao carregar equipe do compressor:', error);
+    }
+  };
+
   const checkCompAccess = async () => {
-    const role = await AsyncStorage.getItem('@user_role');
-    if (role !== 'compressor') {
+    try {
+      const role = await AsyncStorage.getItem('@user_role');
+      if (role !== 'compressor') {
+        router.replace('/login');
+      }
+    } catch (error) {
+      console.error('Erro ao validar perfil compressor:', error);
       router.replace('/login');
     }
   };
@@ -93,22 +135,16 @@ export default function CompIndex() {
       const result = await syncAllPendingObras();
 
       if (result.success > 0) {
-        Alert.alert(
-          'Sucesso',
-          `${result.success} obra(s) sincronizada(s) com sucesso!`
-        );
+        Alert.alert('Sucesso', `${result.success} obra(s) sincronizada(s).`);
         await loadObras();
       }
 
       if (result.failed > 0) {
-        Alert.alert(
-          'Atenção',
-          `${result.failed} obra(s) não puderam ser sincronizadas. Verifique a conexão e tente novamente.`
-        );
+        Alert.alert('Atencao', `${result.failed} obra(s) nao puderam ser sincronizadas.`);
       }
 
       if (result.success === 0 && result.failed === 0) {
-        Alert.alert('Info', 'Não há obras pendentes para sincronizar.');
+        Alert.alert('Info', 'Nao ha obras pendentes para sincronizar.');
       }
     } catch (error) {
       Alert.alert('Erro', 'Erro ao sincronizar obras. Tente novamente.');
@@ -117,150 +153,115 @@ export default function CompIndex() {
     }
   };
 
+  const parseStatus = (status: unknown): ObraStatus => {
+    if (status === 'finalizada' || status === 'rascunho' || status === 'em_aberto') {
+      return status;
+    }
+    return 'em_aberto';
+  };
+
+  const sortByCreatedAt = (items: Obra[]) => {
+    return [...items].sort((a, b) => {
+      const aTs = new Date(a.created_at || a.data).getTime() || 0;
+      const bTs = new Date(b.created_at || b.data).getTime() || 0;
+      return bTs - aTs;
+    });
+  };
+
+  const mergeObras = (online: Obra[], local: Obra[], pending: Obra[]) => {
+    const merged = new Map<string, Obra>();
+    for (const obra of online) merged.set(obra.id, obra);
+    for (const obra of local) merged.set(obra.id, obra);
+    for (const obra of pending) merged.set(obra.id, obra);
+    return sortByCreatedAt(Array.from(merged.values()));
+  };
+
   const loadObras = async () => {
     try {
       setLoading(true);
 
-      const isOnline = await checkInternetConnection();
+      const online = await checkInternetConnection();
+      setIsOnline(online);
+
       let obrasOnline: Obra[] = [];
       let obrasPendentes: Obra[] = [];
+      let obrasLocais: Obra[] = [];
 
-      // Carregar obras online se houver internet
-      if (isOnline) {
+      if (online) {
         try {
-          // DEBUG: Primeiro buscar TODAS as obras para ver o que tem
-          const { data: todasObras, error: debugError } = await supabase
-            .from('obras')
-            .select('id, obra, tipo_servico, creator_role, responsavel, created_at')
-            .order('created_at', { ascending: false })
-            .limit(10);
-
-          console.log('🔍 [COMP DEBUG] Últimas 10 obras no banco:', todasObras?.map(o => ({
-            id: o.id?.substring(0, 8),
-            obra: o.obra,
-            tipo: o.tipo_servico,
-            creator: o.creator_role,
-            resp: o.responsavel
-          })));
-
-          if (debugError) {
-            console.error('❌ [COMP DEBUG] Erro:', debugError.message);
-          }
-
-          // Buscar apenas obras de Cava em Rocha (serviço exclusivo do COMP)
-          // Também buscar por creator_role = 'compressor' como fallback
           const { data, error } = await supabase
             .from('obras')
             .select('*')
             .or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor')
             .order('created_at', { ascending: false });
 
-          console.log('🌐 [COMP] Obras encontradas (Cava em Rocha OU creator_role=compressor):', data?.length || 0);
-
           if (error) {
-            console.error('❌ [COMP] Erro na query:', error);
-          }
-
-          if (!error && data) {
-            obrasOnline = data.map(obra => ({ ...obra, origem: 'online' as const }));
+            console.error('Erro ao carregar obras online do compressor:', error);
+          } else if (data) {
+            obrasOnline = data.map((obra) => ({
+              ...obra,
+              status: parseStatus(obra.status),
+              origem: 'online' as const,
+            }));
           }
         } catch (error) {
-          console.error('Erro ao carregar obras online:', error);
+          console.error('Erro ao buscar obras online do compressor:', error);
         }
       }
 
-      // Carregar obras pendentes (offline - sincronização)
       try {
         const pendentes = await getPendingObras();
-        console.log('📊 [COMP] Total de obras pendentes:', pendentes.length);
+        const pendentesComp = pendentes.filter((p) => p.tipo_servico === 'Cava em Rocha');
 
-        // Filtrar apenas obras de Cava em Rocha
-        // NOTA: Cava em Rocha é serviço EXCLUSIVO do COMP, não precisa verificar responsavel/creator_role
-        const pendentesCOMP = pendentes.filter(p => {
-          const isCavaRocha = p.tipo_servico === 'Cava em Rocha';
-
-          // Log para debug
-          if (isCavaRocha) {
-            console.log('🔍 [COMP] Obra pendente Cava em Rocha:', {
-              id: p.id,
-              obra: p.obra,
-              responsavel: p.responsavel,
-              status: p.sync_status,
-            });
-          }
-
-          return isCavaRocha; // Cava em Rocha = COMP (exclusivo)
-        });
-
-        console.log('✅ [COMP] Obras pendentes do COMP:', pendentesCOMP.length);
-
-        obrasPendentes = pendentesCOMP.map(p => ({
+        obrasPendentes = pendentesComp.map((p) => ({
           id: p.id,
           data: p.data,
           obra: p.obra,
-          responsavel: p.responsavel,
-          equipe: p.equipe,
-          status: 'em_aberto' as const,
-          created_at: p.created_at,
-          sync_status: p.sync_status,
-          origem: 'offline' as const,
+          responsavel: p.responsavel || equipeLogada,
+          equipe: p.equipe || equipeLogada,
+          status: 'em_aberto',
+          created_at: p.created_at || p.data,
+          sync_status: (p.sync_status || 'pending') as SyncStatus,
+          origem: 'offline',
         }));
       } catch (error) {
-        console.error('Erro ao carregar obras pendentes:', error);
+        console.error('Erro ao carregar obras pendentes do compressor:', error);
       }
 
-      // Carregar obras locais (rascunhos e não sincronizadas)
-      let obrasLocais: Obra[] = [];
       try {
         const locais = await getLocalObras();
-        console.log('📊 [COMP] Total de obras locais:', locais.length);
+        const locaisComp = locais.filter((l) => l.tipo_servico === 'Cava em Rocha');
 
-        // Filtrar apenas obras de Cava em Rocha
-        // NOTA: Cava em Rocha é serviço EXCLUSIVO do COMP, não precisa verificar responsavel/creator_role
-        const locaisCOMP = locais.filter(l => {
-          const isCavaRocha = l.tipo_servico === 'Cava em Rocha';
-
-          // Log para debug
-          if (isCavaRocha) {
-            console.log('🔍 [COMP] Obra local Cava em Rocha:', {
-              id: l.id,
-              obra: l.obra,
-              responsavel: l.responsavel,
-              status: l.status,
-              synced: l.synced,
-            });
-          }
-
-          return isCavaRocha; // Cava em Rocha = COMP (exclusivo)
-        });
-
-        console.log('✅ [COMP] Obras locais do COMP:', locaisCOMP.length);
-
-        obrasLocais = locaisCOMP.map(l => ({
+        obrasLocais = locaisComp.map((l) => ({
           id: l.id,
           data: l.data,
           obra: l.obra,
-          responsavel: l.responsavel || 'COMP',
-          equipe: l.equipe,
-          status: (l.status || 'em_aberto') as 'em_aberto' | 'finalizada',
-          created_at: l.created_at,
-          sync_status: l.synced ? undefined : 'pending',
-          origem: 'offline' as const,
+          responsavel: l.responsavel || equipeLogada,
+          equipe: l.equipe || equipeLogada,
+          status: parseStatus(l.status),
+          created_at: l.created_at || l.data,
+          sync_status: (l.sync_status ?? (l.synced ? undefined : 'pending')) as SyncStatus | undefined,
+          origem: 'offline',
+          serverId: l.serverId,
         }));
       } catch (error) {
-        console.error('Erro ao carregar obras locais:', error);
+        console.error('Erro ao carregar obras locais do compressor:', error);
       }
 
-      // Combinar obras: pendentes primeiro, depois locais, depois online
-      // Remover duplicatas (obras que estão tanto em pendentes quanto em locais)
-      const localIds = new Set(obrasLocais.map(o => o.id));
-      const obrasLocaisUnicas = obrasLocais.filter(l => !obrasPendentes.some(p => p.id === l.id));
-
-      const todasObras = [...obrasPendentes, ...obrasLocaisUnicas, ...obrasOnline];
+      const todasObras = mergeObras(obrasOnline, obrasLocais, obrasPendentes);
       setObras(todasObras);
-      setPendingCount(obrasPendentes.length + obrasLocaisUnicas.length);
+
+      const pendingTotal = todasObras.filter(
+        (obra) =>
+          obra.origem === 'offline' &&
+          (obra.sync_status === 'pending' ||
+            obra.sync_status === 'syncing' ||
+            obra.sync_status === 'failed' ||
+            obra.sync_status === 'partial')
+      ).length;
+      setPendingCount(pendingTotal);
     } catch (error) {
-      console.error('Erro ao carregar obras:', error);
+      console.error('Erro ao carregar obras do compressor:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -272,91 +273,86 @@ export default function CompIndex() {
     loadObras();
   };
 
-  const getFilteredObras = () => {
-    if (filter === 'todas') return obras;
-    return obras.filter(o => o.status === filter);
-  };
-
   const formatDate = (dateString: string) => {
     try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('pt-BR');
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        return new Date(year, month - 1, day).toLocaleDateString('pt-BR');
+      }
+      return new Date(dateString).toLocaleDateString('pt-BR');
     } catch {
       return dateString;
     }
   };
 
-  const renderObraCard = ({ item }: { item: Obra }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => {
-        router.push({
-          pathname: '/obra-detalhe',
-          params: { data: encodeURIComponent(JSON.stringify({ ...item, origem: item.origem || 'online' })) },
-        });
-      }}
-      activeOpacity={0.7}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderLeft}>
-          <Ionicons name="construct" size={20} color="#dc3545" />
-          <Text style={styles.cardTitle}>Obra {item.obra}</Text>
-          {item.origem === 'offline' && (
-            <View style={styles.offlineBadge}>
-              <Ionicons name="cloud-offline-outline" size={14} color="#ff9800" />
-              <Text style={styles.offlineBadgeText}>Pendente</Text>
-            </View>
-          )}
-        </View>
-        <View
-          style={[
-            styles.statusBadge,
-            item.status === 'finalizada' ? styles.statusFinalizada : styles.statusAberta,
-          ]}
-        >
-          <Text style={styles.statusText}>
-            {item.status === 'finalizada' ? 'Finalizada' : 'Em Aberto'}
-          </Text>
-        </View>
+  const openObra = (item: Obra) => {
+    router.push({
+      pathname: '/obra-detalhe',
+      params: { data: encodeURIComponent(JSON.stringify({ ...item, origem: item.origem || 'online' })) },
+    });
+  };
+
+  const renderSyncBadge = (obra: Obra) => {
+    if (obra.origem !== 'offline') return null;
+    if (!obra.sync_status && obra.serverId) return null;
+
+    const label =
+      obra.sync_status === 'partial'
+        ? 'Sync parcial'
+        : obra.sync_status === 'failed'
+        ? 'Falha no sync'
+        : obra.sync_status === 'syncing'
+        ? 'Sincronizando'
+        : 'Pendente';
+
+    const style =
+      obra.sync_status === 'partial'
+        ? styles.syncIndicatorPartial
+        : obra.sync_status === 'failed'
+        ? styles.syncIndicatorFailed
+        : obra.sync_status === 'syncing'
+        ? styles.syncIndicatorSyncing
+        : styles.syncIndicatorPending;
+
+    const textStyle =
+      obra.sync_status === 'partial'
+        ? styles.syncIndicatorTextPartial
+        : obra.sync_status === 'failed'
+        ? styles.syncIndicatorTextFailed
+        : obra.sync_status === 'syncing'
+        ? styles.syncIndicatorTextSyncing
+        : styles.syncIndicatorTextPending;
+
+    return (
+      <View style={[styles.syncIndicator, style]}>
+        <Text style={textStyle}>{label}</Text>
       </View>
+    );
+  };
 
-      <View style={styles.cardBody}>
-        <View style={styles.infoRow}>
-          <Ionicons name="calendar-outline" size={16} color="#666" />
-          <Text style={styles.infoText}>{formatDate(item.data)}</Text>
-        </View>
+  const renderStatusBadge = (status: ObraStatus) => {
+    const isFinalizada = status === 'finalizada';
+    const isRascunho = status === 'rascunho';
 
-        <View style={styles.infoRow}>
-          <Ionicons name="people-outline" size={16} color="#666" />
-          <Text style={styles.infoText}>Equipe: {item.equipe}</Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Ionicons name="person-outline" size={16} color="#666" />
-          <Text style={styles.infoText}>{item.responsavel}</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardFooter}>
-        <Text style={styles.cardDate}>
-          Lançado em {formatDate(item.created_at)}
+    return (
+      <View
+        style={[
+          styles.statusBadge,
+          isFinalizada
+            ? styles.statusBadgeFinalizada
+            : isRascunho
+            ? styles.statusBadgeRascunho
+            : styles.statusBadgeAberta,
+        ]}
+      >
+        <Text style={styles.statusBadgeText}>
+          {isFinalizada ? 'Finalizada' : isRascunho ? 'Rascunho' : 'Em aberto'}
         </Text>
-        <Ionicons name="chevron-forward" size={20} color="#999" />
       </View>
-    </TouchableOpacity>
-  );
+    );
+  };
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <Ionicons name="construct-outline" size={64} color="#ccc" />
-      <Text style={styles.emptyTitle}>Nenhuma obra registrada</Text>
-      <Text style={styles.emptySubtitle}>
-        Toque no botão + para registrar um serviço de Cava em Rocha
-      </Text>
-    </View>
-  );
-
-  if (loading) {
+  if (loading && obras.length === 0) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <View style={styles.loadingContainer}>
@@ -367,123 +363,163 @@ export default function CompIndex() {
     );
   }
 
-  const filteredObras = getFilteredObras();
-
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>Cava em Rocha</Text>
-            <Text style={styles.headerSubtitle}>
-              {obras.length} registro(s) • COMP
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={[styles.content, { paddingHorizontal: horizontalPadding }]}>
+          <View style={styles.equipeBanner}>
+            <View style={styles.equipeInfo}>
+              <Text style={styles.equipeLabel}>Perfil compressor</Text>
+              <Text style={styles.equipeNome}>{equipeLogada || 'Compressor'}</Text>
+            </View>
+            <View style={[styles.onlinePill, !isOnline && styles.offlinePill]}>
+              <Text style={[styles.onlinePillText, !isOnline && styles.offlinePillText]}>
+                {isOnline ? 'Online' : 'Offline'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.header}>
+            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>Cava em Rocha</Text>
+            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>
+              {filteredObras.length} de {obras.length} obra(s)
             </Text>
           </View>
-        </View>
 
-        {/* Filtros */}
-        <View style={styles.filterContainer}>
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'todas' && styles.filterButtonActive]}
-            onPress={() => setFilter('todas')}
-          >
-            <Text
-              style={[
-                styles.filterButtonText,
-                filter === 'todas' && styles.filterButtonTextActive,
-              ]}
-            >
-              Todas ({obras.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'em_aberto' && styles.filterButtonActive]}
-            onPress={() => setFilter('em_aberto')}
-          >
-            <Text
-              style={[
-                styles.filterButtonText,
-                filter === 'em_aberto' && styles.filterButtonTextActive,
-              ]}
-            >
-              Em Aberto ({obras.filter(o => o.status === 'em_aberto').length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.filterButton, filter === 'finalizada' && styles.filterButtonActive]}
-            onPress={() => setFilter('finalizada')}
-          >
-            <Text
-              style={[
-                styles.filterButtonText,
-                filter === 'finalizada' && styles.filterButtonTextActive,
-              ]}
-            >
-              Finalizadas ({obras.filter(o => o.status === 'finalizada').length})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Banner de Sincronização */}
-        {pendingCount > 0 && (
-          <View style={styles.syncBanner}>
-            <View style={styles.syncBannerInfo}>
-              <Ionicons name="cloud-upload-outline" size={20} color="#ff9800" />
-              <View style={styles.syncBannerTextContainer}>
-                <Text style={styles.syncBannerTitle}>
-                  {pendingCount} obra(s) aguardando sincronização
-                </Text>
-                <Text style={styles.syncBannerSubtitle}>
-                  {isOnline ? 'Envie agora para liberar espaço.' : 'Conecte-se para finalizar o envio.'}
-                </Text>
-              </View>
+          <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
+            <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+              <Text style={styles.metricLabel}>Total</Text>
+              <Text style={styles.metricValue}>{obras.length}</Text>
             </View>
+            <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+              <Text style={styles.metricLabel}>Em aberto</Text>
+              <Text style={styles.metricValue}>{openCount}</Text>
+            </View>
+            <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+              <Text style={styles.metricLabel}>Finalizadas</Text>
+              <Text style={styles.metricValue}>{doneCount}</Text>
+            </View>
+          </View>
+
+          <View style={styles.filterContainer}>
             <TouchableOpacity
-              style={[
-                styles.syncBannerButton,
-                (!isOnline || syncingPending) && styles.syncBannerButtonDisabled,
-              ]}
-              onPress={handleSyncPendingObras}
-              disabled={!isOnline || syncingPending}
+              style={[styles.filterButton, filter === 'todas' && styles.filterButtonActive]}
+              onPress={() => setFilter('todas')}
             >
-              {syncingPending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.syncBannerButtonText}>Sincronizar</Text>
-              )}
+              <Text style={[styles.filterButtonText, filter === 'todas' && styles.filterButtonTextActive]}>
+                Todas ({obras.length})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'em_aberto' && styles.filterButtonActive]}
+              onPress={() => setFilter('em_aberto')}
+            >
+              <Text style={[styles.filterButtonText, filter === 'em_aberto' && styles.filterButtonTextActive]}>
+                Em aberto ({openCount})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterButton, filter === 'finalizada' && styles.filterButtonActive]}
+              onPress={() => setFilter('finalizada')}
+            >
+              <Text style={[styles.filterButtonText, filter === 'finalizada' && styles.filterButtonTextActive]}>
+                Finalizadas ({doneCount})
+              </Text>
             </TouchableOpacity>
           </View>
-        )}
 
-        {/* Lista */}
-        <FlatList
-          data={filteredObras}
-          renderItem={renderObraCard}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#dc3545"
-              colors={['#dc3545']}
+          <View style={styles.searchContainer}>
+            <Text style={styles.searchPrefix}>Buscar</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Numero da obra, responsavel ou equipe"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              autoCorrect={false}
+              autoCapitalize="none"
             />
-          }
-          ListEmptyComponent={renderEmptyState}
-        />
+          </View>
 
-        {/* Botão Flutuante */}
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={() => router.push('/nova-obra')}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={32} color="#fff" />
-        </TouchableOpacity>
-      </View>
+          {pendingCount > 0 && (
+            <View style={styles.syncBanner}>
+              <View style={styles.syncBannerInfo}>
+                <Ionicons name="cloud-upload-outline" size={18} color="#d97706" />
+                <View style={styles.syncBannerTextContainer}>
+                  <Text style={styles.syncBannerTitle}>{pendingCount} obra(s) aguardando sincronizacao</Text>
+                  <Text style={styles.syncBannerSubtitle}>
+                    {isOnline ? 'Envie agora para concluir o upload.' : 'Conecte-se para enviar as obras.'}
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.syncBannerButton,
+                  (!isOnline || syncingPending) && styles.syncBannerButtonDisabled,
+                ]}
+                onPress={handleSyncPendingObras}
+                disabled={!isOnline || syncingPending}
+              >
+                {syncingPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.syncBannerButtonText}>Sincronizar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {filteredObras.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Ionicons name="construct-outline" size={48} color="#94a3b8" />
+              <Text style={styles.emptyTitle}>Nenhuma obra registrada</Text>
+              <Text style={styles.emptySubtitle}>Toque no botao + para iniciar o book de Cava em Rocha.</Text>
+            </View>
+          ) : (
+            filteredObras.map((item) => (
+              <TouchableOpacity
+                key={`${item.origem || 'online'}_${item.id}`}
+                style={[
+                  styles.obraCard,
+                  item.status === 'finalizada' && styles.obraCardFinalizada,
+                  item.status === 'rascunho' && styles.obraCardRascunho,
+                ]}
+                onPress={() => openObra(item)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.obraHeader}>
+                  <View style={styles.obraHeaderLeft}>
+                    <Text style={styles.obraNumero}>Obra {item.obra}</Text>
+                    <Text style={styles.obraData}>{formatDate(item.data || item.created_at)}</Text>
+                  </View>
+                  {renderStatusBadge(item.status)}
+                </View>
+
+                <View style={styles.obraInfo}>
+                  <Text style={styles.obraLabel}>Equipe</Text>
+                  <Text style={styles.obraValue}>{item.equipe || equipeLogada}</Text>
+                </View>
+
+                <View style={styles.obraInfo}>
+                  <Text style={styles.obraLabel}>Responsavel</Text>
+                  <Text style={styles.obraValue}>{item.responsavel || equipeLogada}</Text>
+                </View>
+
+                {renderSyncBadge(item)}
+
+                <Text style={styles.verMais}>Ver detalhes</Text>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+      </ScrollView>
+
+      <TouchableOpacity style={[styles.fab, { bottom: 22 + insets.bottom }]} onPress={() => router.push('/nova-obra')}>
+        <Ionicons name="add" size={30} color="#fff" />
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -491,239 +527,400 @@ export default function CompIndex() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f6f8fb',
   },
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 14,
+  },
+  content: {
+    width: '100%',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   loadingText: {
     marginTop: 12,
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: '#475569',
   },
-  header: {
+  equipeBanner: {
+    backgroundColor: '#dc3545',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
-  headerTitle: {
-    fontSize: 24,
+  equipeInfo: {
+    flex: 1,
+    paddingRight: 8,
+  },
+  equipeLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  equipeNome: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 2,
+  },
+  onlinePill: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+  },
+  onlinePillText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '700',
-    color: '#1a1a1a',
   },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
+  offlinePill: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fde68a',
+  },
+  offlinePillText: {
+    color: '#92400e',
+  },
+  header: {
+    marginBottom: 10,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+    lineHeight: 32,
+  },
+  titleSmall: {
+    fontSize: 24,
+    lineHeight: 28,
+  },
+  subtitle: {
     marginTop: 4,
+    fontSize: 14,
+    color: '#64748b',
+  },
+  subtitleSmall: {
+    fontSize: 13,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  metricsRowStacked: {
+    flexWrap: 'wrap',
+  },
+  metricCard: {
+    flex: 1,
+    minWidth: 90,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  metricCardStacked: {
+    minWidth: '48%',
+  },
+  metricLabel: {
+    fontSize: 12,
+    color: '#64748b',
+  },
+  metricValue: {
+    marginTop: 4,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0f172a',
   },
   filterContainer: {
     flexDirection: 'row',
-    padding: 16,
     gap: 8,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: 12,
   },
   filterButton: {
     flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#dbe2ea',
   },
   filterButtonActive: {
     backgroundColor: '#dc3545',
+    borderColor: '#dc3545',
   },
   filterButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '700',
+    textAlign: 'center',
   },
   filterButtonTextActive: {
     color: '#fff',
   },
-  listContent: {
-    padding: 16,
-  },
-  card: {
+  searchContainer: {
+    marginBottom: 12,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    flexWrap: 'wrap',
-  },
-  offlineBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#fff3cd',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ff9800',
+    borderColor: '#dbe2ea',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 2,
   },
-  offlineBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#ff9800',
-  },
-  cardTitle: {
-    fontSize: 18,
+  searchPrefix: {
+    fontSize: 12,
+    color: '#64748b',
+    marginRight: 8,
     fontWeight: '700',
-    color: '#1a1a1a',
+    textTransform: 'uppercase',
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusFinalizada: {
-    backgroundColor: '#d4edda',
-  },
-  statusAberta: {
-    backgroundColor: '#fff3cd',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#1a1a1a',
-  },
-  cardBody: {
-    gap: 8,
-    marginBottom: 12,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-  },
-  cardDate: {
-    fontSize: 12,
-    color: '#999',
-  },
-  emptyState: {
+  searchInput: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#666',
-    marginTop: 16,
-  },
-  emptySubtitle: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 12,
     fontSize: 14,
-    color: '#999',
-    marginTop: 8,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#dc3545',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    color: '#0f172a',
   },
   syncBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff3cd',
+    backgroundColor: '#fff7ed',
     borderLeftWidth: 4,
-    borderLeftColor: '#ff9800',
-    padding: 16,
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    borderRadius: 8,
-    gap: 12,
+    borderLeftColor: '#fb923c',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    gap: 10,
   },
   syncBannerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flex: 1,
   },
   syncBannerTextContainer: {
     flex: 1,
   },
   syncBannerTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1a1a1a',
-    marginBottom: 2,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9a3412',
   },
   syncBannerSubtitle: {
+    marginTop: 2,
     fontSize: 12,
-    color: '#666',
+    color: '#7c2d12',
   },
   syncBannerButton: {
-    backgroundColor: '#ff9800',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: '#f97316',
     borderRadius: 8,
-    minWidth: 100,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 102,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   syncBannerButtonDisabled: {
-    backgroundColor: '#ccc',
-    opacity: 0.6,
+    backgroundColor: '#cbd5e1',
   },
   syncBannerButtonText: {
     color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    marginTop: 10,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#334155',
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  obraCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
+    elevation: 2,
+    borderLeftWidth: 4,
+    borderLeftColor: '#dc3545',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  obraCardFinalizada: {
+    borderLeftColor: '#16a34a',
+  },
+  obraCardRascunho: {
+    borderLeftColor: '#f59e0b',
+  },
+  obraHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eef2f7',
+    gap: 8,
+  },
+  obraHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  obraNumero: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  obraData: {
+    alignSelf: 'flex-start',
+    fontSize: 12,
+    color: '#475569',
+    backgroundColor: '#eef2f7',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  obraInfo: {
+    marginBottom: 6,
+  },
+  obraLabel: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginBottom: 2,
+  },
+  obraValue: {
     fontSize: 14,
-    fontWeight: '600',
+    color: '#1f2937',
+    fontWeight: '700',
+  },
+  statusBadge: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  statusBadgeFinalizada: {
+    backgroundColor: '#e8f7ed',
+    borderColor: '#bbf7d0',
+  },
+  statusBadgeAberta: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+  },
+  statusBadgeRascunho: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fcd34d',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#155724',
+  },
+  syncIndicator: {
+    alignSelf: 'flex-start',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+    borderWidth: 1,
+  },
+  syncIndicatorPending: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+  },
+  syncIndicatorSyncing: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#7dd3fc',
+  },
+  syncIndicatorPartial: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fb923c',
+  },
+  syncIndicatorFailed: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#fca5a5',
+  },
+  syncIndicatorTextPending: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b45309',
+  },
+  syncIndicatorTextSyncing: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0369a1',
+  },
+  syncIndicatorTextPartial: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#c2410c',
+  },
+  syncIndicatorTextFailed: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#b91c1c',
+  },
+  verMais: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#2563eb',
+    textAlign: 'right',
+    fontWeight: '700',
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#dc3545',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#dc3545',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 8,
   },
 });
