@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase, type Obra, type FotoInfo } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
 import PhotoGallery from '@/components/PhotoGallery'
@@ -486,7 +487,9 @@ export default function ObraDetailPage() {
   const [loading, setLoading] = useState(true)
   const [exportingPdf, setExportingPdf] = useState(false)
   const [exportingXlsx, setExportingXlsx] = useState(false)
+  const [finalizandoObra, setFinalizandoObra] = useState(false)
   const [selectedAtipicidades, setSelectedAtipicidades] = useState<number[]>([])
+  const { isAdmin } = useAuth()
   const [descricaoAtipicidade, setDescricaoAtipicidade] = useState('')
 
   useEffect(() => {
@@ -1602,13 +1605,50 @@ export default function ObraDetailPage() {
     }
   }
 
+  async function handleFinalizarObra() {
+    if (!obra || !window.confirm('Confirmar finalização da obra? O status será alterado para Concluída.')) return
+    setFinalizandoObra(true)
+    try {
+      const dataFechamento = new Date().toISOString()
+      const { error } = await supabase
+        .from('obras')
+        .update({ data_fechamento: dataFechamento })
+        .eq('id', obra.id)
+      if (error) throw error
+      setObra({ ...obra, data_fechamento: dataFechamento })
+    } catch (error) {
+      console.error('Erro ao finalizar obra:', error)
+      alert('Erro ao finalizar obra')
+    } finally {
+      setFinalizandoObra(false)
+    }
+  }
+
+  async function handleReabrirObra() {
+    if (!obra || !window.confirm('Confirmar reabertura da obra? O status voltará para Em Andamento.')) return
+    setFinalizandoObra(true)
+    try {
+      const { error } = await supabase
+        .from('obras')
+        .update({ data_fechamento: null })
+        .eq('id', obra.id)
+      if (error) throw error
+      setObra({ ...obra, data_fechamento: null })
+    } catch (error) {
+      console.error('Erro ao reabrir obra:', error)
+      alert('Erro ao reabrir obra')
+    } finally {
+      setFinalizandoObra(false)
+    }
+  }
+
   if (loading) {
     return (
       <ProtectedRoute>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-xl text-gray-600">Carregando obra...</p>
+          <div className="text-center space-y-3">
+            <div className="spinner mx-auto" />
+            <p className="text-sm font-medium text-gray-500">Carregando obra...</p>
           </div>
         </div>
       </ProtectedRoute>
@@ -1619,11 +1659,16 @@ export default function ObraDetailPage() {
     return (
       <ProtectedRoute>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <p className="text-xl text-gray-600">Obra não encontrada</p>
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto">
+              <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <p className="text-base font-medium text-gray-500">Obra não encontrada</p>
             <button
               onClick={handleGoBack}
-              className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="btn-ghost mx-auto"
             >
               Voltar
             </button>
@@ -1651,27 +1696,72 @@ export default function ObraDetailPage() {
           <div className="mb-6 space-y-4">
             <button
               onClick={handleGoBack}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors group"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              Voltar
+              <span className="text-sm font-medium">Voltar</span>
             </button>
 
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">{obra.obra}</h1>
-                <div className="flex items-center gap-2 mt-2">
+                <div className="flex flex-wrap items-center gap-3 mb-2">
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">{obra.obra}</h1>
+                  {obra.data_fechamento ? (
+                    <span className="px-3 py-1 bg-green-100 text-green-800 border border-green-200 text-sm font-semibold rounded-full flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      Concluída
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 bg-amber-100 text-amber-800 border border-amber-200 text-sm font-semibold rounded-full flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      Em Andamento
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="px-3 py-1 bg-red-600 text-white text-sm font-semibold rounded-full">
                     {obra.equipe}
                   </span>
-                  <span className="text-gray-600">
+                  <span className="text-gray-500 text-sm">
                     {format(new Date(obra.data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                   </span>
+                  {obra.data_fechamento && (
+                    <span className="text-green-700 text-sm font-medium">
+                      · Concluída em {format(new Date(obra.data_fechamento), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                {isAdmin && (
+                  obra.data_fechamento ? (
+                    <button
+                      onClick={handleReabrirObra}
+                      disabled={finalizandoObra}
+                      className="px-4 py-2.5 bg-white border border-gray-300 hover:border-gray-400 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                      </svg>
+                      {finalizandoObra ? 'Aguarde...' : 'Reabrir Obra'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleFinalizarObra}
+                      disabled={finalizandoObra}
+                      className="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      {finalizandoObra ? 'Aguarde...' : 'Finalizar Obra'}
+                    </button>
+                  )
+                )}
                 <button
                   onClick={handleExportPdf}
                   disabled={exportingPdf}
@@ -1688,25 +1778,44 @@ export default function ObraDetailPage() {
                 </button>
               </div>
             </div>
-            <p className="text-sm text-gray-500">Clique em uma foto para visualizar, trocar ou editar a placa.</p>
+            <p className="text-sm text-gray-400">Clique em uma foto para visualizar, trocar ou editar a placa.</p>
           </div>
 
 
           {/* Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <div className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
-              <div className="text-sm text-gray-600 mb-1">Responsável</div>
-              <div className="text-lg font-semibold text-gray-900">{obra.responsavel}</div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Responsável</div>
+              <div className="text-sm font-semibold text-gray-900">{obra.responsavel || '—'}</div>
             </div>
-
-            <div className="bg-white p-4 rounded-lg shadow-md border border-gray-100">
-              <div className="text-sm text-gray-600 mb-1">Tipo de Serviço</div>
-              <div className="text-lg font-semibold text-gray-900">{obra.tipo_servico}</div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Tipo de Serviço</div>
+              <div className="text-sm font-semibold text-gray-900">{obra.tipo_servico}</div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Status</div>
+              <div>
+                {obra.data_fechamento ? (
+                  <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">Concluída</span>
+                ) : (
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full">Em Andamento</span>
+                )}
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
+                {obra.data_fechamento ? 'Concluída em' : 'Data da Obra'}
+              </div>
+              <div className="text-sm font-semibold text-gray-900">
+                {obra.data_fechamento
+                  ? format(new Date(obra.data_fechamento), "dd/MM/yyyy HH:mm", { locale: ptBR })
+                  : format(new Date(obra.data), "dd/MM/yyyy", { locale: ptBR })}
+              </div>
             </div>
           </div>
 
           {/* Atipicidades */}
-          <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6 mb-8">
+          <div className="card-padded mb-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
               <svg className="w-7 h-7 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -1793,8 +1902,8 @@ export default function ObraDetailPage() {
           </div>
 
           {/* Fotos */}
-          <div className="bg-white rounded-xl shadow-md border border-gray-100 p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Registro Fotográfico</h2>
+          <div className="card-padded">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">Registro Fotográfico</h2>
 
             {deveExibirGaleria('fotos_antes', obra.tipo_servico) && (
               <PhotoGallery photos={obra.fotos_antes || []} title="Fotos Antes" sectionKey="fotos_antes" {...galleryProps} />

@@ -63,6 +63,53 @@ const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; li
   { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa Retirada', color: 'red', lightColor: 'red' },
 ]
 
+function getSectionsForBook(tipoServico: string) {
+  const keyMap: Record<string, string[]> = {
+    'Abertura e Fechamento de Chave': [
+      'fotos_abertura', 'fotos_fechamento',
+    ],
+    'Ditais': [
+      'fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar',
+      'fotos_ditais_aterrar', 'fotos_ditais_sinalizar',
+    ],
+    'Book de Aterramento': [
+      'fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes',
+      'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao',
+    ],
+    'Transformador': [
+      'fotos_transformador_laudo', 'fotos_transformador_componente_instalado',
+      'fotos_transformador_tombamento_instalado', 'fotos_transformador_tape',
+      'fotos_transformador_placa_instalado', 'fotos_transformador_instalado',
+      'fotos_transformador_antes_retirar', 'fotos_transformador_tombamento_retirado',
+      'fotos_transformador_placa_retirado',
+    ],
+    'Instalação do Medidor': [
+      'fotos_medidor_padrao', 'fotos_medidor_leitura', 'fotos_medidor_selo_born',
+      'fotos_medidor_selo_caixa', 'fotos_medidor_identificador_fase',
+    ],
+    'Altimetria': [
+      'fotos_altimetria_lado_fonte', 'fotos_altimetria_medicao_fonte',
+      'fotos_altimetria_lado_carga', 'fotos_altimetria_medicao_carga',
+    ],
+    'Vazamento e Limpeza de Transformador': [
+      'fotos_vazamento_evidencia', 'fotos_vazamento_equipamentos_limpeza',
+      'fotos_vazamento_tombamento_retirado', 'fotos_vazamento_placa_retirado',
+      'fotos_vazamento_tombamento_instalado', 'fotos_vazamento_placa_instalado',
+      'fotos_vazamento_instalacao',
+    ],
+    'Checklist de Fiscalização': [
+      'fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial',
+      'fotos_checklist_chede', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos',
+      'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral',
+      'fotos_checklist_padrao_interno', 'fotos_checklist_frying',
+      'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_panoramica_final',
+    ],
+  }
+
+  const keys = keyMap[tipoServico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois']
+  return REPORT_PHOTO_SECTIONS.filter(s => keys.includes(String(s.key)))
+}
+
 export default function ReportsPage() {
   const router = useRouter()
   const [obras, setObras] = useState<Obra[]>([])
@@ -79,6 +126,7 @@ export default function ReportsPage() {
   const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [photoActionKey, setPhotoActionKey] = useState<string | null>(null)
+  const [viewingPhoto, setViewingPhoto] = useState<{ url: string; label: string } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -1064,7 +1112,34 @@ export default function ReportsPage() {
                 </div>
 
                 {/* Galerias de Fotos - Dinâmico por tipo de serviço */}
-                <div className="space-y-8">
+                {/* Resumo de seções */}
+                {(() => {
+                  const bookSections = getSectionsForBook(selectedObraForBook.tipo_servico)
+                  const withPhotos = bookSections.filter(s => convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length > 0).length
+                  const totalFotosBook = bookSections.reduce((acc, s) => acc + convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length, 0)
+                  return (
+                    <div className="flex items-center gap-4 mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block"></span>
+                        <span className="font-semibold text-slate-700">{bookSections.length} seções</span>
+                      </div>
+                      <div className="w-px h-4 bg-slate-300"></div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
+                        <span className="font-semibold text-slate-700">{withPhotos} com fotos</span>
+                      </div>
+                      <div className="w-px h-4 bg-slate-300"></div>
+                      <div className="flex items-center gap-2 text-sm">
+                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <span className="font-semibold text-slate-700">{totalFotosBook} fotos no total</span>
+                      </div>
+                    </div>
+                  )
+                })()}
+
+                <div className="space-y-6">
                   {(() => {
                     const colorMap: Record<string, string> = {
                       blue: 'bg-blue-600', orange: 'bg-orange-600', green: 'bg-green-600', cyan: 'bg-cyan-600', teal: 'bg-teal-600', red: 'bg-red-600', amber: 'bg-amber-600', purple: 'bg-purple-600', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', sky: 'bg-sky-600', rose: 'bg-rose-600',
@@ -1072,25 +1147,219 @@ export default function ReportsPage() {
                     const lightColorMap: Record<string, string> = {
                       blue: 'from-blue-300', orange: 'from-orange-300', green: 'from-green-300', cyan: 'from-cyan-300', teal: 'from-teal-300', red: 'from-red-300', amber: 'from-amber-300', purple: 'from-purple-300', indigo: 'from-indigo-300', emerald: 'from-emerald-300', sky: 'from-sky-300', rose: 'from-rose-300',
                     };
+                    const borderColorMap: Record<string, string> = {
+                      blue: 'border-blue-200', orange: 'border-orange-200', green: 'border-green-200', cyan: 'border-cyan-200', teal: 'border-teal-200', red: 'border-red-200', amber: 'border-amber-200', purple: 'border-purple-200', indigo: 'border-indigo-200', emerald: 'border-emerald-200', sky: 'border-sky-200', rose: 'border-rose-200',
+                    };
+                    const bgLightMap: Record<string, string> = {
+                      blue: 'bg-blue-50', orange: 'bg-orange-50', green: 'bg-green-50', cyan: 'bg-cyan-50', teal: 'bg-teal-50', red: 'bg-red-50', amber: 'bg-amber-50', purple: 'bg-purple-50', indigo: 'bg-indigo-50', emerald: 'bg-emerald-50', sky: 'bg-sky-50', rose: 'bg-rose-50',
+                    };
 
-                    return REPORT_PHOTO_SECTIONS.map((section) => {
+                    const getUrlFromId = (id: string): string | null => {
+                      if (!id || id.startsWith('temp_') || id.startsWith('local_') || id.startsWith('file:///')) return null
+                      if (id.startsWith('http')) return id
+                      return supabase.storage.from('obra-photos').getPublicUrl(id).data.publicUrl
+                    }
+
+                    const renderPhotoThumb = (url: string, label: string, idx: number, color: string) => (
+                      <div key={idx} className="relative group overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-all">
+                        <div className="aspect-square bg-slate-100">
+                          <img src={url} alt={`${label} #${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        </div>
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setViewingPhoto({ url, label: `${label} #${idx + 1}` }) }}
+                            className="bg-white/90 text-slate-900 p-1.5 rounded-lg"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className={`absolute top-1 left-1 ${colorMap[color] ?? 'bg-slate-600'} text-white text-xs font-bold px-1.5 py-0.5 rounded shadow`}>#{idx + 1}</div>
+                      </div>
+                    )
+
+                    return getSectionsForBook(selectedObraForBook.tipo_servico).map((section) => {
                       const sectionKey = String(section.key)
+
+                      // ── POSTES AGRUPADOS ──────────────────────────────────────
+                      if (section.key === 'fotos_checklist_postes') {
+                        const postesData: any[] = (selectedObraForBook as any).checklist_postes_data
+                        if (postesData && Array.isArray(postesData) && postesData.length > 0) {
+                          const subKeys = [
+                            { key: 'posteInteiro', label: 'Poste Inteiro' },
+                            { key: 'engaste', label: 'Engaste' },
+                            { key: 'conexao1', label: 'Conexão 1' },
+                            { key: 'conexao2', label: 'Conexão 2' },
+                            { key: 'maiorEsforco', label: 'Maior Esforço' },
+                            { key: 'menorEsforco', label: 'Menor Esforço' },
+                          ]
+                          const totalFotos = postesData.reduce((acc, p) => acc + subKeys.reduce((a, s) => a + (p[s.key]?.length || 0), 0), 0)
+                          const statusColors: Record<string, string> = { instalado: 'bg-green-100 text-green-700', retirado: 'bg-red-100 text-red-700', existente: 'bg-blue-100 text-blue-700' }
+                          const statusLabels: Record<string, string> = { instalado: 'Instalado', retirado: 'Retirado', existente: 'Existente' }
+                          return (
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                              <div className="flex items-center gap-3 px-4 py-3">
+                                <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                                  <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Postes</h4>
+                                </div>
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                  {postesData.length} poste{postesData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="px-4 pb-4 space-y-2">
+                                {postesData.map((poste, pIdx) => {
+                                  const label = poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`
+                                  const statusLabel = statusLabels[poste.status] || poste.status
+                                  const statusColor = statusColors[poste.status] || 'bg-slate-100 text-slate-600'
+                                  const hasAny = subKeys.some(s => (poste[s.key] || []).length > 0)
+                                  if (!hasAny) return null
+                                  return (
+                                    <div key={pIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
+                                        <span className="font-bold text-sm text-purple-900">{label}</span>
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor}`}>{statusLabel}</span>
+                                        <span className="text-xs text-purple-400 ml-auto">
+                                          {subKeys.reduce((a, s) => a + (poste[s.key]?.length || 0), 0)} foto{subKeys.reduce((a, s) => a + (poste[s.key]?.length || 0), 0) !== 1 ? 's' : ''}
+                                        </span>
+                                      </div>
+                                      {subKeys.map(ss => {
+                                        const urls = (poste[ss.key] || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                        if (urls.length === 0) return null
+                                        return (
+                                          <div key={ss.key} className="px-3 py-2 border-t border-purple-50">
+                                            <p className="text-xs font-semibold text-purple-500 mb-2 uppercase tracking-wide">{ss.label} ({urls.length})</p>
+                                            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
+                                              {urls.map((url, i) => renderPhotoThumb(url, `${label} ${ss.label}`, i, 'purple'))}
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+                      }
+
+                      // ── SECCIONAMENTOS AGRUPADOS ──────────────────────────────
+                      if (section.key === 'fotos_checklist_seccionamentos') {
+                        const secData: any[] = (selectedObraForBook as any).checklist_seccionamentos_data
+                        if (secData && Array.isArray(secData) && secData.length > 0) {
+                          const totalFotos = secData.reduce((acc, s) => acc + (s.fotos?.length || 0), 0)
+                          return (
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                              <div className="flex items-center gap-3 px-4 py-3">
+                                <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                                  <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Seccionamentos</h4>
+                                </div>
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                  {secData.length} seccionamento{secData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="px-4 pb-4 space-y-2">
+                                {secData.map((sec, sIdx) => {
+                                  const urls = (sec.fotos || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                  if (urls.length === 0) return null
+                                  return (
+                                    <div key={sIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
+                                        <span className="font-bold text-sm text-purple-900">Seccionamento {sec.numero}</span>
+                                        <span className="text-xs text-purple-400 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
+                                      </div>
+                                      <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
+                                        {urls.map((url, i) => renderPhotoThumb(url, `Seccionamento ${sec.numero}`, i, 'purple'))}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+                      }
+
+                      // ── ATERRAMENTO CERCA AGRUPADO ────────────────────────────
+                      if (section.key === 'fotos_checklist_aterramento_cerca') {
+                        const aterrData: any[] = (selectedObraForBook as any).checklist_aterramentos_cerca_data
+                        if (aterrData && Array.isArray(aterrData) && aterrData.length > 0) {
+                          const totalFotos = aterrData.reduce((acc, a) => acc + (a.fotos?.length || 0), 0)
+                          return (
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                              <div className="flex items-center gap-3 px-4 py-3">
+                                <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                                  <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Aterramento de Cerca</h4>
+                                </div>
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                  {aterrData.length} aterramento{aterrData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="px-4 pb-4 space-y-2">
+                                {aterrData.map((aterr, aIdx) => {
+                                  const urls = (aterr.fotos || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                  if (urls.length === 0) return null
+                                  return (
+                                    <div key={aIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
+                                        <span className="font-bold text-sm text-purple-900">Aterramento {aterr.numero}</span>
+                                        <span className="text-xs text-purple-400 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
+                                      </div>
+                                      <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
+                                        {urls.map((url, i) => renderPhotoThumb(url, `Aterramento ${aterr.numero}`, i, 'purple'))}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+                      }
+
+                      // ── RENDERING FLAT (demais seções) ────────────────────────
                       const fotos = convertPhotoIdsToFotoInfo((selectedObraForBook as any)[section.key]);
                       const addActionKey = `${sectionKey}:add`
+                      const hasPhotos = fotos.length > 0
+
                       return (
-                        <div key={sectionKey}>
-                          <div className="flex items-center gap-3 mb-4">
-                            <div className={`bg-gradient-to-r ${section.color} text-white px-4 py-2 rounded-lg shadow-md`}>
-                              <h4 className="font-bold text-sm uppercase tracking-wider">{section.label}</h4>
+                        <div
+                          key={sectionKey}
+                          className={`rounded-2xl border ${hasPhotos ? borderColorMap[section.color] + ' ' + bgLightMap[section.color] : 'border-slate-200 bg-white'} overflow-hidden shadow-sm`}
+                        >
+                          {/* Header da seção */}
+                          <div className={`flex items-center justify-between px-4 py-3 ${hasPhotos ? '' : 'border-b-0'}`}>
+                            <div className="flex items-center gap-3">
+                              <div className={`${colorMap[section.color]} text-white px-3 py-1.5 rounded-lg shadow-sm`}>
+                                <h4 className="font-bold text-xs uppercase tracking-wider">{section.label}</h4>
+                              </div>
+                              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${hasPhotos ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>
+                                {fotos.length} foto{fotos.length !== 1 ? 's' : ''}
+                              </span>
                             </div>
-                            <div className={`flex-1 h-px bg-gradient-to-r ${lightColorMap[section.lightColor]} to-transparent`}></div>
-                            <span className="text-sm font-semibold text-slate-500">{fotos.length} foto(s)</span>
                             <button
-                              className="px-3 py-2 bg-blue-600 text-white rounded-lg font-semibold shadow hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                              className={`px-3 py-1.5 text-white rounded-lg font-semibold text-xs transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 ${colorMap[section.color]} hover:opacity-90 shadow-sm`}
                               disabled={photoActionKey === addActionKey}
                               onClick={() => document.getElementById(`file-input-${sectionKey}`)?.click()}
                             >
-                              {photoActionKey === addActionKey ? 'Enviando...' : 'Adicionar foto'}
+                              {photoActionKey === addActionKey ? (
+                                <>
+                                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                  </svg>
+                                  Enviando...
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  Adicionar
+                                </>
+                              )}
                             </button>
                             <input
                               id={`file-input-${sectionKey}`}
@@ -1099,40 +1368,46 @@ export default function ReportsPage() {
                               className="hidden"
                               onChange={(event) => {
                                 const file = event.target.files?.[0]
-                                if (file) {
-                                  void handleAddPhotoToReport(section.key, file)
-                                }
+                                if (file) void handleAddPhotoToReport(section.key, file)
                                 event.target.value = ''
                               }}
                             />
                           </div>
-                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {fotos.length > 0 ? (
-                              fotos.map((foto, idx) => (
-                                <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+
+                          {/* Fotos ou estado vazio */}
+                          {hasPhotos ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 px-4 pb-4">
+                              {fotos.map((foto, idx) => (
+                                <div key={idx} className="relative group overflow-hidden rounded-xl shadow-md hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5">
                                   <div className="aspect-square bg-slate-100">
                                     <img
                                       src={foto.url}
                                       alt={`${section.label} ${idx + 1}`}
-                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                     />
                                   </div>
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-4">
-                                    <button className="bg-white text-slate-900 px-4 py-2 rounded-lg text-sm font-bold shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 flex items-center gap-2">
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-3">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        setViewingPhoto({ url: foto.url, label: `${section.label} #${idx + 1}` })
+                                      }}
+                                      className="bg-white/95 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold shadow-lg translate-y-2 group-hover:translate-y-0 transition-transform duration-300 flex items-center gap-1.5"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                       </svg>
                                       Visualizar
                                     </button>
                                   </div>
-                                  <div className={`absolute top-2 left-2 ${colorMap[section.lightColor]} text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg`}>
+                                  <div className={`absolute top-2 left-2 ${colorMap[section.color]} text-white text-xs font-bold px-1.5 py-0.5 rounded shadow-md`}>
                                     #{idx + 1}
                                   </div>
                                   <button
                                     type="button"
                                     title="Excluir foto"
-                                    className="absolute top-2 right-2 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-md shadow-lg hover:bg-red-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                    className="absolute top-2 right-2 bg-red-600/90 text-white text-xs font-bold px-1.5 py-0.5 rounded shadow-md hover:bg-red-700 transition-colors disabled:opacity-60 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                                     disabled={photoActionKey === `${sectionKey}:delete:${idx}`}
                                     onClick={(event) => {
                                       event.preventDefault()
@@ -1143,13 +1418,16 @@ export default function ReportsPage() {
                                     {photoActionKey === `${sectionKey}:delete:${idx}` ? '...' : 'Excluir'}
                                   </button>
                                 </div>
-                              ))
-                            ) : (
-                              <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 col-span-full">
-                                Nenhuma foto adicionada ainda.
-                              </div>
-                            )}
-                          </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 px-4 py-2.5 text-slate-400 text-xs border-t border-slate-100">
+                              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              Nenhuma foto adicionada
+                            </div>
+                          )}
                         </div>
                       );
                     });
@@ -1181,6 +1459,49 @@ export default function ReportsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        {/* Lightbox - Visualização de foto */}
+        {viewingPhoto && (
+          <div
+            className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center animate-fadeIn"
+            onClick={() => setViewingPhoto(null)}
+          >
+            <div className="absolute top-4 left-0 right-0 flex items-center justify-between px-6">
+              <span className="text-white text-sm font-semibold bg-black/40 px-3 py-1.5 rounded-lg">
+                {viewingPhoto.label}
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={viewingPhoto.url}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                  title="Baixar foto"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </a>
+                <button
+                  onClick={() => setViewingPhoto(null)}
+                  className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors"
+                  title="Fechar"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <img
+              src={viewingPhoto.url}
+              alt={viewingPhoto.label}
+              className="max-h-[85vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         )}
       </AppShell>

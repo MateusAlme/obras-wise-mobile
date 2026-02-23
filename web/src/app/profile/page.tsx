@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
 import AvatarUpload from '@/components/AvatarUpload'
@@ -9,41 +8,28 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 
 export default function ProfilePage() {
-  const router = useRouter()
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [profile, setProfile] = useState<any>(null)
-  const [formData, setFormData] = useState({
-    full_name: '',
-    email: ''
-  })
+  const [formData, setFormData] = useState({ full_name: '', email: '' })
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    loadProfile()
-  }, [user])
+  useEffect(() => { loadProfile() }, [user])
 
   async function loadProfile() {
     try {
       if (!user) return
-
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single()
-
       if (error) throw error
-
       setProfile(data)
-      setFormData({
-        full_name: data.full_name || '',
-        email: data.email || user.email || ''
-      })
+      setFormData({ full_name: data.full_name || '', email: data.email || user.email || '' })
     } catch (error: any) {
-      console.error('Erro ao carregar perfil:', error)
       setError('Erro ao carregar perfil')
     } finally {
       setLoading(false)
@@ -53,29 +39,19 @@ export default function ProfilePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!user) return
-
-    const userId = user.id
-
     setSaving(true)
     setError('')
     setSuccess('')
-
     try {
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({
-          full_name: formData.full_name,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId)
-
+        .update({ full_name: formData.full_name, updated_at: new Date().toISOString() })
+        .eq('id', user.id)
       if (updateError) throw updateError
-
       setSuccess('Perfil atualizado com sucesso!')
       await loadProfile()
       setTimeout(() => setSuccess(''), 3000)
     } catch (error: any) {
-      console.error('Erro ao atualizar perfil:', error)
       setError(error.message || 'Erro ao atualizar perfil')
     } finally {
       setSaving(false)
@@ -86,9 +62,9 @@ export default function ProfilePage() {
     return (
       <ProtectedRoute>
         <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-xl text-gray-600">Carregando perfil...</p>
+          <div className="text-center space-y-3">
+            <div className="spinner mx-auto" />
+            <p className="text-sm font-medium text-gray-500">Carregando perfil...</p>
           </div>
         </div>
       </ProtectedRoute>
@@ -98,36 +74,34 @@ export default function ProfilePage() {
   return (
     <ProtectedRoute>
       <AppShell>
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-xl mx-auto">
+          {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">Meu Perfil</h1>
-            <p className="text-sm sm:text-base text-slate-600 mt-1">
-              Gerencie suas informações pessoais e foto de perfil
-            </p>
+            <h1 className="page-title">Meu Perfil</h1>
+            <p className="page-subtitle">Gerencie suas informações pessoais e foto de perfil</p>
           </div>
 
           {success && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-              <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="alert-success mb-5">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              <p className="text-sm text-green-800 font-medium">{success}</p>
+              {success}
             </div>
           )}
-
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="alert-error mb-5">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
-              <p className="text-sm text-red-800 font-medium">{error}</p>
+              {error}
             </div>
           )}
 
-          <div className="bg-white rounded-lg shadow border border-gray-200 p-8">
-            {/* Avatar Upload */}
-            <div className="mb-8 pb-8 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Foto de Perfil</h2>
+          <div className="card-padded space-y-6">
+            {/* Avatar */}
+            <div className="pb-6 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-700 mb-4">Foto de Perfil</h2>
               <AvatarUpload
                 userId={user.id}
                 currentAvatarUrl={profile?.avatar_url}
@@ -137,56 +111,49 @@ export default function ProfilePage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
                   Nome Completo
                 </label>
                 <input
                   type="text"
                   value={formData.full_name}
                   onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input-field"
                   placeholder="Seu nome completo"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
                   Email
                 </label>
                 <input
                   type="email"
                   value={formData.email}
                   disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
+                  className="input-field"
                 />
-                <p className="text-xs text-gray-500 mt-1">O email não pode ser alterado</p>
+                <p className="text-xs text-gray-400 mt-1">O email não pode ser alterado</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
                   Perfil
                 </label>
-                <input
-                  type="text"
-                  value={profile?.role === 'admin' ? 'Administrador' : 'Visualizador'}
-                  disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 cursor-not-allowed"
-                />
+                <div className="flex items-center gap-2 px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-lg">
+                  <span className={profile?.role === 'admin' ? 'badge-purple' : 'badge-gray'}>
+                    {profile?.role === 'admin' ? 'Administrador' : 'Visualizador'}
+                  </span>
+                  <p className="text-xs text-gray-400">Definido pelo administrador do sistema</p>
+                </div>
               </div>
 
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
-                >
+              <div className="pt-2">
+                <button type="submit" disabled={saving} className="btn-primary w-full">
                   {saving ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      Salvando...
-                    </>
+                    <><span className="spinner-sm" />Salvando...</>
                   ) : (
                     'Salvar Alterações'
                   )}

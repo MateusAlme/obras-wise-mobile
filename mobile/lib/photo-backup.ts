@@ -51,7 +51,7 @@ export interface PhotoMetadata {
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' | 'checklist_aterramento_cerca' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' |
     'checklist_ponto_haste' | 'checklist_ponto_termometro' | 'checklist_panoramica_final' |
-    'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_descricao' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' |
     'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
@@ -156,7 +156,7 @@ export const backupPhoto = async (
     'checklist_croqui' | 'checklist_panoramica_inicial' | 'checklist_chede' | 'checklist_aterramento_cerca' |
     'checklist_padrao_geral' | 'checklist_padrao_interno' | 'checklist_frying' | 'checklist_abertura_fechamento_pulo' |
     'checklist_ponto_haste' | 'checklist_ponto_termometro' | 'checklist_panoramica_final' |
-    'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
+    'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_descricao' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
     'checklist_seccionamento' |
     'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |

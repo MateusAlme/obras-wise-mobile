@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
   const isCompressor = userRole === 'compressor';
+  const isAdmin = userRole === 'admin';
   const isSmallScreen = width < 380;
   const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
 
@@ -51,7 +52,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (!equipeLogada) return;
+    if (!equipeLogada && !isAdmin) return;
 
     const unsubscribe = startAutoSync(async result => {
       if (result.success > 0 || result.failed > 0) {
@@ -63,7 +64,7 @@ export default function Dashboard() {
     return () => {
       unsubscribe?.();
     };
-  }, [equipeLogada, userRole]);
+  }, [equipeLogada, userRole, isAdmin]);
 
   const initializeDashboard = async () => {
     try {
@@ -74,7 +75,7 @@ export default function Dashboard() {
       setEquipeLogada(equipeAtual);
       setUserRole(roleAtual);
 
-      if (!equipeAtual) {
+      if (!equipeAtual && roleAtual !== 'admin') {
         setTotalObras(0);
         setPendingObras([]);
         return;
@@ -95,15 +96,18 @@ export default function Dashboard() {
     try {
       const equipe = equipeParam || equipeLogada;
       const role = roleParam || userRole;
-      if (!equipe) {
+      if (!equipe && role !== 'admin') {
         setTotalObras(0);
         return;
       }
 
       let query = supabase
         .from('obras')
-        .select('*', { count: 'exact', head: true })
-        .eq('equipe', equipe);
+        .select('*', { count: 'exact', head: true });
+
+      if (role !== 'admin') {
+        query = query.eq('equipe', equipe);
+      }
 
       if (role === 'compressor') {
         query = query.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
@@ -123,15 +127,17 @@ export default function Dashboard() {
     try {
       const equipe = equipeParam || equipeLogada;
       const role = roleParam || userRole;
-      if (!equipe) {
+      if (!equipe && role !== 'admin') {
         setPendingObras([]);
         return;
       }
 
       const obras = await getPendingObras();
-      const pendentesDaEquipe = obras.filter(obra => {
-        const mesmaEquipe = obra.equipe === equipe;
-        if (!mesmaEquipe) return false;
+      const pendentesDaEquipe = obras.filter((obra) => {
+        if (role !== 'admin') {
+          const mesmaEquipe = obra.equipe === equipe;
+          if (!mesmaEquipe) return false;
+        }
         if (role !== 'compressor') return true;
         return obra.tipo_servico === 'Cava em Rocha' || (obra as any).creator_role === 'compressor';
       });
@@ -172,9 +178,13 @@ export default function Dashboard() {
     ? pendingObras.length > 0
       ? isCompressor
         ? `${pendingObras.length} book(s) de Cava em Rocha aguardando sincronizacao`
+        : isAdmin
+        ? `${pendingObras.length} obra(s) aguardando sincronizacao`
         : `${pendingObras.length} obra(s) da equipe aguardando sincronizacao`
       : isCompressor
       ? 'Todos os books de Cava em Rocha estao sincronizados'
+      : isAdmin
+      ? 'Todas as obras estao sincronizadas'
       : 'Tudo sincronizado para a sua equipe'
     : 'Cadastros ficam locais e sincronizam quando voltar a conexao';
 

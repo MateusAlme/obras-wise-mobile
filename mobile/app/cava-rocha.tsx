@@ -120,8 +120,8 @@ export default function CavaRocha() {
       if (!result.canceled && result.assets[0]) {
         const photo = result.assets[0];
 
-        // Obter localização
-        const { status: locationStatus } = await Location.requestForegroundPermissionsAsync();
+        // Obter localização sem disparar pop-up de permissão
+        const { status: locationStatus } = await Location.getForegroundPermissionsAsync();
         let latitude = null;
         let longitude = null;
 
