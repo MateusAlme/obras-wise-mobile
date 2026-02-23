@@ -1407,7 +1407,7 @@ export default function ReportsPage() {
                                   <button
                                     type="button"
                                     title="Excluir foto"
-                                    className="absolute top-2 right-2 bg-red-600/90 text-white text-xs font-bold px-1.5 py-0.5 rounded shadow-md hover:bg-red-700 transition-colors disabled:opacity-60 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                                    className="absolute top-2 right-2 bg-red-600/90 text-white text-xs font-bold px-1.5 py-0.5 rounded shadow-md hover:bg-red-700 disabled:opacity-60 opacity-0 group-hover:opacity-100 transition-all duration-200"
                                     disabled={photoActionKey === `${sectionKey}:delete:${idx}`}
                                     onClick={(event) => {
                                       event.preventDefault()
