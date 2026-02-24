@@ -8,6 +8,7 @@ import { generatePDF } from '@/lib/pdf-generator'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import * as XLSX from 'xlsx'
 
 const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; lightColor: string }[] = [
@@ -112,6 +113,7 @@ function getSectionsForBook(tipoServico: string) {
 
 export default function ReportsPage() {
   const router = useRouter()
+  const { isAdmin } = useAuth()
   const [obras, setObras] = useState<Obra[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState('todos')
@@ -127,6 +129,10 @@ export default function ReportsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [photoActionKey, setPhotoActionKey] = useState<string | null>(null)
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; label: string } | null>(null)
+  const [editingObra, setEditingObra] = useState<Obra | null>(null)
+  const [editForm, setEditForm] = useState({ equipe: '', obra: '', data: '', responsavel: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState('')
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -642,6 +648,61 @@ export default function ReportsPage() {
     }
   }
 
+  function handleOpenEdit(obra: Obra) {
+    setOpenMenuId(null)
+    setEditError('')
+    // Normaliza a data para YYYY-MM-DD (campo type="date")
+    let dataFormatada = ''
+    if (obra.data) {
+      try {
+        const d = new Date(obra.data)
+        if (!isNaN(d.getTime())) {
+          dataFormatada = d.toISOString().slice(0, 10)
+        } else {
+          dataFormatada = obra.data.slice(0, 10)
+        }
+      } catch {
+        dataFormatada = obra.data.slice(0, 10)
+      }
+    }
+    setEditForm({
+      equipe: obra.equipe || '',
+      obra: obra.obra || '',
+      data: dataFormatada,
+      responsavel: obra.responsavel || '',
+    })
+    setEditingObra(obra)
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingObra) return
+    setSavingEdit(true)
+    setEditError('')
+    try {
+      const { error } = await supabase
+        .from('obras')
+        .update({
+          equipe: editForm.equipe.trim(),
+          obra: editForm.obra.trim(),
+          data: editForm.data,
+          responsavel: editForm.responsavel.trim(),
+        })
+        .eq('id', editingObra.id)
+      if (error) throw error
+      setObras(prev => prev.map(o =>
+        o.id === editingObra.id
+          ? { ...o, equipe: editForm.equipe.trim(), obra: editForm.obra.trim(), data: editForm.data, responsavel: editForm.responsavel.trim() }
+          : o
+      ))
+      setEditingObra(null)
+    } catch (err: any) {
+      setEditError(err.message || 'Erro ao salvar alterações')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -953,6 +1014,17 @@ export default function ReportsPage() {
                                 </svg>
                                 Abrir/Editar Obra
                               </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => handleOpenEdit(obra)}
+                                  className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-amber-50 hover:text-amber-700 flex items-center gap-3"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                                  </svg>
+                                  Editar Dados
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleCreatePlaque(obra)}
                                 className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 flex items-center gap-3"
@@ -1013,6 +1085,127 @@ export default function ReportsPage() {
               </div>
             )}
           </div>
+
+        {/* Modal Editar Dados da Obra */}
+        {editingObra && (
+          <div
+            className="modal-overlay"
+            onClick={(e) => { if (e.target === e.currentTarget && !savingEdit) setEditingObra(null) }}
+          >
+            <div className="modal-box max-w-md animate-slideUp">
+              <div className="modal-header">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl flex items-center justify-center shadow-sm shadow-amber-500/30">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="modal-title">Editar Dados da Obra</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">ID: {editingObra.id.slice(0, 8)}…</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingObra(null)}
+                  disabled={savingEdit}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEdit}>
+                <div className="modal-body space-y-4">
+                  {editError && (
+                    <div className="alert-error">{editError}</div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Equipe
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.equipe}
+                      onChange={(e) => setEditForm(f => ({ ...f, equipe: e.target.value }))}
+                      className="input-field"
+                      placeholder="Nome da equipe"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Número da Obra
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.obra}
+                      onChange={(e) => setEditForm(f => ({ ...f, obra: e.target.value }))}
+                      className="input-field"
+                      placeholder="Ex: 12345678"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Data da Obra
+                    </label>
+                    <input
+                      type="date"
+                      value={editForm.data}
+                      onChange={(e) => setEditForm(f => ({ ...f, data: e.target.value }))}
+                      className="input-field"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Responsável
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.responsavel}
+                      onChange={(e) => setEditForm(f => ({ ...f, responsavel: e.target.value }))}
+                      className="input-field"
+                      placeholder="Nome do responsável"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setEditingObra(null)}
+                    disabled={savingEdit}
+                    className="btn-ghost"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit}
+                    className="btn-primary"
+                  >
+                    {savingEdit ? (
+                      <><span className="spinner-sm" />Salvando...</>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Salvar Alterações
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Modal/Drawer do Book */}
         {selectedObraForBook && (
