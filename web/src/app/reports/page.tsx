@@ -36,6 +36,7 @@ const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; li
   { key: 'fotos_checklist_padrao_interno', label: 'Checklist - Padrão Interno', color: 'purple', lightColor: 'purple' },
   { key: 'fotos_checklist_frying', label: 'Checklist - Flying', color: 'purple', lightColor: 'purple' },
   { key: 'fotos_checklist_abertura_fechamento_pulo', label: 'Checklist - Abertura/Fechamento de Pulo', color: 'purple', lightColor: 'purple' },
+  { key: 'fotos_checklist_hastes_aplicadas', label: 'Checklist - Hastes Aplicadas e Medição do Termômetro', color: 'purple', lightColor: 'purple' },
   { key: 'fotos_checklist_panoramica_final', label: 'Checklist - Panorâmica Final', color: 'purple', lightColor: 'purple' },
   { key: 'fotos_altimetria_lado_fonte', label: 'Altimetria - Lado Fonte', color: 'sky', lightColor: 'sky' },
   { key: 'fotos_altimetria_medicao_fonte', label: 'Altimetria - Medição Fonte', color: 'sky', lightColor: 'sky' },
@@ -103,7 +104,8 @@ function getSectionsForBook(tipoServico: string) {
       'fotos_checklist_chede', 'fotos_checklist_postes', 'fotos_checklist_seccionamentos',
       'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral',
       'fotos_checklist_padrao_interno', 'fotos_checklist_frying',
-      'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_panoramica_final',
+      'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_hastes_aplicadas',
+      'fotos_checklist_panoramica_final',
     ],
   }
 
@@ -1468,6 +1470,58 @@ export default function ReportsPage() {
                                       <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
                                         {urls.map((url, i) => renderPhotoThumb(url, `Aterramento ${aterr.numero}`, i, 'purple'))}
                                       </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        }
+                      }
+
+                      // ── HASTES E TERMÔMETROS AGRUPADOS ───────────────────────
+                      if (section.key === 'fotos_checklist_hastes_aplicadas') {
+                        const hastesData: any[] = (selectedObraForBook as any).checklist_hastes_termometros_data
+                        if (hastesData && Array.isArray(hastesData) && hastesData.length > 0) {
+                          const totalFotos = hastesData.reduce((acc, p) => acc + (p.fotoHaste?.length || 0) + (p.fotoTermometro?.length || 0), 0)
+                          return (
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                              <div className="flex items-center gap-3 px-4 py-3">
+                                <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                                  <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Hastes Aplicadas e Medição do Termômetro</h4>
+                                </div>
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                  {hastesData.length} ponto{hastesData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                              <div className="px-4 pb-4 space-y-2">
+                                {hastesData.map((ponto, pIdx) => {
+                                  const label = ponto.isAditivo ? `AD-P${ponto.numero}` : `P${ponto.numero}`
+                                  const hasteUrls = (ponto.fotoHaste || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                  const termoUrls = (ponto.fotoTermometro || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                  if (hasteUrls.length === 0 && termoUrls.length === 0) return null
+                                  return (
+                                    <div key={pIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
+                                        <span className="font-bold text-sm text-purple-900">{label}</span>
+                                        <span className="text-xs text-purple-400 ml-auto">{hasteUrls.length + termoUrls.length} foto{hasteUrls.length + termoUrls.length !== 1 ? 's' : ''}</span>
+                                      </div>
+                                      {hasteUrls.length > 0 && (
+                                        <div className="px-3 py-2 border-t border-purple-50">
+                                          <p className="text-xs font-semibold text-purple-500 mb-2 uppercase tracking-wide">Haste Aplicada ({hasteUrls.length})</p>
+                                          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
+                                            {hasteUrls.map((url, i) => renderPhotoThumb(url, `${label} Haste`, i, 'purple'))}
+                                          </div>
+                                        </div>
+                                      )}
+                                      {termoUrls.length > 0 && (
+                                        <div className="px-3 py-2 border-t border-purple-50">
+                                          <p className="text-xs font-semibold text-purple-500 mb-2 uppercase tracking-wide">Medição do Termômetro ({termoUrls.length})</p>
+                                          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
+                                            {termoUrls.map((url, i) => renderPhotoThumb(url, `${label} Termômetro`, i, 'purple'))}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )
                                 })}

@@ -938,8 +938,25 @@ export async function generatePDF(obra: Obra) {
   // 10. Abertura e Fechamento de Pulo
   await addPhotosSection(obra.fotos_checklist_abertura_fechamento_pulo, 'Checklist - 10. Abertura e Fechamento de Pulo')
 
-  // 11. Hastes e Termômetros
-  // TODO: Adicionar suporte para hastes/termômetros estruturados se necessário
+  // 11. Hastes Aplicadas e Medição do Termômetro
+  if (hasRealPhotos(obra.checklist_hastes_termometros_data) && obra.checklist_hastes_termometros_data) {
+    for (let pontoIndex = 0; pontoIndex < obra.checklist_hastes_termometros_data.length; pontoIndex++) {
+      const ponto = obra.checklist_hastes_termometros_data[pontoIndex]
+      const prefixo = ponto.isAditivo ? 'AD-P' : 'P'
+      const label = ponto.numero ? `${prefixo}${ponto.numero}` : `Ponto ${pontoIndex + 1}`
+
+      if (ponto.fotoHaste?.length > 0) {
+        await addPhotosSection(ponto.fotoHaste, `Checklist - 11. ${label} - Haste Aplicada`)
+      }
+      if (ponto.fotoTermometro?.length > 0) {
+        await addPhotosSection(ponto.fotoTermometro, `Checklist - 11. ${label} - Medição do Termômetro`)
+      }
+    }
+  } else {
+    // Fallback: fotos planas (compatibilidade)
+    await addPhotosSection(obra.fotos_checklist_hastes_aplicadas, 'Checklist - 11. Hastes Aplicadas')
+    await addPhotosSection(obra.fotos_checklist_medicao_termometro, 'Checklist - 11. Medição do Termômetro')
+  }
 
   // 12. Panorâmica Final
   await addPhotosSection(obra.fotos_checklist_panoramica_final, 'Checklist - 12. Panorâmica Final')
