@@ -491,6 +491,10 @@ export default function ObraDetailPage() {
   const [selectedAtipicidades, setSelectedAtipicidades] = useState<number[]>([])
   const { isAdmin } = useAuth()
   const [descricaoAtipicidade, setDescricaoAtipicidade] = useState('')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editForm, setEditForm] = useState({ equipe: '', obra: '', data: '', responsavel: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState('')
 
   useEffect(() => {
     if (params.id) {
@@ -1642,6 +1646,55 @@ export default function ObraDetailPage() {
     }
   }
 
+  function handleOpenEditModal() {
+    if (!obra) return
+    let dataFormatada = ''
+    try {
+      dataFormatada = new Date(obra.data).toISOString().slice(0, 10)
+    } catch {
+      dataFormatada = obra.data || ''
+    }
+    setEditForm({
+      equipe: obra.equipe || '',
+      obra: obra.obra || '',
+      data: dataFormatada,
+      responsavel: obra.responsavel || '',
+    })
+    setEditError('')
+    setShowEditModal(true)
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!obra) return
+    setSavingEdit(true)
+    setEditError('')
+    try {
+      const { error } = await supabase
+        .from('obras')
+        .update({
+          equipe: editForm.equipe,
+          obra: editForm.obra,
+          data: editForm.data,
+          responsavel: editForm.responsavel,
+        })
+        .eq('id', obra.id)
+      if (error) throw error
+      setObra({
+        ...obra,
+        equipe: editForm.equipe,
+        obra: editForm.obra,
+        data: editForm.data,
+        responsavel: editForm.responsavel,
+      })
+      setShowEditModal(false)
+    } catch (err: any) {
+      setEditError(err.message || 'Erro ao salvar alterações')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   if (loading) {
     return (
       <ProtectedRoute>
@@ -1761,6 +1814,17 @@ export default function ObraDetailPage() {
                       {finalizandoObra ? 'Aguarde...' : 'Finalizar Obra'}
                     </button>
                   )
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={handleOpenEditModal}
+                    className="px-4 py-2.5 bg-white border border-gray-200 hover:border-indigo-400 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Editar Dados
+                  </button>
                 )}
                 <button
                   onClick={handleExportPdf}
@@ -2146,6 +2210,177 @@ export default function ObraDetailPage() {
               </div>
             ) : null}
           </div>
+
+          {/* Modal Editar Dados */}
+          {showEditModal && (
+            <div
+              className="modal-overlay animate-fadeIn"
+              onClick={(e) => { if (e.target === e.currentTarget) setShowEditModal(false) }}
+            >
+              <div className="modal-box w-full max-w-lg shadow-2xl shadow-slate-900/20 animate-slideUp">
+
+                {/* ── Header com banda de gradiente ── */}
+                <div className="relative bg-gradient-to-br from-indigo-600 to-indigo-700 px-6 pt-6 pb-8 rounded-t-2xl overflow-hidden">
+                  {/* Padrão decorativo de fundo */}
+                  <div className="absolute inset-0 opacity-10">
+                    <div className="absolute -top-4 -right-4 w-32 h-32 bg-white rounded-full" />
+                    <div className="absolute -bottom-8 -left-4 w-24 h-24 bg-white rounded-full" />
+                  </div>
+
+                  <div className="relative flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center ring-1 ring-white/30">
+                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-white leading-tight">Editar Dados da Obra</h2>
+                        <p className="text-xs text-indigo-200 mt-0.5">Apenas administradores podem editar</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowEditModal(false)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white"
+                      aria-label="Fechar modal"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Formulário ── */}
+                <form onSubmit={handleSaveEdit}>
+                  <div className="px-6 pt-6 pb-5 space-y-5">
+
+                    {/* Grid 2x2 */}
+                    <div className="grid grid-cols-2 gap-4">
+
+                      {/* Campo: Equipe */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Equipe
+                        </label>
+                        <div className="relative">
+                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            placeholder="Ex: Equipe A"
+                            value={editForm.equipe}
+                            onChange={(e) => setEditForm({ ...editForm, equipe: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Campo: Número da Obra */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          N. da Obra
+                        </label>
+                        <div className="relative">
+                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            placeholder="Ex: 2024-001"
+                            value={editForm.obra}
+                            onChange={(e) => setEditForm({ ...editForm, obra: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Campo: Data */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Data
+                        </label>
+                        <div className="relative">
+                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="date"
+                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            value={editForm.data}
+                            onChange={(e) => setEditForm({ ...editForm, data: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Campo: Responsável */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Responsável
+                        </label>
+                        <div className="relative">
+                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            placeholder="Nome do responsável"
+                            value={editForm.responsavel}
+                            onChange={(e) => setEditForm({ ...editForm, responsavel: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mensagem de erro */}
+                    {editError && (
+                      <div className="flex items-start gap-2.5 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                        <svg className="w-4 h-4 mt-0.5 shrink-0 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span>{editError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Footer ── */}
+                  <div className="modal-footer justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowEditModal(false)}
+                      className="btn-ghost min-w-[100px]"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingEdit}
+                      className="btn-primary min-w-[160px] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {savingEdit && <span className="spinner-sm" />}
+                      {savingEdit ? 'Salvando...' : 'Salvar Alterações'}
+                    </button>
+                  </div>
+                </form>
+
+              </div>
+            </div>
+          )}
       </AppShell>
     </ProtectedRoute>
   )
