@@ -114,6 +114,11 @@ export interface PendingObra {
   checklist_seccionamentos_data?: Array<{
     id: string;
     numero: number; // Número do seccionamento (1, 2, 3...) para mostrar como S1, S2, S3...
+    tipo?: 'seccionamento' | 'emenda' | 'poda';
+    posteInicio?: number | null;
+    posteFim?: number | null;
+    poste_inicio?: number | null;
+    poste_fim?: number | null;
     fotos: string[];
   }>;
   checklist_aterramentos_cerca_data?: Array<{

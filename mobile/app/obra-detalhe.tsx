@@ -126,6 +126,11 @@ type OnlineObra = {
   checklist_seccionamentos_data?: Array<{
     id: string;
     numero: number;
+    tipo?: 'seccionamento' | 'emenda' | 'poda';
+    posteInicio?: number | string | null;
+    posteFim?: number | string | null;
+    poste_inicio?: number | string | null;
+    poste_fim?: number | string | null;
     fotos: (string | any)[];
   }>;
   checklist_aterramentos_cerca_data?: Array<{
@@ -291,7 +296,7 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_checklist_panoramica_inicial', label: '2️⃣ Panorâmica Inicial' },
   { key: 'fotos_checklist_chede', label: '3️⃣ Chave com Componente' },
   { key: 'fotos_checklist_postes', label: '4️⃣ Registro dos Postes' },
-  { key: 'fotos_checklist_seccionamentos', label: '5️⃣ Seccionamento de Cerca' },
+  { key: 'fotos_checklist_seccionamentos', label: '5️⃣ Emenda / 6️⃣ Poda / 7️⃣ Seccionamento' },
   { key: 'fotos_checklist_aterramento_cerca', label: '6️⃣ Aterramento de Cerca' },
   { key: 'fotos_checklist_padrao_geral', label: '7️⃣ Padrão de Ligação - Vista Geral' },
   { key: 'fotos_checklist_padrao_interno', label: '8️⃣ Padrão de Ligação - Interno' },
@@ -1029,7 +1034,7 @@ export default function ObraDetalhe() {
         'checklist_poste_maior_esforco',
         'checklist_poste_menor_esforco',
       ],
-      'fotos_checklist_seccionamentos': 'checklist_seccionamento',
+      'fotos_checklist_seccionamentos': ['checklist_seccionamento', 'checklist_emenda', 'checklist_poda'],
       'fotos_altimetria_lado_fonte': 'altimetria_lado_fonte',
       'fotos_altimetria_medicao_fonte': 'altimetria_medicao_fonte',
       'fotos_altimetria_lado_carga': 'altimetria_lado_carga',
@@ -2161,11 +2166,19 @@ export default function ObraDetalhe() {
                   {obra.checklist_seccionamentos_data.map((sec, secIndex) => {
                     const fotosCarregadas = getPhotosByIds(sec.fotos || []);
                     if (fotosCarregadas.length === 0) return null;
+                    const tipo = sec.tipo || 'seccionamento';
+                    const prefixo = tipo === 'emenda' ? 'E' : tipo === 'poda' ? 'PD' : 'S';
+                    const posteInicio = sec.posteInicio ?? sec.poste_inicio;
+                    const posteFim = sec.posteFim ?? sec.poste_fim;
+                    const trecho =
+                      tipo === 'emenda' || tipo === 'poda'
+                        ? ` entre P${posteInicio ?? '?'} - P${posteFim ?? '?'}`
+                        : '';
 
                     return (
                       <View key={sec.id || secIndex} style={{ marginBottom: 16, paddingLeft: 8, borderLeftWidth: 3, borderLeftColor: '#28a745' }}>
                         <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 }}>
-                          S{sec.numero ?? (secIndex + 1)} ({fotosCarregadas.length} fotos)
+                          {prefixo}{sec.numero ?? (secIndex + 1)}{trecho} ({fotosCarregadas.length} fotos)
                         </Text>
                         <View style={styles.photoGrid}>
                           {fotosCarregadas.map((foto, fotoIndex) => {
@@ -2920,5 +2933,3 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
 });
-
-

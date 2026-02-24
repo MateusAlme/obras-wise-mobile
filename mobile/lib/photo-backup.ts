@@ -53,7 +53,7 @@ export interface PhotoMetadata {
     'checklist_ponto_haste' | 'checklist_ponto_termometro' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_descricao' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
-    'checklist_seccionamento' |
+    'checklist_seccionamento' | 'checklist_emenda' | 'checklist_poda' |
     'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
     'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem' |
     'doc_materiais_previsto' | 'doc_materiais_realizado' |
@@ -158,7 +158,7 @@ export const backupPhoto = async (
     'checklist_ponto_haste' | 'checklist_ponto_termometro' | 'checklist_panoramica_final' |
     'checklist_poste_inteiro' | 'checklist_poste_engaste' | 'checklist_poste_descricao' | 'checklist_poste_conexao1' | 'checklist_poste_conexao2' |
     'checklist_poste_maior_esforco' | 'checklist_poste_menor_esforco' |
-    'checklist_seccionamento' |
+    'checklist_seccionamento' | 'checklist_emenda' | 'checklist_poda' |
     'doc_cadastro_medidor' | 'doc_laudo_transformador' | 'doc_laudo_regulador' |
     'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem' |
     'doc_materiais_previsto' | 'doc_materiais_realizado' |
