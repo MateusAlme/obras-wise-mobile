@@ -1,0 +1,1876 @@
+{
+  "generatedAt": "2026-02-21T00:38:47.616Z",
+  "summary": {
+    "totalActiveColumns": 78,
+    "usedInApp": 78,
+    "unusedInApp": 0,
+    "unusedEverywhere": 0
+  },
+  "columns": [
+    {
+      "column": "atipicidades",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "web/src/lib/pdf-generator.ts",
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx",
+        "web/src/app/acompanhamento/page.tsx"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "checklist_aterramentos_cerca_data",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260205_adicionar_checklist_data.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 5,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 15,
+      "maintenanceSample": [
+        "scripts/corrigir-todas-obras-jsonb.ts",
+        "scripts/fix-all-checklist-photos.ts",
+        "scripts/fix-checklist-photos.ts",
+        "scripts/limpar-todas-urls-locais.ts",
+        "scripts/migrar-obra-00855121.js"
+      ]
+    },
+    {
+      "column": "checklist_hastes_termometros_data",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260206_adicionar_hastes_termometros.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 5,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 18,
+      "maintenanceSample": [
+        "scripts/check-hastes-data.ts",
+        "scripts/corrigir-todas-obras-jsonb.ts",
+        "scripts/debug-hastes-web.ts",
+        "scripts/debug-obra-11141412.ts",
+        "scripts/fix-all-checklist-photos.ts"
+      ]
+    },
+    {
+      "column": "checklist_postes_data",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260205_adicionar_checklist_data.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 6,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts",
+        "web/src/lib/supabase.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 15,
+      "maintenanceSample": [
+        "scripts/corrigir-todas-obras-jsonb.ts",
+        "scripts/fix-all-checklist-photos.ts",
+        "scripts/fix-checklist-photos.ts",
+        "scripts/limpar-todas-urls-locais.ts",
+        "scripts/migrar-obra-00855121.js"
+      ]
+    },
+    {
+      "column": "checklist_seccionamentos_data",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260205_adicionar_checklist_data.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 5,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 18,
+      "maintenanceSample": [
+        "scripts/corrigir-todas-obras-jsonb.ts",
+        "scripts/debug-obra-11141412.ts",
+        "scripts/fix-all-checklist-photos.ts",
+        "scripts/fix-checklist-photos.ts",
+        "scripts/limpar-todas-urls-locais.ts"
+      ]
+    },
+    {
+      "column": "created_at",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 16,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/app/(comp)/index.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 18,
+      "maintenanceSample": [
+        "mobile/utils/debug-obras.ts",
+        "scripts/adicionar_usuario_2025.sql",
+        "scripts/check-sync-status.ts",
+        "scripts/corrigir-todas-obras-jsonb.ts",
+        "scripts/criar_obras_teste_agora.sql"
+      ]
+    },
+    {
+      "column": "created_by",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250213_comp_role.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 3,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/(comp)/index.tsx"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "created_by_admin",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260220_admins_individuais.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 3,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "creator_role",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250213_comp_role.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 7,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/(tabs)/index.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/app/(comp)/index.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "scripts/check-sync-status.ts"
+      ]
+    },
+    {
+      "column": "data",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 37,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/login.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 34,
+      "maintenanceSample": [
+        "mobile/utils/debug-obras.ts",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/auditar-colunas-obras.js",
+        "scripts/check-hastes-data.ts",
+        "scripts/check-sync-status.ts"
+      ]
+    },
+    {
+      "column": "data_abertura",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250227_adicionar_status_obra.sql",
+        "supabase/migrations/20250227_finalizar_todas_obras_existentes.sql",
+        "supabase/migrations/20250227_limpar_finalizacoes_incorretas.sql",
+        "supabase/migrations/20250227_sincronizar_data_fechamento_com_finalizada_em.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 3,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "web/src/lib/supabase.ts",
+        "web/src/app/acompanhamento/page.tsx"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "data_fechamento",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250227_adicionar_status_obra.sql",
+        "supabase/migrations/20250227_finalizar_todas_obras_existentes.sql",
+        "supabase/migrations/20250227_limpar_finalizacoes_incorretas.sql",
+        "supabase/migrations/20250227_sincronizar_data_fechamento_com_finalizada_em.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "web/src/lib/supabase.ts",
+        "web/src/app/acompanhamento/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "supabase/APLICAR_STATUS_AGORA.sql"
+      ]
+    },
+    {
+      "column": "descricao_atipicidade",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 3,
+      "appSample": [
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx",
+        "web/src/app/acompanhamento/page.tsx"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_apr",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250202_adicionar_documentacao.sql",
+        "supabase/migrations/20250205_consolidado_pendentes.sql",
+        "supabase/migrations/EXECUTAR_AGORA.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_autorizacao_passagem",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250214_adicionar_autorizacao_passagem.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 6,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "supabase/APLICAR_NO_SUPABASE_AGORA.sql"
+      ]
+    },
+    {
+      "column": "doc_cadastro_medidor",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250202_adicionar_documentacao.sql",
+        "supabase/migrations/20250205_consolidado_pendentes.sql",
+        "supabase/migrations/EXECUTAR_AGORA.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_fvbt",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250202_adicionar_documentacao.sql",
+        "supabase/migrations/20250205_consolidado_pendentes.sql",
+        "supabase/migrations/EXECUTAR_AGORA.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_laudo_regulador",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250202_adicionar_documentacao.sql",
+        "supabase/migrations/20250205_consolidado_pendentes.sql",
+        "supabase/migrations/EXECUTAR_AGORA.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_laudo_religador",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250202_adicionar_documentacao.sql",
+        "supabase/migrations/20250205_consolidado_pendentes.sql",
+        "supabase/migrations/EXECUTAR_AGORA.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_laudo_transformador",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250202_adicionar_documentacao.sql",
+        "supabase/migrations/20250205_consolidado_pendentes.sql",
+        "supabase/migrations/EXECUTAR_AGORA.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_materiais_previsto",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250216_adicionar_materiais_documentacao.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 2,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_materiais_realizado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250216_adicionar_materiais_documentacao.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 2,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "doc_termo_desistencia_lpt",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "equipe",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 31,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/login.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 10,
+      "maintenanceSample": [
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/adicionar_usuario_2025.sql",
+        "scripts/criar_obras_teste_agora.sql",
+        "scripts/criar_obra_teste.sql",
+        "scripts/diagnostico_usuario_2025.sql"
+      ]
+    },
+    {
+      "column": "finalizada_em",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250209_melhorias_visualizacao_equipe.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/fix-origem-status.ts",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 3,
+      "maintenanceSample": [
+        "scripts/check-sync-status.ts",
+        "supabase/APLICAR_STATUS_AGORA.sql",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_abertura",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 3,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "scripts/verificar-fotos-99999991.js",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_altimetria_lado_carga",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_altimetria_lado_fonte",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_altimetria_medicao_carga",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_altimetria_medicao_fonte",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_antes",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 13,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/(tabs)/obras.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 5,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/verificar-fotos-99999991.js",
+        "scripts/verificar_obras_app.sql",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_aterramento_hastes",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_aterramento_medicao",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_aterramento_vala_aberta",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_aterramento_vala_fechada",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_checklist_abertura_fechamento_pulo",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260206_adicionar_frying_pulo.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 7,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts",
+        "web/src/lib/supabase.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "fotos_checklist_frying",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260206_adicionar_frying_pulo.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 7,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts",
+        "web/src/lib/supabase.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "fotos_checklist_hastes_aplicadas",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260206_adicionar_hastes_termometros.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 2,
+      "appSample": [
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "scripts/verificar-colunas-flat.ts",
+        "scripts/verificar-obra-ef1054b1.js"
+      ]
+    },
+    {
+      "column": "fotos_checklist_medicao_termometro",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260206_adicionar_hastes_termometros.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 2,
+      "appSample": [
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "scripts/verificar-colunas-flat.ts",
+        "scripts/verificar-obra-ef1054b1.js"
+      ]
+    },
+    {
+      "column": "fotos_depois",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 13,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/(tabs)/obras.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 5,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/verificar-fotos-99999991.js",
+        "scripts/verificar_obras_app.sql",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_ditais_abertura",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_ditais_aterrar",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_ditais_impedir",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_ditais_sinalizar",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_ditais_testar",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_durante",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 13,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/(tabs)/obras.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 5,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/verificar-fotos-99999991.js",
+        "scripts/verificar_obras_app.sql",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_fechamento",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250119_adicionar_colunas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 3,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "scripts/verificar-fotos-99999991.js",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_antes_retirar",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_componente_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_laudo",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_placa_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_placa_retirado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_tape",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_tombamento_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_transformador_tombamento_retirado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_equipamentos_limpeza",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_evidencia",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_instalacao",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_placa_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_placa_retirado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_tombamento_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "fotos_vazamento_tombamento_retirado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250208_adicionar_altimetria_vazamento.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 10,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "id",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 31,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/fotos-pendentes.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 37,
+      "maintenanceSample": [
+        "mobile/utils/debug-obras.ts",
+        "mobile/utils/migrate-photo-fields.ts",
+        "scripts/adicionar_usuario_2025.sql",
+        "scripts/auditar-colunas-obras.js",
+        "scripts/check-hastes-data.ts"
+      ]
+    },
+    {
+      "column": "obra",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 27,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/(tabs)/index.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 40,
+      "maintenanceSample": [
+        "mobile/utils/debug-obras.ts",
+        "mobile/utils/migrate-photo-fields.ts",
+        "mobile/utils/nova-obra/buttons-ui.tsx",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/check-hastes-data.ts"
+      ]
+    },
+    {
+      "column": "observacoes",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260203_adicionar_observacoes.sql"
+      ],
+      "droppedIn": [
+        "supabase/migrations/20250116_limpar_tabela.sql"
+      ],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/pdf-generator.ts",
+        "web/src/lib/supabase.ts",
+        "web/src/app/reports/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 3,
+      "maintenanceSample": [
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/adicionar_usuario_2025.sql",
+        "scripts/fix_completo_usuario_2025.sql"
+      ]
+    },
+    {
+      "column": "postes_data",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20260130_adicionar_campo_postes.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts"
+      ],
+      "usedInMaintenance": false,
+      "maintenanceHitCount": 0,
+      "maintenanceSample": []
+    },
+    {
+      "column": "responsavel",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 12,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/(tabs)/obras.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 6,
+      "maintenanceSample": [
+        "mobile/utils/debug-obras.ts",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/criar_obras_teste_agora.sql",
+        "scripts/criar_obra_teste.sql",
+        "scripts/fix_completo_usuario_2025.sql"
+      ]
+    },
+    {
+      "column": "status",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250209_melhorias_visualizacao_equipe.sql",
+        "supabase/migrations/20250306_adicionar_campo_status.sql"
+      ],
+      "droppedIn": [
+        "supabase/migrations/20250115_fix_column_names.sql",
+        "supabase/migrations/20250116_limpar_tabela.sql"
+      ],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 23,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/_layout.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 12,
+      "maintenanceSample": [
+        "mobile/utils/debug-obras.ts",
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/auditar-colunas-obras.js",
+        "scripts/check-sync-status.ts",
+        "scripts/diagnostico_usuario_2025.sql"
+      ]
+    },
+    {
+      "column": "tem_atipicidade",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 5,
+      "appSample": [
+        "web/src/lib/supabase.ts",
+        "web/src/app/reports/page.tsx",
+        "web/src/app/obra/[id]/page.tsx",
+        "web/src/app/dashboard/page.tsx",
+        "web/src/app/acompanhamento/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 3,
+      "maintenanceSample": [
+        "scripts/criar_obras_teste_agora.sql",
+        "scripts/criar_obra_teste.sql",
+        "scripts/fix_completo_usuario_2025.sql"
+      ]
+    },
+    {
+      "column": "tipo_servico",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 14,
+      "appSample": [
+        "mobile/app/cava-rocha.tsx",
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/app/obras-pendentes.tsx",
+        "mobile/app/(tabs)/index.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 9,
+      "maintenanceSample": [
+        "mobile/utils/nova-obra/functions.tsx",
+        "scripts/corrigir-todas-obras-jsonb.ts",
+        "scripts/criar_obras_teste_agora.sql",
+        "scripts/criar_obra_teste.sql",
+        "scripts/fix-all-checklist-photos.ts"
+      ]
+    },
+    {
+      "column": "transformador_conexoes_primarias_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250217_adicionar_conexoes_transformador.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts"
+      ]
+    },
+    {
+      "column": "transformador_conexoes_primarias_retirado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250217_adicionar_conexoes_transformador.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts"
+      ]
+    },
+    {
+      "column": "transformador_conexoes_secundarias_instalado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250217_adicionar_conexoes_transformador.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts"
+      ]
+    },
+    {
+      "column": "transformador_conexoes_secundarias_retirado",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250217_adicionar_conexoes_transformador.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 4,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "mobile/lib/photo-backup.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 1,
+      "maintenanceSample": [
+        "mobile/utils/migrate-photo-fields.ts"
+      ]
+    },
+    {
+      "column": "transformador_status",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250126_adicionar_transformador_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 5,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/app/obra-detalhe.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase.ts",
+        "web/src/app/obra/[id]/page.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 2,
+      "maintenanceSample": [
+        "mobile/utils/nova-obra/functions.tsx",
+        "supabase/EXECUTAR_NO_DASHBOARD.sql"
+      ]
+    },
+    {
+      "column": "updated_at",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 8,
+      "appSample": [
+        "mobile/app/(tabs)/obras.tsx",
+        "mobile/lib/fix-duplicates.ts",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase-admin.ts",
+        "web/src/contexts/AuthContext.tsx"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 5,
+      "maintenanceSample": [
+        "scripts/adicionar_usuario_2025.sql",
+        "scripts/criar_obras_teste_agora.sql",
+        "scripts/criar_obra_teste.sql",
+        "scripts/fix_completo_usuario_2025.sql",
+        "supabase/APLICAR_FUNCOES_ADMIN.sql"
+      ]
+    },
+    {
+      "column": "user_id",
+      "active": true,
+      "addedIn": [
+        "supabase/migrations/20250112_multiplas_fotos.sql"
+      ],
+      "droppedIn": [],
+      "renamedFrom": [],
+      "usedInApp": true,
+      "appHitCount": 3,
+      "appSample": [
+        "mobile/app/nova-obra.tsx",
+        "mobile/lib/offline-sync.ts",
+        "web/src/lib/supabase.ts"
+      ],
+      "usedInMaintenance": true,
+      "maintenanceHitCount": 6,
+      "maintenanceSample": [
+        "scripts/criar_obras_teste_agora.sql",
+        "scripts/criar_obra_teste.sql",
+        "scripts/diagnostico_usuario_2025.sql",
+        "scripts/fix_completo_usuario_2025.sql",
+        "scripts/verificar_obras_app.sql"
+      ]
+    }
+  ]
+}

@@ -101,7 +101,8 @@
       "Bash(node:*)",
       "Bash(git diff:*)",
       "Bash(npm run android:*)",
-      "Bash(npx madge:*)"
+      "Bash(npx madge:*)",
+      "Bash(git:*)"
     ],
     "deny": [],
     "ask": []
