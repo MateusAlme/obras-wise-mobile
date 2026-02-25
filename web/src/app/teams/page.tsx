@@ -19,11 +19,23 @@ interface TeamStats {
   total_obras: number
 }
 
+type TeamRole = 'equipe' | 'admin' | 'compressor'
+
+function normalizeTeamRole(role?: string | null): TeamRole {
+  switch ((role || '').trim().toLowerCase()) {
+    case 'admin':
+      return 'admin'
+    case 'compressor':
+      return 'compressor'
+    default:
+      return 'equipe'
+  }
+}
+
 const ROLE_OPTIONS = [
   { value: 'equipe', label: 'Equipe (padrão)' },
-  { value: 'linha_viva', label: 'Linha Viva' },
+  { value: 'admin', label: 'Admin' },
   { value: 'compressor', label: 'Compressor' },
-  { value: 'supervisor', label: 'Supervisor' },
 ]
 
 function getRoleBadge(role: string) {
@@ -31,11 +43,11 @@ function getRoleBadge(role: string) {
     case 'admin':
       return { label: 'Admin', color: 'bg-purple-100 text-purple-700' }
     case 'linha_viva':
-      return { label: 'Linha Viva', color: 'bg-yellow-100 text-yellow-700' }
+      return { label: 'Linha Viva (legado)', color: 'bg-yellow-100 text-yellow-700' }
     case 'compressor':
       return { label: 'Compressor', color: 'bg-blue-100 text-blue-700' }
     case 'supervisor':
-      return { label: 'Supervisor', color: 'bg-orange-100 text-orange-700' }
+      return { label: 'Supervisor (legado)', color: 'bg-orange-100 text-orange-700' }
     default:
       return { label: 'Equipe', color: 'bg-slate-100 text-slate-600' }
   }
@@ -49,7 +61,7 @@ export default function TeamsPage() {
   // Modal: criar
   const [showModal, setShowModal] = useState(false)
   const [teamCode, setTeamCode] = useState('')
-  const [teamRole, setTeamRole] = useState('equipe')
+  const [teamRole, setTeamRole] = useState<TeamRole>('equipe')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
@@ -57,7 +69,7 @@ export default function TeamsPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingTeamData, setEditingTeamData] = useState<TeamCredential | null>(null)
   const [editTeamCode, setEditTeamCode] = useState('')
-  const [editTeamRole, setEditTeamRole] = useState('equipe')
+  const [editTeamRole, setEditTeamRole] = useState<TeamRole>('equipe')
 
   // Modal: alterar senha
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -129,13 +141,16 @@ export default function TeamsPage() {
       })
 
       if (error) throw error
+      const normalizedTeamRole = normalizeTeamRole(teamRole)
 
       // Definir role se diferente do padrão
-      if (teamRole !== 'equipe') {
-        await supabase
+      if (normalizedTeamRole !== 'equipe') {
+        const { error: roleError } = await supabase
           .from('equipe_credenciais')
-          .update({ role: teamRole })
+          .update({ role: normalizedTeamRole })
           .eq('equipe_codigo', teamCode.trim().toUpperCase())
+
+        if (roleError) throw roleError
       }
 
       await loadTeamsAndStats()
@@ -168,7 +183,7 @@ export default function TeamsPage() {
   function openEditModal(team: TeamCredential) {
     setEditingTeamData(team)
     setEditTeamCode(team.equipe_codigo)
-    setEditTeamRole(team.role || 'equipe')
+    setEditTeamRole(normalizeTeamRole(team.role))
     setError('')
     setShowEditModal(true)
   }
@@ -192,9 +207,11 @@ export default function TeamsPage() {
     if (!editingTeamData) return
 
     try {
+      const normalizedTeamRole = normalizeTeamRole(editTeamRole)
+
       const { error } = await supabase
         .from('equipe_credenciais')
-        .update({ equipe_codigo: editTeamCode.trim().toUpperCase(), role: editTeamRole })
+        .update({ equipe_codigo: editTeamCode.trim().toUpperCase(), role: normalizedTeamRole })
         .eq('id', editingTeamData.id)
 
       if (error) throw error
@@ -534,7 +551,7 @@ export default function TeamsPage() {
                   <label className="block text-base font-bold text-slate-900 mb-3">Tipo de Acesso Mobile</label>
                   <select
                     value={teamRole}
-                    onChange={(e) => setTeamRole(e.target.value)}
+                    onChange={(e) => setTeamRole(normalizeTeamRole(e.target.value))}
                     className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
                   >
                     {ROLE_OPTIONS.map((opt) => (
@@ -618,7 +635,7 @@ export default function TeamsPage() {
                   <label className="block text-base font-bold text-slate-900 mb-3">Tipo de Acesso Mobile</label>
                   <select
                     value={editTeamRole}
-                    onChange={(e) => setEditTeamRole(e.target.value)}
+                    onChange={(e) => setEditTeamRole(normalizeTeamRole(e.target.value))}
                     className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
                   >
                     {ROLE_OPTIONS.map((opt) => (
