@@ -295,6 +295,8 @@ export default function ReportsPage() {
     if (obra.fotos_checklist_aterramento_cerca?.length) count += obra.fotos_checklist_aterramento_cerca.length
     if (obra.fotos_checklist_padrao_geral?.length) count += obra.fotos_checklist_padrao_geral.length
     if (obra.fotos_checklist_padrao_interno?.length) count += obra.fotos_checklist_padrao_interno.length
+    if (obra.fotos_checklist_frying?.length) count += obra.fotos_checklist_frying.length
+    if (obra.fotos_checklist_abertura_fechamento_pulo?.length) count += obra.fotos_checklist_abertura_fechamento_pulo.length
     if (obra.fotos_checklist_panoramica_final?.length) count += obra.fotos_checklist_panoramica_final.length
     if (obra.fotos_checklist_postes?.length) count += obra.fotos_checklist_postes.length
     if (obra.fotos_checklist_seccionamentos?.length) count += obra.fotos_checklist_seccionamentos.length
@@ -1314,10 +1316,27 @@ export default function ReportsPage() {
                       blue: 'bg-blue-50', orange: 'bg-orange-50', green: 'bg-green-50', cyan: 'bg-cyan-50', teal: 'bg-teal-50', red: 'bg-red-50', amber: 'bg-amber-50', purple: 'bg-purple-50', indigo: 'bg-indigo-50', emerald: 'bg-emerald-50', sky: 'bg-sky-50', rose: 'bg-rose-50',
                     };
 
-                    const getUrlFromId = (id: string): string | null => {
-                      if (!id || id.startsWith('temp_') || id.startsWith('local_') || id.startsWith('file:///')) return null
-                      if (id.startsWith('http')) return id
-                      return supabase.storage.from('obra-photos').getPublicUrl(id).data.publicUrl
+                    const getPhotoUrlFromRef = (photoRef: any): string | null => {
+                      const value = typeof photoRef === 'string'
+                        ? photoRef
+                        : (photoRef?.url || photoRef?.id || '')
+                      if (!value || typeof value !== 'string') return null
+                      if (value.startsWith('temp_') || value.startsWith('local_') || value.startsWith('file:///')) return null
+                      if (value.startsWith('http')) return value
+                      return supabase.storage.from('obra-photos').getPublicUrl(value).data.publicUrl
+                    }
+
+                    const getChecklistLinearType = (item: any): 'seccionamento' | 'emenda' | 'poda' => {
+                      const tipo = item?.tipo
+                      if (tipo === 'emenda' || tipo === 'poda' || tipo === 'seccionamento') return tipo
+                      return 'seccionamento'
+                    }
+
+                    const getTrechoEntrePostes = (item: any): string | null => {
+                      const inicio = item?.posteInicio ?? item?.poste_inicio ?? null
+                      const fim = item?.posteFim ?? item?.poste_fim ?? null
+                      if (!inicio && !fim) return null
+                      return `P${inicio ?? '?'} - P${fim ?? '?'}`
                     }
 
                     const renderPhotoThumb = (url: string, label: string, idx: number, color: string) => (
@@ -1349,6 +1368,7 @@ export default function ReportsPage() {
                         if (postesData && Array.isArray(postesData) && postesData.length > 0) {
                           const subKeys = [
                             { key: 'posteInteiro', label: 'Poste Inteiro' },
+                            { key: 'descricao', label: 'Descrição do Poste' },
                             { key: 'engaste', label: 'Engaste' },
                             { key: 'conexao1', label: 'Conexão 1' },
                             { key: 'conexao2', label: 'Conexão 2' },
@@ -1385,7 +1405,7 @@ export default function ReportsPage() {
                                         </span>
                                       </div>
                                       {subKeys.map(ss => {
-                                        const urls = (poste[ss.key] || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                        const urls = (poste[ss.key] || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                         if (urls.length === 0) return null
                                         return (
                                           <div key={ss.key} className="px-3 py-2 border-t border-purple-50">
@@ -1405,34 +1425,68 @@ export default function ReportsPage() {
                         }
                       }
 
-                      // ── SECCIONAMENTOS AGRUPADOS ──────────────────────────────
+                      // ── SECCIONAMENTOS / EMENDAS / PODAS AGRUPADOS ────────────
                       if (section.key === 'fotos_checklist_seccionamentos') {
                         const secData: any[] = (selectedObraForBook as any).checklist_seccionamentos_data
                         if (secData && Array.isArray(secData) && secData.length > 0) {
-                          const totalFotos = secData.reduce((acc, s) => acc + (s.fotos?.length || 0), 0)
+                          const secDataComFotos = secData
+                            .map((item, index) => ({ ...item, __index: index }))
+                            .filter(item => ((item.fotos || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]).length > 0)
+
+                          if (secDataComFotos.length === 0) return null
+
+                          const totalFotos = secDataComFotos.reduce((acc, s) => {
+                            const urls = ((s.fotos || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[])
+                            return acc + urls.length
+                          }, 0)
+
+                          const grupos = [
+                            { tipo: 'emenda' as const, titulo: 'Emendas', prefixo: 'E', labelTitulo: 'Emenda', badgeClass: 'bg-orange-500 text-white' },
+                            { tipo: 'poda' as const, titulo: 'Podas', prefixo: 'PD', labelTitulo: 'Poda', badgeClass: 'bg-emerald-500 text-white' },
+                            { tipo: 'seccionamento' as const, titulo: 'Seccionamentos', prefixo: 'S', labelTitulo: 'Seccionamento', badgeClass: 'bg-purple-500 text-white' },
+                          ]
+
                           return (
                             <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
                               <div className="flex items-center gap-3 px-4 py-3">
                                 <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
-                                  <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Seccionamentos</h4>
+                                  <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Emendas, Podas e Seccionamentos</h4>
                                 </div>
                                 <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
-                                  {secData.length} seccionamento{secData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
+                                  {secDataComFotos.length} ponto{secDataComFotos.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
                                 </span>
                               </div>
                               <div className="px-4 pb-4 space-y-2">
-                                {secData.map((sec, sIdx) => {
-                                  const urls = (sec.fotos || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
-                                  if (urls.length === 0) return null
+                                {grupos.map((grupo) => {
+                                  const itens = secDataComFotos.filter((item) => getChecklistLinearType(item) === grupo.tipo)
+                                  if (itens.length === 0) return null
+
                                   return (
-                                    <div key={sIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
-                                        <span className="font-bold text-sm text-purple-900">Seccionamento {sec.numero}</span>
-                                        <span className="text-xs text-purple-400 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
-                                      </div>
-                                      <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
-                                        {urls.map((url, i) => renderPhotoThumb(url, `Seccionamento ${sec.numero}`, i, 'purple'))}
-                                      </div>
+                                    <div key={grupo.tipo} className="space-y-2">
+                                      <p className="text-xs font-semibold text-purple-500 uppercase tracking-wide">{grupo.titulo}</p>
+                                      {itens.map((item, itemIdx) => {
+                                        const numero = item.numero || (itemIdx + 1)
+                                        const label = `${grupo.prefixo}${numero}`
+                                        const urls = (item.fotos || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
+                                        const trecho = grupo.tipo === 'seccionamento' ? null : getTrechoEntrePostes(item)
+                                        if (urls.length === 0) return null
+
+                                        return (
+                                          <div key={`${grupo.tipo}_${item.__index ?? itemIdx}`} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
+                                            <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
+                                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${grupo.badgeClass}`}>{label}</span>
+                                              <span className="font-bold text-sm text-purple-900">{grupo.labelTitulo}</span>
+                                              {trecho && (
+                                                <span className="text-xs text-slate-600">Trecho {trecho}</span>
+                                              )}
+                                              <span className="text-xs text-purple-400 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
+                                            </div>
+                                            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
+                                              {urls.map((url, i) => renderPhotoThumb(url, `${grupo.labelTitulo} ${label}`, i, 'purple'))}
+                                            </div>
+                                          </div>
+                                        )
+                                      })}
                                     </div>
                                   )
                                 })}
@@ -1459,7 +1513,7 @@ export default function ReportsPage() {
                               </div>
                               <div className="px-4 pb-4 space-y-2">
                                 {aterrData.map((aterr, aIdx) => {
-                                  const urls = (aterr.fotos || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                  const urls = (aterr.fotos || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                   if (urls.length === 0) return null
                                   return (
                                     <div key={aIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
@@ -1497,8 +1551,8 @@ export default function ReportsPage() {
                               <div className="px-4 pb-4 space-y-2">
                                 {hastesData.map((ponto, pIdx) => {
                                   const label = ponto.isAditivo ? `AD-P${ponto.numero}` : `P${ponto.numero}`
-                                  const hasteUrls = (ponto.fotoHaste || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
-                                  const termoUrls = (ponto.fotoTermometro || []).map((p: any) => getUrlFromId(p.id)).filter(Boolean) as string[]
+                                  const hasteUrls = (ponto.fotoHaste || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
+                                  const termoUrls = (ponto.fotoTermometro || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                   if (hasteUrls.length === 0 && termoUrls.length === 0) return null
                                   return (
                                     <div key={pIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">

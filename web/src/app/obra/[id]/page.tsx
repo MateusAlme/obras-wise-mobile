@@ -47,6 +47,7 @@ function deveExibirGaleria(nomeGaleria: string, tipoServico: string): boolean {
 // Função helper para obter aterramentos de cerca (suporta formato novo e antigo)
 const CHECKLIST_POSTE_FIELDS = [
   'posteInteiro',
+  'descricao',
   'engaste',
   'conexao1',
   'conexao2',
@@ -56,6 +57,7 @@ const CHECKLIST_POSTE_FIELDS = [
 
 const CHECKLIST_POSTE_TIPO_TO_FIELD: Record<string, (typeof CHECKLIST_POSTE_FIELDS)[number]> = {
   'inteiro': 'posteInteiro',
+  'descricao': 'descricao',
   'engaste': 'engaste',
   'conexao1': 'conexao1',
   'conexao2': 'conexao2',
@@ -65,6 +67,7 @@ const CHECKLIST_POSTE_TIPO_TO_FIELD: Record<string, (typeof CHECKLIST_POSTE_FIEL
 
 const CHECKLIST_POSTE_FIELD_TO_TIPO: Record<(typeof CHECKLIST_POSTE_FIELDS)[number], string> = {
   posteInteiro: 'inteiro',
+  descricao: 'descricao',
   engaste: 'engaste',
   conexao1: 'conexao1',
   conexao2: 'conexao2',
@@ -74,6 +77,7 @@ const CHECKLIST_POSTE_FIELD_TO_TIPO: Record<(typeof CHECKLIST_POSTE_FIELDS)[numb
 
 const CHECKLIST_POSTE_SECTION_TO_FIELD: Record<string, (typeof CHECKLIST_POSTE_FIELDS)[number]> = {
   inteiro: 'posteInteiro',
+  descricao: 'descricao',
   engaste: 'engaste',
   conexao1: 'conexao1',
   conexao2: 'conexao2',
@@ -97,7 +101,7 @@ function parseStructuredSectionKey(sectionKey: string): StructuredSectionTarget 
     }
   }
 
-  const posteMatch = sectionKey.match(/^poste_(\d+)_(inteiro|engaste|conexao1|conexao2|maior|menor)$/)
+  const posteMatch = sectionKey.match(/^poste_(\d+)_(inteiro|descricao|engaste|conexao1|conexao2|maior|menor)$/)
   if (posteMatch) {
     return {
       kind: 'poste',
@@ -129,11 +133,25 @@ function isHttpUrl(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('http')
 }
 
+function resolvePhotoRefToUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+
+  if (value.startsWith('file:///') || value.startsWith('temp_') || value.startsWith('local_')) {
+    return null
+  }
+
+  if (isHttpUrl(value)) return value
+
+  return supabase.storage.from('obra-photos').getPublicUrl(value).data.publicUrl
+}
+
 function toFotoInfoIfUrl(item: any): FotoInfo | null {
-  if (typeof item === 'object' && item !== null && isHttpUrl(item.url)) {
-    if (item.url.startsWith('file:///')) return null
+  if (typeof item === 'object' && item !== null) {
+    const resolvedUrl = resolvePhotoRefToUrl(item.url) || resolvePhotoRefToUrl(item.id)
+    if (!resolvedUrl) return null
+
     return {
-      url: item.url,
+      url: resolvedUrl,
       latitude: item.latitude ?? null,
       longitude: item.longitude ?? null,
       utmX: item.utmX ?? item.utm_x ?? null,
@@ -143,9 +161,10 @@ function toFotoInfoIfUrl(item: any): FotoInfo | null {
     }
   }
 
-  if (isHttpUrl(item)) {
+  const resolvedUrl = resolvePhotoRefToUrl(item)
+  if (resolvedUrl) {
     return {
-      url: item,
+      url: resolvedUrl,
       latitude: null,
       longitude: null,
       utmX: null,
@@ -224,6 +243,7 @@ function hydrateChecklistPostesDataFromFlatByCounts(
 
   const byTipo: Record<string, FotoInfo[]> = {
     inteiro: [],
+    descricao: [],
     engaste: [],
     conexao1: [],
     conexao2: [],
@@ -239,6 +259,7 @@ function hydrateChecklistPostesDataFromFlatByCounts(
 
   const cursors: Record<string, number> = {
     inteiro: 0,
+    descricao: 0,
     engaste: 0,
     conexao1: 0,
     conexao2: 0,
@@ -350,6 +371,7 @@ function mergePostesPhotosWithStructure(
     const mergedPoste = {
       ...poste,
       posteInteiro: [...(poste.posteInteiro || [])],
+      descricao: [...(poste.descricao || [])],
       engaste: [...(poste.engaste || [])],
       conexao1: [...(poste.conexao1 || [])],
       conexao2: [...(poste.conexao2 || [])],
@@ -391,7 +413,7 @@ function hasRealPhotos(structuredData: any[] | undefined): boolean {
   return structuredData.some((item: any) => {
     if (!item) return false
     // Verificar todos os campos que podem conter fotos
-    const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
+    const photoFields = ['posteInteiro', 'descricao', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
     return photoFields.some(field => {
       const value = item[field]
       return Array.isArray(value) && value.some((photo: any) => !!toFotoInfoIfUrl(photo))
@@ -405,6 +427,7 @@ function clearChecklistPostesPhotos(postesData: any[] | undefined): any[] | unde
   return postesData.map((poste: any) => ({
     ...poste,
     posteInteiro: [],
+    descricao: [],
     engaste: [],
     conexao1: [],
     conexao2: [],
@@ -678,6 +701,10 @@ export default function ObraDetailPage() {
         fotos_checklist_aterramento_cerca: convertPhotoIdsToFotoInfo(data.fotos_checklist_aterramento_cerca),
         fotos_checklist_padrao_geral: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_geral),
         fotos_checklist_padrao_interno: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_interno),
+        fotos_checklist_frying: convertPhotoIdsToFotoInfo(data.fotos_checklist_frying),
+        fotos_checklist_abertura_fechamento_pulo: convertPhotoIdsToFotoInfo(data.fotos_checklist_abertura_fechamento_pulo),
+        fotos_checklist_hastes_aplicadas: convertPhotoIdsToFotoInfo(data.fotos_checklist_hastes_aplicadas),
+        fotos_checklist_medicao_termometro: convertPhotoIdsToFotoInfo(data.fotos_checklist_medicao_termometro),
         fotos_checklist_panoramica_final: convertPhotoIdsToFotoInfo(data.fotos_checklist_panoramica_final),
         fotos_checklist_postes: fotosChecklistPostes,
         fotos_checklist_seccionamentos: convertPhotoIdsToFotoInfo(data.fotos_checklist_seccionamentos),
@@ -2071,6 +2098,9 @@ export default function ObraDetailPage() {
                               {poste.posteInteiro?.length > 0 && (
                                 <PhotoGallery photos={poste.posteInteiro} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
                               )}
+                              {poste.descricao?.length > 0 && (
+                                <PhotoGallery photos={poste.descricao} title="Descrição do Poste" sectionKey={`poste_${posteIndex}_descricao`} {...galleryProps} />
+                              )}
                               {poste.engaste?.length > 0 && (
                                 <PhotoGallery photos={poste.engaste} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
                               )}
@@ -2101,34 +2131,103 @@ export default function ObraDetailPage() {
                   return null;
                 })()}
                 
-                {/* 5. Seccionamentos - Exibição estruturada (só se tiver fotos reais) */}
-                {hasRealPhotos(obra.checklist_seccionamentos_data) && (
-                  <div className="mb-6">
-                    <h4 className="text-lg font-semibold text-gray-800 mb-3">5. Seccionamentos</h4>
-                    {obra.checklist_seccionamentos_data?.map((secc: any, seccIndex: number) => {
-                      const label = secc.numero ? `S${secc.numero}` : `Seccionamento ${seccIndex + 1}`;
+                {/* 5, 6 e 7. Emendas, Podas e Seccionamentos */}
+                {(() => {
+                  const pontosChecklist = Array.isArray(obra.checklist_seccionamentos_data)
+                    ? obra.checklist_seccionamentos_data
+                        .map((item: any, index: number) => ({ ...item, __index: index }))
+                        .filter((item: any) =>
+                          Array.isArray(item.fotos) && item.fotos.some((photo: any) => !!toFotoInfoIfUrl(photo))
+                        )
+                    : []
+
+                  if (pontosChecklist.length === 0) {
+                    if ((obra.fotos_checklist_seccionamentos?.length ?? 0) > 0) {
                       return (
-                        <div key={seccIndex} className="mb-4 p-4 bg-purple-50 rounded-lg border-l-4 border-purple-500">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="px-3 py-1 bg-purple-500 text-white rounded-full text-sm font-bold">{label}</span>
+                        <PhotoGallery
+                          photos={obra.fotos_checklist_seccionamentos || []}
+                          title="5 a 7. Emendas, Podas e Seccionamentos"
+                          sectionKey="fotos_checklist_seccionamentos"
+                          {...galleryProps}
+                        />
+                      )
+                    }
+                    return null
+                  }
+
+                  const grupos = [
+                    {
+                      tipo: 'emenda',
+                      titulo: '5. Emendas',
+                      prefixo: 'E',
+                      containerClass: 'bg-orange-50 border-orange-500',
+                      badgeClass: 'bg-orange-500 text-white'
+                    },
+                    {
+                      tipo: 'poda',
+                      titulo: '6. Podas',
+                      prefixo: 'PD',
+                      containerClass: 'bg-emerald-50 border-emerald-500',
+                      badgeClass: 'bg-emerald-500 text-white'
+                    },
+                    {
+                      tipo: 'seccionamento',
+                      titulo: '7. Seccionamentos',
+                      prefixo: 'S',
+                      containerClass: 'bg-purple-50 border-purple-500',
+                      badgeClass: 'bg-purple-500 text-white'
+                    }
+                  ] as const
+
+                  return (
+                    <>
+                      {grupos.map((grupo) => {
+                        const itens = pontosChecklist.filter((item: any) => (item.tipo || 'seccionamento') === grupo.tipo)
+                        if (itens.length === 0) return null
+
+                        return (
+                          <div key={grupo.tipo} className="mb-6">
+                            <h4 className="text-lg font-semibold text-gray-800 mb-3">{grupo.titulo}</h4>
+                            {itens.map((item: any, itemIndex: number) => {
+                              const originalIndex = item.__index ?? itemIndex
+                              const numero = item.numero || (itemIndex + 1)
+                              const label = `${grupo.prefixo}${numero}`
+                              const posteInicio = item.posteInicio ?? item.poste_inicio ?? null
+                              const posteFim = item.posteFim ?? item.poste_fim ?? null
+                              const fotos = (item.fotos || [])
+                                .map((photo: any) => toFotoInfoIfUrl(photo))
+                                .filter(Boolean) as FotoInfo[]
+                              const mostrarTrecho = grupo.tipo !== 'seccionamento' && (posteInicio || posteFim)
+
+                              if (fotos.length === 0) return null
+
+                              return (
+                                <div key={`${grupo.tipo}_${originalIndex}`} className={`mb-4 p-4 rounded-lg border-l-4 ${grupo.containerClass}`}>
+                                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                                    <span className={`px-3 py-1 rounded-full text-sm font-bold ${grupo.badgeClass}`}>
+                                      {label}
+                                    </span>
+                                    {mostrarTrecho && (
+                                      <span className="text-sm text-gray-600">
+                                        Trecho: P{posteInicio ?? '?'} - P{posteFim ?? '?'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <PhotoGallery photos={fotos} title="Fotos" sectionKey={`secc_${originalIndex}_fotos`} {...galleryProps} />
+                                </div>
+                              )
+                            })}
                           </div>
-                          {secc.fotos?.length > 0 && (
-                            <PhotoGallery photos={secc.fotos} title="Fotos" sectionKey={`secc_${seccIndex}_fotos`} {...galleryProps} />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* Fallback para formato antigo de seccionamentos */}
-                {!hasRealPhotos(obra.checklist_seccionamentos_data) && (obra.fotos_checklist_seccionamentos?.length ?? 0) > 0 && (
-                  <PhotoGallery photos={obra.fotos_checklist_seccionamentos || []} title="5. Seccionamentos" sectionKey="fotos_checklist_seccionamentos" {...galleryProps} />
-                )}
+                        )
+                      })}
+                    </>
+                  )
+                })()}
 
                 {/* 6. Aterramentos de Cerca - suporta formato novo (estruturado) e antigo */}
                 {getAterramentosFotos(obra).length > 0 && (
                   <div className="mb-6">
-                    <h4 className="text-lg font-semibold text-gray-800 mb-3">6. Aterramento de Cerca</h4>
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">8. Aterramento de Cerca</h4>
                     {getAterramentosFotos(obra).map((aterramento, index) => (
                       <PhotoGallery
                         key={`aterramento_${index}`}
@@ -2142,20 +2241,20 @@ export default function ObraDetailPage() {
                 )}
 
                 {/* 7. Padrão Geral */}
-                <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="7. Padrão de Ligação - Vista Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="9. Padrão de Ligação - Vista Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
                 
                 {/* 8. Padrão Interno */}
-                <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="8. Padrão de Ligação - Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="10. Padrão de Ligação - Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
                 
                 {/* 9. Flying */}
-                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="9. Flying" sectionKey="fotos_checklist_frying" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_frying || []} title="11. Flying" sectionKey="fotos_checklist_frying" {...galleryProps} />
                 
                 {/* 10. Abertura e Fechamento de Pulo */}
-                <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="10. Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="12. Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />
                 
                 {/* 11. Hastes Aplicadas e Medição do Termômetro */}
                 <div className="mb-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 11. Hastes Aplicadas e Medição do Termômetro</h4>
+                  <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 13. Hastes Aplicadas e Medição do Termômetro</h4>
                   {(obra.checklist_hastes_termometros_data?.length ?? 0) > 0 ? (
                     <>
                       {obra.checklist_hastes_termometros_data?.map((ponto: any, pontoIndex: number) => {
@@ -2206,7 +2305,7 @@ export default function ObraDetailPage() {
                 </div>
 
                 {/* 12. Panorâmica Final */}
-                <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="12. Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_checklist_panoramica_final || []} title="14. Panorâmica Final" sectionKey="fotos_checklist_panoramica_final" {...galleryProps} />
               </div>
             ) : null}
           </div>

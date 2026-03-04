@@ -4,16 +4,98 @@ import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { latLongToUTM, formatUTM } from './geocoding'
 
+const CHECKLIST_POSTE_TIPO_TO_FIELD: Record<string, string> = {
+  inteiro: 'posteInteiro',
+  descricao: 'descricao',
+  engaste: 'engaste',
+  conexao1: 'conexao1',
+  conexao2: 'conexao2',
+  maior_esforco: 'maiorEsforco',
+  menor_esforco: 'menorEsforco'
+}
+
+function resolvePhotoRefToUrl(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (trimmed.startsWith('file:///') || trimmed.startsWith('temp_') || trimmed.startsWith('local_')) return null
+  if (trimmed.startsWith('http')) return trimmed
+  return supabasePublicUrl(trimmed)
+}
+
+function toFotoInfo(item: any): FotoInfo | null {
+  if (typeof item === 'object' && item !== null) {
+    const url = resolvePhotoRefToUrl(item.url) || resolvePhotoRefToUrl(item.id)
+    if (!url) return null
+
+    return {
+      url,
+      latitude: item.latitude ?? null,
+      longitude: item.longitude ?? null,
+      utmX: item.utmX ?? item.utm_x ?? null,
+      utmY: item.utmY ?? item.utm_y ?? null,
+      utmZone: item.utmZone ?? item.utm_zone ?? null,
+      placaData: item.placaData || item.placa_data || null
+    }
+  }
+
+  const url = resolvePhotoRefToUrl(item)
+  if (url) {
+    return {
+      url,
+      latitude: null,
+      longitude: null,
+      utmX: null,
+      utmY: null,
+      utmZone: null,
+      placaData: null
+    }
+  }
+
+  return null
+}
+
+function normalizePhotoRefs(photos: any[] | undefined): FotoInfo[] {
+  if (!photos || !Array.isArray(photos) || photos.length === 0) return []
+
+  return photos
+    .map((photo) => toFotoInfo(photo))
+    .filter(Boolean) as FotoInfo[]
+}
+
+function supabasePublicUrl(photoId: string): string {
+  if (!photoId || photoId.startsWith('temp_') || photoId.startsWith('local_') || photoId.startsWith('file:///')) {
+    return ''
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  if (!baseUrl) return ''
+  return `${baseUrl}/storage/v1/object/public/obra-photos/${photoId}`
+}
+
+function getChecklistLinearTipo(item: any): 'seccionamento' | 'emenda' | 'poda' {
+  const tipo = item?.tipo
+  if (tipo === 'emenda' || tipo === 'poda' || tipo === 'seccionamento') return tipo
+  return 'seccionamento'
+}
+
+function getChecklistTrechoLabel(item: any): string | null {
+  const inicio = item?.posteInicio ?? item?.poste_inicio ?? null
+  const fim = item?.posteFim ?? item?.poste_fim ?? null
+  if (!inicio && !fim) return null
+  return `Trecho P${inicio ?? '?'} - P${fim ?? '?'}`
+}
+
 /**
  * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
  * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
  */
 function mergePostesPhotosWithStructure(
   postesData: any[] | undefined,
-  flatPhotos: FotoInfo[] | undefined
+  flatPhotos: any[] | undefined
 ): any[] | undefined {
   if (!postesData || postesData.length === 0) return postesData
-  if (!flatPhotos || flatPhotos.length === 0) return postesData
+  const normalizedFlatPhotos = normalizePhotoRefs(flatPhotos)
+  if (normalizedFlatPhotos.length === 0) return postesData
 
   const extractPhotoInfo = (url: string) => {
     const filename = url.split('/').pop() || ''
@@ -25,18 +107,9 @@ function mergePostesPhotosWithStructure(
     }
   }
 
-  const tipoToField: Record<string, string> = {
-    'inteiro': 'posteInteiro',
-    'engaste': 'engaste',
-    'conexao1': 'conexao1',
-    'conexao2': 'conexao2',
-    'maior_esforco': 'maiorEsforco',
-    'menor_esforco': 'menorEsforco'
-  }
-
   // ✅ NOVA LÓGICA: Usar sequência de fotos "inteiro" para delimitar postes
   // Ordenar fotos por timestamp
-  const sortedPhotos = [...flatPhotos].sort((a, b) => {
+  const sortedPhotos = [...normalizedFlatPhotos].sort((a, b) => {
     const infoA = extractPhotoInfo(a.url)
     const infoB = extractPhotoInfo(b.url)
     if (!infoA || !infoB) return 0
@@ -57,6 +130,7 @@ function mergePostesPhotosWithStructure(
     const firstPoste = {
       ...postesData[0],
       posteInteiro: [],
+      descricao: [],
       engaste: [],
       conexao1: [],
       conexao2: [],
@@ -67,7 +141,7 @@ function mergePostesPhotosWithStructure(
     for (const photo of sortedPhotos) {
       const info = extractPhotoInfo(photo.url)
       if (!info) continue
-      const field = tipoToField[info.tipo]
+      const field = CHECKLIST_POSTE_TIPO_TO_FIELD[info.tipo]
       if (field && firstPoste[field]) {
         firstPoste[field].push(photo)
       }
@@ -107,17 +181,18 @@ function mergePostesPhotosWithStructure(
   const mergedPostes = postesData.map((poste, index) => {
     const mergedPoste = {
       ...poste,
-      posteInteiro: [...(poste.posteInteiro || [])],
-      engaste: [...(poste.engaste || [])],
-      conexao1: [...(poste.conexao1 || [])],
-      conexao2: [...(poste.conexao2 || [])],
-      maiorEsforco: [...(poste.maiorEsforco || [])],
-      menorEsforco: [...(poste.menorEsforco || [])]
+      posteInteiro: normalizePhotoRefs(poste.posteInteiro || []),
+      descricao: normalizePhotoRefs(poste.descricao || []),
+      engaste: normalizePhotoRefs(poste.engaste || []),
+      conexao1: normalizePhotoRefs(poste.conexao1 || []),
+      conexao2: normalizePhotoRefs(poste.conexao2 || []),
+      maiorEsforco: normalizePhotoRefs(poste.maiorEsforco || []),
+      menorEsforco: normalizePhotoRefs(poste.menorEsforco || [])
     }
 
     for (const group of photoGroups) {
       if (group.posteIndex === index) {
-        const field = tipoToField[group.tipo]
+        const field = CHECKLIST_POSTE_TIPO_TO_FIELD[group.tipo]
         if (field && mergedPoste[field]) {
           const exists = mergedPoste[field].some((f: FotoInfo) => f.url === group.photo.url)
           if (!exists) {
@@ -142,10 +217,10 @@ function hasRealPhotos(structuredData: any[] | undefined): boolean {
   }
   return structuredData.some((item: any) => {
     if (!item) return false
-    const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
+    const photoFields = ['posteInteiro', 'descricao', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro']
     return photoFields.some(field => {
       const value = item[field]
-      return Array.isArray(value) && value.length > 0
+      return Array.isArray(value) && value.some((photo: any) => !!toFotoInfo(photo))
     })
   })
 }
@@ -763,11 +838,12 @@ export async function generatePDF(obra: Obra) {
 
   const obraUtmFallback = getObraFallbackUtmDisplay(obra)
 
-  const addPhotosSection = async (photos: FotoInfo[] | undefined, title: string) => {
-    if (!photos || photos.length === 0) return
+  const addPhotosSection = async (photos: any[] | undefined, title: string) => {
+    const normalizedPhotos = normalizePhotoRefs(photos)
+    if (normalizedPhotos.length === 0) return
 
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i]
+    for (let i = 0; i < normalizedPhotos.length; i++) {
+      const photo = normalizedPhotos[i]
 
       try {
         // Nova página para cada foto
@@ -784,7 +860,7 @@ export async function generatePDF(obra: Obra) {
         pdf.setFontSize(9)
         pdf.setFont('helvetica', 'bold')
         pdf.setTextColor(60, 60, 60)
-        pdf.text(`${title} (${i + 1}/${photos.length})`, margin + 4, yPos + 8)
+        pdf.text(`${title} (${i + 1}/${normalizedPhotos.length})`, margin + 4, yPos + 8)
 
         // Info da obra no header
         pdf.setFontSize(7)
@@ -899,6 +975,9 @@ export async function generatePDF(obra: Obra) {
       if (poste.posteInteiro?.length > 0) {
         await addPhotosSection(poste.posteInteiro, `Checklist - 4. ${label}${statusText} - Poste Inteiro`)
       }
+      if (poste.descricao?.length > 0) {
+        await addPhotosSection(poste.descricao, `Checklist - 4. ${label}${statusText} - Descrição do Poste`)
+      }
       if (poste.engaste?.length > 0) {
         await addPhotosSection(poste.engaste, `Checklist - 4. ${label}${statusText} - Engaste`)
       }
@@ -920,25 +999,54 @@ export async function generatePDF(obra: Obra) {
     await addPhotosSection(obra.fotos_checklist_postes, 'Checklist - 4. Postes')
   }
 
-  // 5. Seccionamentos
-  await addPhotosSection(obra.fotos_checklist_seccionamentos, 'Checklist - 5. Seccionamentos')
+  // 5, 6 e 7. Emendas, Podas e Seccionamentos
+  const checklistLinearData = Array.isArray(obra.checklist_seccionamentos_data)
+    ? obra.checklist_seccionamentos_data.map((item: any, index: number) => ({ ...item, __index: index }))
+    : []
 
-  // 6. Aterramento de Cerca
-  await addPhotosSection(obra.fotos_checklist_aterramento_cerca, 'Checklist - 6. Aterramento de Cerca')
+  const checklistLinearWithPhotos = checklistLinearData.filter((item: any) => normalizePhotoRefs(item.fotos).length > 0)
 
-  // 7. Padrão Geral
-  await addPhotosSection(obra.fotos_checklist_padrao_geral, 'Checklist - 7. Padrão de Ligação - Geral')
+  if (checklistLinearWithPhotos.length > 0) {
+    const configs = [
+      { tipo: 'emenda' as const, numeroSecao: 5, titulo: 'Emenda', prefixo: 'E' },
+      { tipo: 'poda' as const, numeroSecao: 6, titulo: 'Poda', prefixo: 'PD' },
+      { tipo: 'seccionamento' as const, numeroSecao: 7, titulo: 'Seccionamento de Cerca', prefixo: 'S' }
+    ]
 
-  // 8. Padrão Interno
-  await addPhotosSection(obra.fotos_checklist_padrao_interno, 'Checklist - 8. Padrão de Ligação - Interno')
+    for (const config of configs) {
+      const itens = checklistLinearWithPhotos.filter((item: any) => getChecklistLinearTipo(item) === config.tipo)
+      for (let itemIndex = 0; itemIndex < itens.length; itemIndex++) {
+        const item = itens[itemIndex]
+        const fotos = normalizePhotoRefs(item.fotos)
+        if (fotos.length === 0) continue
 
-  // 9. Flying
-  await addPhotosSection(obra.fotos_checklist_frying, 'Checklist - 9. Flying')
+        const numero = item.numero || (itemIndex + 1)
+        const label = `${config.prefixo}${numero}`
+        const trecho = config.tipo === 'seccionamento' ? null : getChecklistTrechoLabel(item)
+        const sufixoTrecho = trecho ? ` - ${trecho}` : ''
+        await addPhotosSection(fotos, `Checklist - ${config.numeroSecao}. ${config.titulo} ${label}${sufixoTrecho}`)
+      }
+    }
+  } else {
+    await addPhotosSection(obra.fotos_checklist_seccionamentos, 'Checklist - 5 a 7. Emendas, Podas e Seccionamentos')
+  }
 
-  // 10. Abertura e Fechamento de Pulo
-  await addPhotosSection(obra.fotos_checklist_abertura_fechamento_pulo, 'Checklist - 10. Abertura e Fechamento de Pulo')
+  // 8. Aterramento de Cerca
+  await addPhotosSection(obra.fotos_checklist_aterramento_cerca, 'Checklist - 8. Aterramento de Cerca')
 
-  // 11. Hastes Aplicadas e Medição do Termômetro
+  // 9. Padrão Geral
+  await addPhotosSection(obra.fotos_checklist_padrao_geral, 'Checklist - 9. Padrão de Ligação - Geral')
+
+  // 10. Padrão Interno
+  await addPhotosSection(obra.fotos_checklist_padrao_interno, 'Checklist - 10. Padrão de Ligação - Interno')
+
+  // 11. Flying
+  await addPhotosSection(obra.fotos_checklist_frying, 'Checklist - 11. Flying')
+
+  // 12. Abertura e Fechamento de Pulo
+  await addPhotosSection(obra.fotos_checklist_abertura_fechamento_pulo, 'Checklist - 12. Abertura e Fechamento de Pulo')
+
+  // 13. Hastes Aplicadas e Medição do Termômetro
   if (hasRealPhotos(obra.checklist_hastes_termometros_data) && obra.checklist_hastes_termometros_data) {
     for (let pontoIndex = 0; pontoIndex < obra.checklist_hastes_termometros_data.length; pontoIndex++) {
       const ponto = obra.checklist_hastes_termometros_data[pontoIndex]
@@ -946,20 +1054,20 @@ export async function generatePDF(obra: Obra) {
       const label = ponto.numero ? `${prefixo}${ponto.numero}` : `Ponto ${pontoIndex + 1}`
 
       if (ponto.fotoHaste?.length > 0) {
-        await addPhotosSection(ponto.fotoHaste, `Checklist - 11. ${label} - Haste Aplicada`)
+        await addPhotosSection(ponto.fotoHaste, `Checklist - 13. ${label} - Haste Aplicada`)
       }
       if (ponto.fotoTermometro?.length > 0) {
-        await addPhotosSection(ponto.fotoTermometro, `Checklist - 11. ${label} - Medição do Termômetro`)
+        await addPhotosSection(ponto.fotoTermometro, `Checklist - 13. ${label} - Medição do Termômetro`)
       }
     }
   } else {
     // Fallback: fotos planas (compatibilidade)
-    await addPhotosSection(obra.fotos_checklist_hastes_aplicadas, 'Checklist - 11. Hastes Aplicadas')
-    await addPhotosSection(obra.fotos_checklist_medicao_termometro, 'Checklist - 11. Medição do Termômetro')
+    await addPhotosSection(obra.fotos_checklist_hastes_aplicadas, 'Checklist - 13. Hastes Aplicadas')
+    await addPhotosSection(obra.fotos_checklist_medicao_termometro, 'Checklist - 13. Medição do Termômetro')
   }
 
-  // 12. Panorâmica Final
-  await addPhotosSection(obra.fotos_checklist_panoramica_final, 'Checklist - 12. Panorâmica Final')
+  // 14. Panorâmica Final
+  await addPhotosSection(obra.fotos_checklist_panoramica_final, 'Checklist - 14. Panorâmica Final')
 
   // Altimetria
   await addPhotosSection(obra.fotos_altimetria_lado_fonte, 'Altimetria - Lado Fonte')
