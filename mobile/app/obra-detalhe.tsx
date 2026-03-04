@@ -117,6 +117,7 @@ type OnlineObra = {
     status: string;
     isAditivo?: boolean;
     posteInteiro: (string | any)[];
+    descricao: (string | any)[];
     engaste: (string | any)[];
     conexao1: (string | any)[];
     conexao2: (string | any)[];
@@ -658,6 +659,7 @@ export default function ObraDetalhe() {
         // Adicionar photoIds de checklist_postes_data
         ...(sourceObra.checklist_postes_data || []).flatMap((poste: any) => [
           ...(poste.posteInteiro || []),
+          ...(poste.descricao || []),
           ...(poste.engaste || []),
           ...(poste.conexao1 || []),
           ...(poste.conexao2 || []),
@@ -761,7 +763,7 @@ export default function ObraDetalhe() {
     return structuredData.some((item: any) => {
       if (!item) return false;
       // Verificar todos os campos que podem conter fotos
-      const photoFields = ['posteInteiro', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro'];
+      const photoFields = ['posteInteiro', 'descricao', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco', 'fotos', 'fotoHaste', 'fotoTermometro'];
       return photoFields.some(field => {
         const value = item[field];
         return Array.isArray(value) && value.length > 0;
@@ -774,6 +776,7 @@ export default function ObraDetalhe() {
 
     return postesData.some((poste: any) => {
       const posteInteiro = Array.isArray(poste?.posteInteiro) ? poste.posteInteiro.length : 0;
+      const descricao = Array.isArray(poste?.descricao) ? poste.descricao.length : 0;
       const engaste = Array.isArray(poste?.engaste) ? poste.engaste.length : 0;
       const conexao1 = Array.isArray(poste?.conexao1) ? poste.conexao1.length : 0;
       const conexao2 = Array.isArray(poste?.conexao2) ? poste.conexao2.length : 0;
@@ -782,6 +785,7 @@ export default function ObraDetalhe() {
 
       return (
         posteInteiro > 2 ||
+        descricao > 1 ||
         engaste > 1 ||
         conexao1 > 1 ||
         conexao2 > 1 ||
@@ -797,6 +801,7 @@ export default function ObraDetalhe() {
     return postesData.map((poste: any) => ({
       ...poste,
       posteInteiro: [],
+      descricao: [],
       engaste: [],
       conexao1: [],
       conexao2: [],
@@ -839,6 +844,7 @@ export default function ObraDetalhe() {
 
     const tipoToField: Record<string, string> = {
       'inteiro': 'posteInteiro',
+      'descricao': 'descricao',
       'engaste': 'engaste',
       'conexao1': 'conexao1',
       'conexao2': 'conexao2',
@@ -900,6 +906,7 @@ export default function ObraDetalhe() {
       const mergedPoste = {
         ...poste,
         posteInteiro: [...(poste.posteInteiro || [])],
+        descricao: [...(poste.descricao || [])],
         engaste: [...(poste.engaste || [])],
         conexao1: [...(poste.conexao1 || [])],
         conexao2: [...(poste.conexao2 || [])],
@@ -1028,6 +1035,7 @@ export default function ObraDetalhe() {
       'fotos_checklist_panoramica_final': 'checklist_panoramica_final',
       'fotos_checklist_postes': [
         'checklist_poste_inteiro',
+        'checklist_poste_descricao',
         'checklist_poste_engaste',
         'checklist_poste_conexao1',
         'checklist_poste_conexao2',
@@ -2103,6 +2111,7 @@ export default function ObraDetalhe() {
                     {mergedPostes.map((poste, posteIndex) => {
                       const categoriasPoste = [
                         { label: '📸 Poste Inteiro', fotos: poste.posteInteiro || [] },
+                        { label: '📋 Descrição', fotos: poste.descricao || [] },
                         { label: '🔩 Engaste', fotos: poste.engaste || [] },
                         { label: '🔌 Conexão 1', fotos: poste.conexao1 || [] },
                         { label: '🔌 Conexão 2', fotos: poste.conexao2 || [] },
