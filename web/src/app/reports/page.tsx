@@ -2155,7 +2155,7 @@ export default function ReportsPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                 </span>
-                Novo Book (mesmo nÂº)
+                Novo Book (mesmo nº)
               </button>
 
               {isAdmin && (
