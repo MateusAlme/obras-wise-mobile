@@ -65,6 +65,24 @@ const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; li
   { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa Retirada', color: 'red', lightColor: 'red' },
 ]
 
+const TIPOS_SERVICO_BASE = [
+  'Abertura e Fechamento de Chave',
+  'Altimetria',
+  'Bandolamento',
+  'Book de Aterramento',
+  'Cava em Rocha',
+  'Checklist de Fiscalização',
+  'Ditais',
+  'Documentação',
+  'Emenda',
+  'Fundação Especial',
+  'Instalação do Medidor',
+  'Linha Viva',
+  'Poda',
+  'Transformador',
+  'Vazamento e Limpeza de Transformador',
+]
+
 function getSectionsForBook(tipoServico: string) {
   const keyMap: Record<string, string[]> = {
     'Abertura e Fechamento de Chave': [
@@ -115,7 +133,7 @@ function getSectionsForBook(tipoServico: string) {
 
 export default function ReportsPage() {
   const router = useRouter()
-  const { isAdmin } = useAuth()
+  const { isAdmin, user, profile } = useAuth()
   const [obras, setObras] = useState<Obra[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState('todos')
@@ -133,13 +151,21 @@ export default function ReportsPage() {
   const [photoActionKey, setPhotoActionKey] = useState<string | null>(null)
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; label: string } | null>(null)
   const [editingObra, setEditingObra] = useState<Obra | null>(null)
-  const [editForm, setEditForm] = useState({ equipe: '', obra: '', data: '', responsavel: '' })
+  const [editForm, setEditForm] = useState({ equipe: '', obra: '', data: '', responsavel: '', tipo_servico: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState('')
+  const [showCreateBookModal, setShowCreateBookModal] = useState(false)
+  const [createForm, setCreateForm] = useState({ equipe: '', obra: '', data: '', responsavel: '', tipo_servico: '' })
+  const [savingCreateBook, setSavingCreateBook] = useState(false)
+  const [createBookError, setCreateBookError] = useState('')
+  const [equipesDB, setEquipesDB] = useState<string[]>([])
+  const [tiposServicoDB, setTiposServicoDB] = useState<string[]>([])
   const menuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadObras()
+    loadEquipes()
+    loadTiposServico()
   }, [])
 
   // Fechar menu ao clicar fora ou rolar
@@ -176,6 +202,25 @@ export default function ReportsPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function loadEquipes() {
+    const { data } = await supabase
+      .from('equipes')
+      .select('codigo')
+      .eq('ativa', true)
+      .order('codigo')
+    if (data) setEquipesDB(data.map((e: { codigo: string }) => e.codigo))
+  }
+
+  async function loadTiposServico() {
+    const { data } = await supabase
+      .from('obras')
+      .select('tipo_servico')
+      .not('tipo_servico', 'is', null)
+    const fromDB = data ? data.map((o: { tipo_servico: string }) => o.tipo_servico).filter(Boolean) : []
+    const merged = Array.from(new Set([...TIPOS_SERVICO_BASE, ...fromDB])).sort() as string[]
+    setTiposServicoDB(merged)
   }
 
   const filteredObras = useMemo(() => {
@@ -509,22 +554,100 @@ export default function ReportsPage() {
     }
   }
 
-  function handleOpenBook(obraId: string) {
-    const obra = obras.find(o => o.id === obraId)
-    if (obra) {
-      // Converter fotos para o formato correto antes de exibir
-      const obraComFotosConvertidas: Obra = {
-        ...obra
-      }
-      for (const section of REPORT_PHOTO_SECTIONS) {
-        ;(obraComFotosConvertidas as any)[section.key] = convertPhotoIdsToFotoInfo((obra as any)[section.key])
-      }
-      setSelectedObraForBook(obraComFotosConvertidas)
+  function normalizeObraForPreview(obra: Obra): Obra {
+    const obraComFotosConvertidas: Obra = { ...obra }
+    for (const section of REPORT_PHOTO_SECTIONS) {
+      ;(obraComFotosConvertidas as any)[section.key] = convertPhotoIdsToFotoInfo((obra as any)[section.key])
     }
+    return obraComFotosConvertidas
+  }
+
+  async function fetchObraById(obraId: string): Promise<Obra | null> {
+    const { data, error } = await supabase
+      .from('obras')
+      .select('*')
+      .eq('id', obraId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Erro ao buscar obra por ID:', error)
+      return null
+    }
+    return data || null
+  }
+
+  async function handleOpenBook(obraId: string) {
+    let obraAtual = await fetchObraById(obraId)
+    if (!obraAtual) {
+      obraAtual = obras.find(o => o.id === obraId) || null
+    }
+    if (!obraAtual) {
+      alert('Obra não encontrada.')
+      return
+    }
+
+    setSelectedObraForBook(normalizeObraForPreview(obraAtual))
   }
 
   function handleCloseBook() {
     setSelectedObraForBook(null)
+  }
+
+  function handleOpenCreateBookModal(
+    prefill?: Partial<{ equipe: string; obra: string; data: string; responsavel: string; tipo_servico: string }>
+  ) {
+    setCreateBookError('')
+    setCreateForm({
+      equipe: selectedTeam !== 'todas' ? selectedTeam : '',
+      obra: '',
+      data: format(new Date(), 'yyyy-MM-dd'),
+      responsavel: '',
+      tipo_servico: selectedService !== 'todos' ? selectedService : '',
+      ...(prefill || {}),
+    })
+    setShowCreateBookModal(true)
+  }
+
+  async function handleCreateBook(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingCreateBook(true)
+    setCreateBookError('')
+
+    try {
+      if (!user?.id) {
+        throw new Error('SessÃ£o invÃ¡lida. FaÃ§a login novamente para criar o book.')
+      }
+
+      const payload: any = {
+        equipe: createForm.equipe.trim(),
+        obra: createForm.obra.trim(),
+        data: createForm.data,
+        responsavel: createForm.responsavel.trim(),
+        tipo_servico: createForm.tipo_servico.trim(),
+        tem_atipicidade: false,
+        atipicidades: [],
+        user_id: user.id,
+        creator_role: isAdmin ? 'admin' : 'equipe',
+        created_by_admin: isAdmin ? (profile?.full_name || profile?.email || 'WEB-ADMIN') : null,
+      }
+
+      const { data, error } = await supabase
+        .from('obras')
+        .insert(payload)
+        .select('*')
+        .single()
+
+      if (error) throw error
+      if (!data) throw new Error('Registro criado, mas resposta vazia do banco.')
+
+      setObras(prev => [data as Obra, ...prev])
+      setShowCreateBookModal(false)
+      setSelectedObraForBook(normalizeObraForPreview(data as Obra))
+    } catch (err: any) {
+      setCreateBookError(err.message || 'Erro ao criar novo book')
+    } finally {
+      setSavingCreateBook(false)
+    }
   }
 
   function handleCreatePlaque(obra: Obra) {
@@ -662,8 +785,7 @@ export default function ReportsPage() {
     }
   }
 
-  function handleOpenEdit(obra: Obra) {
-    setOpenMenuId(null)
+  function openEditModal(obra: Obra) {
     setEditError('')
     // Normaliza a data para YYYY-MM-DD (campo type="date")
     let dataFormatada = ''
@@ -684,8 +806,26 @@ export default function ReportsPage() {
       obra: obra.obra || '',
       data: dataFormatada,
       responsavel: obra.responsavel || '',
+      tipo_servico: obra.tipo_servico || '',
     })
     setEditingObra(obra)
+  }
+
+  async function handleOpenEdit(obraId: string) {
+    setOpenMenuId(null)
+    setMenuPosition(null)
+    setEditError('')
+
+    let obraAtual = await fetchObraById(obraId)
+    if (!obraAtual) {
+      obraAtual = obras.find(o => o.id === obraId) || null
+    }
+    if (!obraAtual) {
+      setEditError('Obra não encontrada para edição.')
+      return
+    }
+
+    openEditModal(obraAtual)
   }
 
   async function handleSaveEdit(e: React.FormEvent) {
@@ -701,13 +841,33 @@ export default function ReportsPage() {
           obra: editForm.obra.trim(),
           data: editForm.data,
           responsavel: editForm.responsavel.trim(),
+          tipo_servico: editForm.tipo_servico.trim(),
         })
         .eq('id', editingObra.id)
       if (error) throw error
       setObras(prev => prev.map(o =>
         o.id === editingObra.id
-          ? { ...o, equipe: editForm.equipe.trim(), obra: editForm.obra.trim(), data: editForm.data, responsavel: editForm.responsavel.trim() }
+          ? {
+              ...o,
+              equipe: editForm.equipe.trim(),
+              obra: editForm.obra.trim(),
+              data: editForm.data,
+              responsavel: editForm.responsavel.trim(),
+              tipo_servico: editForm.tipo_servico.trim(),
+            }
           : o
+      ))
+      setSelectedObraForBook(prev => (
+        prev && prev.id === editingObra.id
+          ? {
+              ...prev,
+              equipe: editForm.equipe.trim(),
+              obra: editForm.obra.trim(),
+              data: editForm.data,
+              responsavel: editForm.responsavel.trim(),
+              tipo_servico: editForm.tipo_servico.trim(),
+            }
+          : prev
       ))
       setEditingObra(null)
     } catch (err: any) {
@@ -885,7 +1045,16 @@ export default function ReportsPage() {
           </div>
 
           {/* Botão Exportar */}
-          <div className="flex justify-end mb-6">
+          <div className="flex flex-wrap justify-end gap-3 mb-6">
+            <button
+              onClick={() => handleOpenCreateBookModal()}
+              className="px-6 py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3 font-bold text-lg"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Novo Book
+            </button>
             <button
               onClick={exportAllToPdf}
               disabled={selectedObras.size === 0 || exportingAllPdf}
@@ -939,7 +1108,7 @@ export default function ReportsPage() {
                   {filteredObras.map((obra) => (
                     <tr
                       key={obra.id}
-                      onDoubleClick={() => handleOpenBook(obra.id)}
+                      onDoubleClick={() => { void handleOpenBook(obra.id) }}
                       className={`hover:bg-slate-50 transition-colors cursor-pointer ${
                         selectedObras.has(obra.id) ? 'bg-blue-50' : ''
                       }`}
@@ -1009,7 +1178,7 @@ export default function ReportsPage() {
                             }
                             const btn = e.currentTarget as HTMLElement
                             const rect = btn.getBoundingClientRect()
-                            const menuHeight = 220
+                            const menuHeight = 280
                             const spaceBelow = window.innerHeight - rect.bottom
                             const top = spaceBelow < menuHeight
                               ? rect.top - menuHeight - 4
@@ -1095,14 +1264,20 @@ export default function ReportsPage() {
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
                       Equipe
                     </label>
-                    <input
-                      type="text"
+                    <select
                       value={editForm.equipe}
                       onChange={(e) => setEditForm(f => ({ ...f, equipe: e.target.value }))}
                       className="input-field"
-                      placeholder="Nome da equipe"
                       required
-                    />
+                    >
+                      <option value="">Selecione a equipe...</option>
+                      {equipesDB.map((team) => (
+                        <option key={team} value={team}>{team}</option>
+                      ))}
+                      {editForm.equipe && !equipesDB.includes(editForm.equipe) && (
+                        <option value={editForm.equipe}>{editForm.equipe}</option>
+                      )}
+                    </select>
                   </div>
 
                   <div>
@@ -1116,6 +1291,26 @@ export default function ReportsPage() {
                       className="input-field"
                       placeholder="Ex: 12345678"
                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Tipo de Serviço / Book
+                    </label>
+                    <select
+                      value={editForm.tipo_servico}
+                      onChange={(e) => setEditForm(f => ({ ...f, tipo_servico: e.target.value }))}
+                      className="input-field"
+                      required
+                    >
+                      <option value="">Selecione o tipo de serviço...</option>
+                      {tiposServicoDB.map((tipo) => (
+                        <option key={tipo} value={tipo}>{tipo}</option>
+                      ))}
+                      {editForm.tipo_servico && !tiposServicoDB.includes(editForm.tipo_servico) && (
+                        <option value={editForm.tipo_servico}>{editForm.tipo_servico}</option>
+                      )}
+                    </select>
                   </div>
 
                   <div>
@@ -1167,6 +1362,145 @@ export default function ReportsPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         Salvar Alterações
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Criar Novo Book */}
+        {showCreateBookModal && (
+          <div
+            className="modal-overlay"
+            onClick={(e) => { if (e.target === e.currentTarget && !savingCreateBook) setShowCreateBookModal(false) }}
+          >
+            <div className="modal-box max-w-md animate-slideUp">
+              <div className="modal-header">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-sm shadow-blue-500/30">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="modal-title">Criar Novo Book</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">Você pode ter vários books no mesmo nº de obra.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCreateBookModal(false)}
+                  disabled={savingCreateBook}
+                  className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateBook}>
+                <div className="modal-body space-y-4">
+                  {createBookError && (
+                    <div className="alert-error">{createBookError}</div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Número da Obra
+                    </label>
+                    <input
+                      type="text"
+                      value={createForm.obra}
+                      onChange={(e) => setCreateForm(f => ({ ...f, obra: e.target.value }))}
+                      className="input-field"
+                      placeholder="Ex: 0032502210"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Equipe
+                    </label>
+                    <select
+                      value={createForm.equipe}
+                      onChange={(e) => setCreateForm(f => ({ ...f, equipe: e.target.value }))}
+                      className="input-field"
+                      required
+                    >
+                      <option value="">Selecione a equipe...</option>
+                      {equipesDB.map((team) => (
+                        <option key={team} value={team}>{team}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Tipo de Serviço / Book
+                    </label>
+                    <select
+                      value={createForm.tipo_servico}
+                      onChange={(e) => setCreateForm(f => ({ ...f, tipo_servico: e.target.value }))}
+                      className="input-field"
+                      required
+                    >
+                      <option value="">Selecione o tipo de serviço...</option>
+                      {tiposServicoDB.map((tipo) => (
+                        <option key={tipo} value={tipo}>{tipo}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Data da Obra
+                    </label>
+                    <input
+                      type="date"
+                      value={createForm.data}
+                      onChange={(e) => setCreateForm(f => ({ ...f, data: e.target.value }))}
+                      className="input-field"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                      Responsável
+                    </label>
+                    <input
+                      type="text"
+                      value={createForm.responsavel}
+                      onChange={(e) => setCreateForm(f => ({ ...f, responsavel: e.target.value }))}
+                      className="input-field"
+                      placeholder="Nome do responsável"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="modal-footer justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateBookModal(false)}
+                    disabled={savingCreateBook}
+                    className="btn-ghost"
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" disabled={savingCreateBook} className="btn-primary">
+                    {savingCreateBook ? (
+                      <><span className="spinner-sm" />Criando...</>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        Criar Book
                       </>
                     )}
                   </button>
@@ -1790,7 +2124,7 @@ export default function ReportsPage() {
                   const id = openMenuId!
                   setOpenMenuId(null)
                   setMenuPosition(null)
-                  handleOpenBook(id)
+                  void handleOpenBook(id)
                 }}
                 className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 rounded-xl flex items-center gap-3 transition-colors group"
               >
@@ -1802,11 +2136,33 @@ export default function ReportsPage() {
                 Abrir Obra
               </button>
 
+              <button
+                onClick={() => {
+                  const id = openMenuId!
+                  const obraAtual = obras.find(o => o.id === id)
+                  handleOpenCreateBookModal({
+                    obra: obraAtual?.obra || '',
+                    equipe: obraAtual?.equipe || '',
+                    responsavel: obraAtual?.responsavel || '',
+                  })
+                  setOpenMenuId(null)
+                  setMenuPosition(null)
+                }}
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-xl flex items-center gap-3 transition-colors group"
+              >
+                <span className="w-7 h-7 bg-emerald-100 group-hover:bg-emerald-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                  <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </span>
+                Novo Book (mesmo nÂº)
+              </button>
+
               {isAdmin && (
                 <button
                   onClick={() => {
-                    const obraAtual = filteredObras.find(o => o.id === openMenuId)
-                    if (obraAtual) handleOpenEdit(obraAtual)
+                    const id = openMenuId!
+                    void handleOpenEdit(id)
                     setOpenMenuId(null)
                     setMenuPosition(null)
                   }}
