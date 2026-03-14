@@ -535,12 +535,23 @@ export default function ObraDetalhe() {
 
         if (obra.id.startsWith('temp_')) {
           console.log(`📋 ID temporário detectado, buscando pelo número: ${obra.obra}`);
-          const response = await supabase
+          let query = supabase
             .from('obras')
             .select('*')
             .eq('obra', obra.obra)
-            .eq('equipe', obra.equipe)
-            .single();
+            .eq('equipe', obra.equipe);
+
+          if ((obra as any).tipo_servico) {
+            query = query.eq('tipo_servico', (obra as any).tipo_servico);
+          }
+          if ((obra as any).created_at) {
+            query = query.eq('created_at', (obra as any).created_at);
+          }
+
+          const response = await query
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
           updatedObra = response.data;
           error = response.error;

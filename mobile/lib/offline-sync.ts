@@ -337,14 +337,23 @@ export const saveObraLocal = async (
   try {
     const localObras = await getLocalObras();
 
-    // ✅ CORREÇÃO: Verificar se já existe obra com o MESMO NÚMERO (evita duplicação)
-    // Isso acontece quando auto-save e save manual disparam para a mesma obra
+    // ✅ CORREÇÃO: Deduplicar somente rascunhos da MESMA obra/equipe/tipo
+    // Isso evita sobrescrever books diferentes que compartilham o mesmo número.
     let finalExistingId = existingId;
-    const existingByNumero = !existingId ? localObras.find(o => o.obra === obra.obra) : null;
+    const existingDraft = !existingId
+      ? localObras.find(o =>
+          o.obra === obra.obra &&
+          o.equipe === obra.equipe &&
+          o.tipo_servico === obra.tipo_servico &&
+          o.status === 'rascunho' &&
+          obra.status === 'rascunho' &&
+          !o.synced
+        )
+      : null;
 
-    if (existingByNumero && !existingId) {
-      console.log(`⚠️ [saveObraLocal] Obra ${obra.obra} já existe (ID: ${existingByNumero.id}). Atualizando em vez de duplicar.`);
-      finalExistingId = existingByNumero.id; // Forçar atualização da obra existente
+    if (existingDraft && !existingId) {
+      console.log(`⚠️ [saveObraLocal] Rascunho existente para ${obra.obra} (${obra.tipo_servico}) encontrado (ID: ${existingDraft.id}). Atualizando rascunho em vez de duplicar.`);
+      finalExistingId = existingDraft.id; // Forçar atualização do rascunho
     }
 
     // Se tem ID existente, atualizar; senão, criar novo
@@ -555,39 +564,66 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
 
     const numeroObra = obraLocal.obra;
     const equipe = obraLocal.equipe;
-    console.log(`📋 Buscando obra ${numeroObra} da equipe ${equipe} no Supabase...`);
+    const tipoServico = obraLocal.tipo_servico;
+    const createdAt = obraLocal.created_at;
+    const serverId = (obraLocal as any).serverId
+      || (!obraId.startsWith('temp_') && !obraId.startsWith('local_') ? obraId : null);
 
-    // Buscar no Supabase pelo NÚMERO da obra (não pelo ID temp_)
-    const { data: syncedObra, error: fetchError } = await supabase
-      .from('obras')
-      .select('*')
-      .eq('obra', numeroObra)
-      .eq('equipe', equipe)
-      .single();
+    let syncedObra: any = null;
+    let fetchError: any = null;
+
+    if (serverId) {
+      console.log(`📋 Buscando obra no Supabase por ID: ${serverId}`);
+      const response = await supabase
+        .from('obras')
+        .select('*')
+        .eq('id', serverId)
+        .maybeSingle();
+      syncedObra = response.data;
+      fetchError = response.error;
+    } else {
+      console.log(`📋 Buscando obra por número/equipe/tipo/data: ${numeroObra} | ${equipe} | ${tipoServico} | ${createdAt}`);
+      let query = supabase
+        .from('obras')
+        .select('*')
+        .eq('obra', numeroObra)
+        .eq('equipe', equipe);
+
+      if (tipoServico) {
+        query = query.eq('tipo_servico', tipoServico);
+      }
+      if (createdAt) {
+        query = query.eq('created_at', createdAt);
+      }
+
+      const response = await query.maybeSingle();
+      syncedObra = response.data;
+      fetchError = response.error;
+    }
+
+    if ((fetchError || !syncedObra) && !obraId.startsWith('temp_') && !obraId.startsWith('local_')) {
+      console.warn(`⚠️ Busca principal falhou, tentando fallback por ID: ${obraId}`);
+      const retry = await supabase
+        .from('obras')
+        .select('*')
+        .eq('id', obraId)
+        .maybeSingle();
+
+      if (!retry.error && retry.data) {
+        syncedObra = retry.data;
+        fetchError = null;
+      } else if (retry.error) {
+        fetchError = retry.error;
+      }
+    }
 
     if (fetchError) {
-      console.error(`❌ Erro ao buscar obra por número: ${fetchError.message}`);
-
-      // Se falhou e ID não é temp_, tentar pelo ID direto
-      if (!obraId.startsWith('temp_')) {
-        console.log(`🔄 Tentando buscar pelo ID: ${obraId}`);
-        const { data: retryObra, error: retryError } = await supabase
-          .from('obras')
-          .select('*')
-          .eq('id', obraId)
-          .single();
-
-        if (!retryError && retryObra) {
-          console.log(`✅ Obra encontrada na segunda tentativa (por ID)`);
-          // Usar retryObra como syncedObra
-          return await updateObraInAsyncStorage(retryObra, obraId, localObras);
-        }
-      }
+      console.error(`❌ Erro ao buscar obra no Supabase: ${fetchError.message}`);
       return false;
     }
 
     if (!syncedObra) {
-      console.error(`❌ Obra ${numeroObra} não encontrada no Supabase`);
+      console.error(`❌ Obra não encontrada no Supabase (obra=${numeroObra}, equipe=${equipe}, tipo=${tipoServico})`);
       return false;
     }
 
@@ -982,18 +1018,23 @@ export const saveObraOffline = async (
       fotos_vazamento_instalacao: photoIds.vazamento_instalacao ?? [],
     };
 
-    // ✅ CORREÇÃO: Verificar se já existe uma obra pendente com o MESMO NÚMERO
-    // Isso evita duplicação quando auto-save e save manual disparam para a mesma obra
-    const existingByNumero = pendingObras.findIndex(o => o.obra === obra.obra);
+    // ✅ CORREÇÃO: Deduplicar somente rascunhos pendentes da mesma obra/equipe/tipo
+    const existingDraftIndex = pendingObras.findIndex(o =>
+      o.obra === obra.obra &&
+      o.equipe === obra.equipe &&
+      o.tipo_servico === obra.tipo_servico &&
+      o.status === 'rascunho' &&
+      obra.status === 'rascunho'
+    );
 
-    if (existingByNumero !== -1 && !existingObraId) {
-      // Já existe uma obra pendente com este número - ATUALIZAR em vez de criar nova
-      console.log(`⚠️ [saveObraOffline] Obra ${obra.obra} já existe (ID: ${pendingObras[existingByNumero].id}). Atualizando em vez de duplicar.`);
-      pendingObras[existingByNumero] = {
-        ...pendingObras[existingByNumero],
+    if (existingDraftIndex !== -1 && !existingObraId) {
+      // Já existe um rascunho pendente compatível - atualizar em vez de criar novo
+      console.log(`⚠️ [saveObraOffline] Rascunho existente para ${obra.obra} (${obra.tipo_servico}) encontrado (ID: ${pendingObras[existingDraftIndex].id}). Atualizando rascunho.`);
+      pendingObras[existingDraftIndex] = {
+        ...pendingObras[existingDraftIndex],
         ...newObra,
-        id: pendingObras[existingByNumero].id, // Manter ID original
-        created_at: pendingObras[existingByNumero].created_at, // Manter data original
+        id: pendingObras[existingDraftIndex].id, // Manter ID original
+        created_at: pendingObras[existingDraftIndex].created_at, // Manter data original
       };
     } else if (existingObraId) {
       // Atualizando obra existente pelo ID
@@ -1021,8 +1062,8 @@ export const saveObraOffline = async (
     await updateSyncStatus();
 
     // Retornar o ID correto (existente ou novo)
-    const finalId = existingByNumero !== -1 && !existingObraId
-      ? pendingObras[existingByNumero].id
+    const finalId = existingDraftIndex !== -1 && !existingObraId
+      ? pendingObras[existingDraftIndex].id
       : (existingObraId || newObra.id);
 
     return finalId;
@@ -1693,6 +1734,8 @@ export const syncObra = async (
     const fotosChecklistAterramentoCercaMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_aterramento_cerca || []);
     const fotosChecklistPadraoGeralMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_padrao_geral || []);
     const fotosChecklistPadraoInternoMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_padrao_interno || []);
+    const fotosChecklistFryingMetadata = await getPhotoMetadatasByIds((obra as any).fotos_checklist_frying || []);
+    const fotosChecklistAberturaFechamentoPuloMetadata = await getPhotoMetadatasByIds((obra as any).fotos_checklist_abertura_fechamento_pulo || []);
     const fotosChecklistPanoramicaFinalMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_final || []);
     const fotosChecklistPostesMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_postes || []);
     const fotosChecklistSeccionamentosMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_seccionamentos || []);
@@ -1758,6 +1801,8 @@ export const syncObra = async (
     const fotosChecklistAterramentoCercaData = convertPhotosToData(fotosChecklistAterramentoCercaMetadata);
     const fotosChecklistPadraoGeralData = convertPhotosToData(fotosChecklistPadraoGeralMetadata);
     const fotosChecklistPadraoInternoData = convertPhotosToData(fotosChecklistPadraoInternoMetadata);
+    const fotosChecklistFryingData = convertPhotosToData(fotosChecklistFryingMetadata);
+    const fotosChecklistAberturaFechamentoPuloData = convertPhotosToData(fotosChecklistAberturaFechamentoPuloMetadata);
     const fotosChecklistPanoramicaFinalData = convertPhotosToData(fotosChecklistPanoramicaFinalMetadata);
     const fotosChecklistPostesData = convertPhotosToData(fotosChecklistPostesMetadata);
     const fotosChecklistSeccionamentosData = convertPhotosToData(fotosChecklistSeccionamentosMetadata);
@@ -1792,6 +1837,7 @@ export const syncObra = async (
 
     // ✅ CORRIGIDO: Fazer UPDATE se tem serverId OU se isEdited
     const shouldUpdate = (obra.isEdited && idToUpdate) || ((obra as any).serverId && idToUpdate);
+    const shouldUpdateByEdit = !!(obra.isEdited && idToUpdate);
 
     console.log(`🔍 [syncObra] Decisão de sync:`);
     console.log(`   - obra.id: ${obra.id}`);
@@ -1799,6 +1845,7 @@ export const syncObra = async (
     console.log(`   - obra.isEdited: ${obra.isEdited}`);
     console.log(`   - idToUpdate: ${idToUpdate}`);
     console.log(`   - shouldUpdate: ${shouldUpdate}`);
+    console.log(`   - shouldUpdateByEdit: ${shouldUpdateByEdit}`);
 
     if (shouldUpdate && idToUpdate) {
       console.log(`🔁 [syncObra] Atualizando obra existente no servidor: ${idToUpdate}`);
@@ -1811,14 +1858,27 @@ export const syncObra = async (
         .single();
 
       if (fetchError) {
-        // ✅ CRÍTICO: Se não conseguiu buscar a obra, NÃO inserir nova!
-        // Isso causaria duplicação. Melhor falhar e tentar novamente.
         console.error(`❌ [syncObra] Não foi possível buscar obra ${idToUpdate} para atualização:`, fetchError);
-        console.error(`❌ [syncObra] Abortando para evitar duplicação. A obra pode ter sido deletada do servidor.`);
-        throw new Error(`Não foi possível encontrar obra ${idToUpdate} no servidor para atualização. Verifique se a obra ainda existe.`);
+
+        if (shouldUpdateByEdit) {
+          // Em edição explícita, manter comportamento conservador para evitar duplicatas.
+          throw new Error(`Não foi possível encontrar obra ${idToUpdate} no servidor para atualização. Verifique se a obra ainda existe.`);
+        }
+
+        // Se veio apenas de serverId (possivelmente stale), continua para INSERT.
+        console.warn(`⚠️ [syncObra] serverId ${idToUpdate} inválido/stale. Continuando com INSERT para não sobrescrever book incorreto.`);
       }
 
       if (existingObra) {
+        // ✅ PROTEÇÃO: Nunca sobrescrever outro book (tipo de serviço diferente),
+        // mesmo se houver serverId reaproveitado indevidamente.
+        const incomingTipoServico = (obra.tipo_servico || '').trim();
+        const existingTipoServico = ((existingObra as any).tipo_servico || '').trim();
+        if (incomingTipoServico && existingTipoServico && incomingTipoServico !== existingTipoServico) {
+          console.warn(
+            `⚠️ [syncObra] Tipo de serviço diferente no ID ${idToUpdate} (servidor="${existingTipoServico}" vs local="${incomingTipoServico}"). Será feito INSERT de novo book.`
+          );
+        } else {
         // ✅ CORRIGIDO: Substituir fotos se houver novas, caso contrário manter existentes
         // Isso evita duplicação ao sincronizar múltiplas vezes
         const replaceOrKeep = (newData: any[], existingData: any[]) => {
@@ -1876,6 +1936,8 @@ export const syncObra = async (
           fotos_checklist_aterramento_cerca: replaceOrKeep(fotosChecklistAterramentoCercaData, existingObra.fotos_checklist_aterramento_cerca),
           fotos_checklist_padrao_geral: replaceOrKeep(fotosChecklistPadraoGeralData, existingObra.fotos_checklist_padrao_geral),
           fotos_checklist_padrao_interno: replaceOrKeep(fotosChecklistPadraoInternoData, existingObra.fotos_checklist_padrao_interno),
+          fotos_checklist_frying: replaceOrKeep(fotosChecklistFryingData, (existingObra as any).fotos_checklist_frying),
+          fotos_checklist_abertura_fechamento_pulo: replaceOrKeep(fotosChecklistAberturaFechamentoPuloData, (existingObra as any).fotos_checklist_abertura_fechamento_pulo),
           fotos_checklist_panoramica_final: replaceOrKeep(fotosChecklistPanoramicaFinalData, existingObra.fotos_checklist_panoramica_final),
           fotos_checklist_postes: replaceOrKeep(fotosChecklistPostesData, existingObra.fotos_checklist_postes),
           fotos_checklist_seccionamentos: replaceOrKeep(fotosChecklistSeccionamentosData, existingObra.fotos_checklist_seccionamentos),
@@ -1925,33 +1987,47 @@ export const syncObra = async (
         // Remover da fila
         await removePendingObra(obra.id);
         return { success: true, newId: idToUpdate };
+        }
       }
-      // Se existingObra é null mas não deu erro, algo estranho aconteceu
-      console.error(`❌ [syncObra] existingObra é null mas fetchError não foi definido - situação inesperada`);
-      throw new Error(`Situação inesperada ao atualizar obra ${idToUpdate}`);
+
+      // Se não encontrou obra válida para update, segue fluxo de INSERT.
+      if (!fetchError) {
+        console.warn(`⚠️ [syncObra] Obra ${idToUpdate} não encontrada para update. Continuando com INSERT.`);
+      }
     }
 
-    // ✅ CORREÇÃO DUPLICAÇÃO: Antes de inserir, verificar se já existe obra com mesmo número no servidor
-    // Isso previne duplicação quando o serverId é perdido ou não foi salvo corretamente
-    console.log(`🔍 [syncObra] Verificando duplicata no servidor para obra: ${obra.obra}`);
+    // ✅ CORREÇÃO: Verificar duplicata apenas do MESMO BOOK (obra+equipe+tipo+created_at)
+    // Não sobrescrever books diferentes com o mesmo número de obra.
+    console.log(`🔍 [syncObra] Verificando duplicata do mesmo book: obra=${obra.obra}, equipe=${obra.equipe}, tipo=${obra.tipo_servico}, created_at=${obra.created_at}`);
 
-    const { data: existingByNumero, error: checkError } = await supabase
-      .from('obras')
-      .select('id')
-      .eq('obra', obra.obra)
-      .eq('equipe', obra.equipe)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let existingSameBook: { id: string } | null = null;
+    let checkError: any = null;
+
+    if (obra.created_at) {
+      const checkResponse = await supabase
+        .from('obras')
+        .select('id')
+        .eq('obra', obra.obra)
+        .eq('equipe', obra.equipe)
+        .eq('tipo_servico', obra.tipo_servico)
+        .eq('created_at', obra.created_at)
+        .limit(1)
+        .maybeSingle();
+
+      existingSameBook = checkResponse.data;
+      checkError = checkResponse.error;
+    } else {
+      console.log('ℹ️ [syncObra] created_at ausente; pulando verificação de duplicata por segurança.');
+    }
 
     if (checkError) {
       console.error(`⚠️ [syncObra] Erro ao verificar duplicata:`, checkError);
       // Continua com INSERT se não conseguiu verificar
     }
 
-    if (existingByNumero) {
-      // ✅ ENCONTROU DUPLICATA! Fazer UPDATE em vez de INSERT
-      console.log(`⚠️ [syncObra] Obra ${obra.obra} já existe no servidor (ID: ${existingByNumero.id}). Fazendo UPDATE em vez de INSERT.`);
+    if (existingSameBook) {
+      // ✅ ENCONTROU O MESMO BOOK: fazer UPDATE para evitar duplicação do mesmo registro.
+      console.log(`⚠️ [syncObra] Mesmo book já existe no servidor (ID: ${existingSameBook.id}). Fazendo UPDATE.`);
 
       const { error: updateError } = await supabase
         .from('obras')
@@ -1999,6 +2075,8 @@ export const syncObra = async (
           fotos_checklist_aterramento_cerca: fotosChecklistAterramentoCercaData,
           fotos_checklist_padrao_geral: fotosChecklistPadraoGeralData,
           fotos_checklist_padrao_interno: fotosChecklistPadraoInternoData,
+          fotos_checklist_frying: fotosChecklistFryingData,
+          fotos_checklist_abertura_fechamento_pulo: fotosChecklistAberturaFechamentoPuloData,
           fotos_checklist_panoramica_final: fotosChecklistPanoramicaFinalData,
           fotos_checklist_postes: fotosChecklistPostesData,
           fotos_checklist_seccionamentos: fotosChecklistSeccionamentosData,
@@ -2023,6 +2101,7 @@ export const syncObra = async (
           fotos_vazamento_instalacao: fotosVazamentoInstalacaoData,
           postes_data: postesDataConverted ?? null,
           observacoes: (obra as any).observacoes || null,
+          creator_role: (obra as any).creator_role || null,
           created_by_admin: (obra as any).created_by_admin || null,
           // Dados estruturados do Checklist de Fiscalização - com fotos convertidas para URLs
           checklist_postes_data: checklistPostesDataConverted || null,
@@ -2030,17 +2109,17 @@ export const syncObra = async (
           checklist_aterramentos_cerca_data: checklistAterramentosDataConverted || null,
           checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || null,
         })
-        .eq('id', existingByNumero.id);
+        .eq('id', existingSameBook.id);
 
       if (updateError) {
         throw updateError;
       }
 
-      console.log(`✅ [syncObra] Obra atualizada via detecção de duplicata: ${existingByNumero.id}`);
+      console.log(`✅ [syncObra] Book atualizado via detecção de duplicata exata: ${existingSameBook.id}`);
 
       // Atualizar fotos com o ID correto do servidor
       try {
-        await updatePhotosObraId(obra.id, existingByNumero.id);
+        await updatePhotosObraId(obra.id, existingSameBook.id);
       } catch (photoError) {
         console.error('Erro ao atualizar obraId das fotos (não crítico):', photoError);
       }
@@ -2050,16 +2129,16 @@ export const syncObra = async (
         const localObras = await getLocalObras();
         const localObraIndex = localObras.findIndex(o => o.id === obra.id);
         if (localObraIndex !== -1) {
-          localObras[localObraIndex].serverId = existingByNumero.id;
+          localObras[localObraIndex].serverId = existingSameBook.id;
           await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-          console.log(`✅ [syncObra] serverId atualizado na obra local: ${existingByNumero.id}`);
+          console.log(`✅ [syncObra] serverId atualizado na obra local: ${existingSameBook.id}`);
         }
       } catch (localUpdateError) {
         console.error('Erro ao atualizar serverId local (não crítico):', localUpdateError);
       }
 
       await removePendingObra(obra.id);
-      return { success: true, newId: existingByNumero.id };
+      return { success: true, newId: existingSameBook.id };
     }
 
     // Se não existe duplicata, inserir nova obra no servidor
@@ -2112,6 +2191,8 @@ export const syncObra = async (
           fotos_checklist_aterramento_cerca: fotosChecklistAterramentoCercaData,
           fotos_checklist_padrao_geral: fotosChecklistPadraoGeralData,
           fotos_checklist_padrao_interno: fotosChecklistPadraoInternoData,
+          fotos_checklist_frying: fotosChecklistFryingData,
+          fotos_checklist_abertura_fechamento_pulo: fotosChecklistAberturaFechamentoPuloData,
           fotos_checklist_panoramica_final: fotosChecklistPanoramicaFinalData,
           fotos_checklist_postes: fotosChecklistPostesData,
           fotos_checklist_seccionamentos: fotosChecklistSeccionamentosData,
@@ -2626,7 +2707,7 @@ export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: s
 
 /**
  * Remove obras duplicadas do AsyncStorage local
- * Mantém apenas uma obra por número, priorizando:
+ * Mantém apenas uma obra por BOOK, priorizando:
  * 1. Obras com serverId (já sincronizadas)
  * 2. Obras mais recentes (last_modified)
  */
@@ -2638,27 +2719,38 @@ export const removeDuplicateObras = async (): Promise<{ removed: number; kept: n
     const localObras = await getLocalObras();
     console.log(`📊 Total de obras no AsyncStorage: ${localObras.length}`);
 
-    // Agrupar obras pelo número
-    const obrasByNumero = new Map<string, LocalObra[]>();
+    // Agrupar por chave de book (não apenas número da obra),
+    // para permitir vários books na mesma obra.
+    const getLocalBookKey = (obra: LocalObra): string => {
+      if (obra.serverId) return `server:${obra.serverId}`;
+      const numero = (obra.obra || '').trim();
+      const equipe = (obra.equipe || '').trim();
+      const tipoServico = (obra.tipo_servico || '').trim();
+      const createdAt = (obra.created_at || '').trim();
+      const fallbackId = (obra.id || '').trim();
+      return `local:${numero}::${equipe}::${tipoServico}::${createdAt || fallbackId}`;
+    };
+
+    const obrasByKey = new Map<string, LocalObra[]>();
     for (const obra of localObras) {
-      const numero = obra.obra;
-      if (!obrasByNumero.has(numero)) {
-        obrasByNumero.set(numero, []);
+      const key = getLocalBookKey(obra);
+      if (!obrasByKey.has(key)) {
+        obrasByKey.set(key, []);
       }
-      obrasByNumero.get(numero)!.push(obra);
+      obrasByKey.get(key)!.push(obra);
     }
 
     // Identificar duplicatas e selecionar qual manter
     const obrasToKeep: LocalObra[] = [];
     let removedCount = 0;
 
-    for (const [numero, obras] of obrasByNumero.entries()) {
+    for (const [bookKey, obras] of obrasByKey.entries()) {
       if (obras.length === 1) {
         // Não há duplicata, manter
         obrasToKeep.push(obras[0]);
       } else {
         // Há duplicatas - escolher qual manter
-        console.log(`⚠️ Encontradas ${obras.length} duplicatas da obra ${numero}`);
+        console.log(`⚠️ Encontradas ${obras.length} duplicatas do mesmo book (${bookKey})`);
 
         // Ordenar por prioridade:
         // 1. Obras com serverId (sincronizadas) primeiro
@@ -2708,24 +2800,33 @@ export const removeDuplicatePendingObras = async (): Promise<{ removed: number; 
     const pendingObras = await getPendingObras();
     console.log(`📊 Total de pending obras: ${pendingObras.length}`);
 
-    // Agrupar por número
-    const obrasByNumero = new Map<string, PendingObra[]>();
+    // Agrupar por chave de book para não juntar books diferentes da mesma obra.
+    const getPendingBookKey = (obra: PendingObra): string => {
+      const numero = (obra.obra || '').trim();
+      const equipe = (obra.equipe || '').trim();
+      const tipoServico = (obra.tipo_servico || '').trim();
+      const createdAt = (obra.created_at || '').trim();
+      const fallbackId = (obra.id || '').trim();
+      return `pending:${numero}::${equipe}::${tipoServico}::${createdAt || fallbackId}`;
+    };
+
+    const obrasByKey = new Map<string, PendingObra[]>();
     for (const obra of pendingObras) {
-      const numero = obra.obra;
-      if (!obrasByNumero.has(numero)) {
-        obrasByNumero.set(numero, []);
+      const key = getPendingBookKey(obra);
+      if (!obrasByKey.has(key)) {
+        obrasByKey.set(key, []);
       }
-      obrasByNumero.get(numero)!.push(obra);
+      obrasByKey.get(key)!.push(obra);
     }
 
     const obrasToKeep: PendingObra[] = [];
     let removedCount = 0;
 
-    for (const [numero, obras] of obrasByNumero.entries()) {
+    for (const [bookKey, obras] of obrasByKey.entries()) {
       if (obras.length === 1) {
         obrasToKeep.push(obras[0]);
       } else {
-        console.log(`⚠️ Encontradas ${obras.length} pending duplicatas da obra ${numero}`);
+        console.log(`⚠️ Encontradas ${obras.length} pending duplicatas do mesmo book (${bookKey})`);
 
         // Ordenar por data de criação (mais recente primeiro)
         const sorted = obras.sort((a, b) => {

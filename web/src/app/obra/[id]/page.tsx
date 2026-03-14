@@ -515,7 +515,7 @@ export default function ObraDetailPage() {
   const { isAdmin } = useAuth()
   const [descricaoAtipicidade, setDescricaoAtipicidade] = useState('')
   const [showEditModal, setShowEditModal] = useState(false)
-  const [editForm, setEditForm] = useState({ equipe: '', obra: '', data: '', responsavel: '' })
+  const [editForm, setEditForm] = useState({ equipe: '', obra: '', data: '', responsavel: '', tipo_servico: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -1434,6 +1434,73 @@ export default function ObraDetailPage() {
     }
   }
 
+  async function handleAddPoste() {
+    if (!obra) return
+    const postes = Array.isArray(obra.checklist_postes_data) ? [...obra.checklist_postes_data] : []
+    const nextNumero = postes.reduce((max: number, p: any) => {
+      const n = parseInt(p.numero || '0', 10)
+      return Number.isFinite(n) ? Math.max(max, n) : max
+    }, 0) + 1
+
+    const newPoste = {
+      id: `poste_${nextNumero}`,
+      numero: String(nextNumero),
+      status: '',
+      isAditivo: false,
+      posteInteiro: [],
+      descricao: [],
+      engaste: [],
+      conexao1: [],
+      conexao2: [],
+      maiorEsforco: [],
+      menorEsforco: [],
+    }
+
+    const updatedPostes = [...postes, newPoste]
+    const { error } = await supabase
+      .from('obras')
+      .update({ checklist_postes_data: updatedPostes })
+      .eq('id', obra.id)
+    if (error) {
+      console.error('Erro ao adicionar poste:', error)
+      alert('Erro ao adicionar poste')
+      return
+    }
+    setObra({ ...obra, checklist_postes_data: updatedPostes })
+  }
+
+  async function handleAddSeccionamentoItem(tipo: 'emenda' | 'poda' | 'seccionamento') {
+    if (!obra) return
+    const items = Array.isArray(obra.checklist_seccionamentos_data) ? [...obra.checklist_seccionamentos_data] : []
+
+    const sameType = items.filter((i: any) => (i.tipo || 'seccionamento') === tipo)
+    const nextNumero = sameType.reduce((max: number, i: any) => {
+      const n = parseInt(i.numero || '0', 10)
+      return Number.isFinite(n) ? Math.max(max, n) : max
+    }, 0) + 1
+
+    const newItem = {
+      id: `${tipo}_${nextNumero}`,
+      tipo,
+      numero: nextNumero,
+      fotos: [],
+      posteInicio: null,
+      posteFim: null,
+    }
+
+    const updatedItems = [...items, newItem]
+    const { error } = await supabase
+      .from('obras')
+      .update({ checklist_seccionamentos_data: updatedItems })
+      .eq('id', obra.id)
+    if (error) {
+      console.error(`Erro ao adicionar ${tipo}:`, error)
+      alert(`Erro ao adicionar ${tipo}`)
+      return
+    }
+    setObra({ ...obra, checklist_seccionamentos_data: updatedItems })
+  }
+
   async function handleExportPdf() {
     if (!obra) return
     setExportingPdf(true)
@@ -1686,6 +1753,7 @@ export default function ObraDetailPage() {
       obra: obra.obra || '',
       data: dataFormatada,
       responsavel: obra.responsavel || '',
+      tipo_servico: obra.tipo_servico || '',
     })
     setEditError('')
     setShowEditModal(true)
@@ -1704,6 +1772,7 @@ export default function ObraDetailPage() {
           obra: editForm.obra,
           data: editForm.data,
           responsavel: editForm.responsavel,
+          tipo_servico: editForm.tipo_servico,
         })
         .eq('id', obra.id)
       if (error) throw error
@@ -1713,6 +1782,7 @@ export default function ObraDetailPage() {
         obra: editForm.obra,
         data: editForm.data,
         responsavel: editForm.responsavel,
+        tipo_servico: editForm.tipo_servico,
       })
       setShowEditModal(false)
     } catch (err: any) {
@@ -2057,19 +2127,19 @@ export default function ObraDetailPage() {
             ) : null}
 
             {/* Checklist de Fiscalização */}
-            {(obra.fotos_checklist_croqui?.length || obra.fotos_checklist_panoramica_inicial?.length || obra.fotos_checklist_chede?.length || obra.fotos_checklist_aterramento_cerca?.length || getAterramentosFotos(obra).length > 0 || obra.fotos_checklist_padrao_geral?.length || obra.fotos_checklist_padrao_interno?.length || obra.fotos_checklist_frying?.length || obra.fotos_checklist_abertura_fechamento_pulo?.length || obra.fotos_checklist_panoramica_final?.length || obra.fotos_checklist_postes?.length || obra.fotos_checklist_seccionamentos?.length || obra.checklist_postes_data?.length || obra.checklist_seccionamentos_data?.length || obra.checklist_hastes_termometros_data?.length) ? (
+            {(obra.tipo_servico === 'Checklist' || obra.tipo_servico === 'Checklist de Fiscalização') ? (
               <div className="mt-8 pt-8 border-t border-gray-200">
                 <h3 className="text-xl font-bold text-gray-900 mb-4">Checklist de Fiscalização</h3>
-                
+
                 {/* 1. Croqui */}
                 <PhotoGallery photos={obra.fotos_checklist_croqui || []} title="1. Croqui da Obra" sectionKey="fotos_checklist_croqui" {...galleryProps} />
-                
+
                 {/* 2. Panorâmica Inicial */}
                 <PhotoGallery photos={obra.fotos_checklist_panoramica_inicial || []} title="2. Panorâmica Inicial" sectionKey="fotos_checklist_panoramica_inicial" {...galleryProps} />
-                
+
                 {/* 3. CHEDE */}
                 <PhotoGallery photos={obra.fotos_checklist_chede || []} title="3. Foto da Chave com Componente (CHEDE)" sectionKey="fotos_checklist_chede" {...galleryProps} />
-                
+
                 {/* 4. Postes - Exibição estruturada */}
                 {(() => {
                   const mergedPostes = getChecklistPostesForDisplay(
@@ -2077,118 +2147,137 @@ export default function ObraDetailPage() {
                     obra.fotos_checklist_postes
                   )
 
-                  const hasPostesWithPhotos = hasRealPhotos(mergedPostes);
+                  const hasPostesData = mergedPostes && mergedPostes.length > 0
 
-                  if (hasPostesWithPhotos && mergedPostes) {
-                    return (
-                      <div className="mb-6">
-                        <h4 className="text-lg font-semibold text-gray-800 mb-3">4. Registro dos Postes</h4>
-                        {mergedPostes.map((poste: any, posteIndex: number) => {
-                          const prefixo = poste.isAditivo ? 'AD-P' : 'P';
-                          const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
-                          const status = poste.status || 'N/A';
-                          return (
-                            <div key={posteIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
-                                  {label}
-                                </span>
-                                <span className="text-sm text-gray-600">Status: {status}</span>
-                              </div>
-                              {poste.posteInteiro?.length > 0 && (
-                                <PhotoGallery photos={poste.posteInteiro} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
-                              )}
-                              {poste.descricao?.length > 0 && (
-                                <PhotoGallery photos={poste.descricao} title="Descrição do Poste" sectionKey={`poste_${posteIndex}_descricao`} {...galleryProps} />
-                              )}
-                              {poste.engaste?.length > 0 && (
-                                <PhotoGallery photos={poste.engaste} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
-                              )}
-                              {poste.conexao1?.length > 0 && (
-                                <PhotoGallery photos={poste.conexao1} title="Conexão 1" sectionKey={`poste_${posteIndex}_conexao1`} {...galleryProps} />
-                              )}
-                              {poste.conexao2?.length > 0 && (
-                                <PhotoGallery photos={poste.conexao2} title="Conexão 2" sectionKey={`poste_${posteIndex}_conexao2`} {...galleryProps} />
-                              )}
-                              {poste.maiorEsforco?.length > 0 && (
-                                <PhotoGallery photos={poste.maiorEsforco} title="Maior Esforço" sectionKey={`poste_${posteIndex}_maior`} {...galleryProps} />
-                              )}
-                              {poste.menorEsforco?.length > 0 && (
-                                <PhotoGallery photos={poste.menorEsforco} title="Menor Esforço" sectionKey={`poste_${posteIndex}_menor`} {...galleryProps} />
-                              )}
-                            </div>
-                          );
-                        })}
+                  return (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-lg font-semibold text-gray-800">4. Registro dos Postes</h4>
+                        <button
+                          onClick={handleAddPoste}
+                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          Adicionar Poste
+                        </button>
                       </div>
-                    );
-                  }
-
-                  // Fallback: mostrar todas as fotos juntas se não conseguir mesclar
-                  if ((obra.fotos_checklist_postes?.length ?? 0) > 0) {
-                    return <PhotoGallery photos={obra.fotos_checklist_postes || []} title="4. Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />;
-                  }
-
-                  return null;
+                      {hasPostesData ? mergedPostes.map((poste: any, posteIndex: number) => {
+                        const prefixo = poste.isAditivo ? 'AD-P' : 'P';
+                        const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
+                        const status = poste.status || 'N/A';
+                        return (
+                          <div key={posteIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                {label}
+                              </span>
+                              <span className="text-sm text-gray-600">Status: {status}</span>
+                            </div>
+                            <PhotoGallery photos={poste.posteInteiro || []} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
+                            <PhotoGallery photos={poste.descricao || []} title="Descrição do Poste" sectionKey={`poste_${posteIndex}_descricao`} {...galleryProps} />
+                            <PhotoGallery photos={poste.engaste || []} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
+                            <PhotoGallery photos={poste.conexao1 || []} title="Conexão 1" sectionKey={`poste_${posteIndex}_conexao1`} {...galleryProps} />
+                            <PhotoGallery photos={poste.conexao2 || []} title="Conexão 2" sectionKey={`poste_${posteIndex}_conexao2`} {...galleryProps} />
+                            <PhotoGallery photos={poste.maiorEsforco || []} title="Maior Esforço" sectionKey={`poste_${posteIndex}_maior`} {...galleryProps} />
+                            <PhotoGallery photos={poste.menorEsforco || []} title="Menor Esforço" sectionKey={`poste_${posteIndex}_menor`} {...galleryProps} />
+                          </div>
+                        );
+                      }) : (
+                        // Fallback: mostrar todas as fotos juntas se não tiver dados estruturados
+                        (obra.fotos_checklist_postes?.length ?? 0) > 0
+                          ? <PhotoGallery photos={obra.fotos_checklist_postes || []} title="Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
+                          : <p className="text-sm text-gray-500 italic">Nenhum poste adicionado ainda. Clique em &quot;Adicionar Poste&quot; para começar.</p>
+                      )}
+                    </div>
+                  );
                 })()}
-                
+
                 {/* 5, 6 e 7. Emendas, Podas e Seccionamentos */}
                 {(() => {
                   const pontosChecklist = Array.isArray(obra.checklist_seccionamentos_data)
                     ? obra.checklist_seccionamentos_data
                         .map((item: any, index: number) => ({ ...item, __index: index }))
-                        .filter((item: any) =>
-                          Array.isArray(item.fotos) && item.fotos.some((photo: any) => !!toFotoInfoIfUrl(photo))
-                        )
                     : []
-
-                  if (pontosChecklist.length === 0) {
-                    if ((obra.fotos_checklist_seccionamentos?.length ?? 0) > 0) {
-                      return (
-                        <PhotoGallery
-                          photos={obra.fotos_checklist_seccionamentos || []}
-                          title="5 a 7. Emendas, Podas e Seccionamentos"
-                          sectionKey="fotos_checklist_seccionamentos"
-                          {...galleryProps}
-                        />
-                      )
-                    }
-                    return null
-                  }
 
                   const grupos = [
                     {
-                      tipo: 'emenda',
+                      tipo: 'emenda' as const,
                       titulo: '5. Emendas',
                       prefixo: 'E',
                       containerClass: 'bg-orange-50 border-orange-500',
-                      badgeClass: 'bg-orange-500 text-white'
+                      badgeClass: 'bg-orange-500 text-white',
+                      btnClass: 'bg-orange-500 hover:bg-orange-600',
                     },
                     {
-                      tipo: 'poda',
+                      tipo: 'poda' as const,
                       titulo: '6. Podas',
                       prefixo: 'PD',
                       containerClass: 'bg-emerald-50 border-emerald-500',
-                      badgeClass: 'bg-emerald-500 text-white'
+                      badgeClass: 'bg-emerald-500 text-white',
+                      btnClass: 'bg-emerald-500 hover:bg-emerald-600',
                     },
                     {
-                      tipo: 'seccionamento',
+                      tipo: 'seccionamento' as const,
                       titulo: '7. Seccionamentos',
                       prefixo: 'S',
                       containerClass: 'bg-purple-50 border-purple-500',
-                      badgeClass: 'bg-purple-500 text-white'
+                      badgeClass: 'bg-purple-500 text-white',
+                      btnClass: 'bg-purple-500 hover:bg-purple-600',
                     }
-                  ] as const
+                  ]
+
+                  // Fallback: se não tiver dados estruturados mas tiver fotos flat legadas
+                  if (pontosChecklist.length === 0 && (obra.fotos_checklist_seccionamentos?.length ?? 0) > 0) {
+                    return (
+                      <>
+                        <PhotoGallery
+                          photos={obra.fotos_checklist_seccionamentos || []}
+                          title="5 a 7. Emendas, Podas e Seccionamentos (legado)"
+                          sectionKey="fotos_checklist_seccionamentos"
+                          {...galleryProps}
+                        />
+                        {grupos.map((grupo) => (
+                          <div key={grupo.tipo} className="mb-6">
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-lg font-semibold text-gray-800">{grupo.titulo}</h4>
+                              <button
+                                onClick={() => handleAddSeccionamentoItem(grupo.tipo)}
+                                className={`px-3 py-2 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 ${grupo.btnClass}`}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                Adicionar
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    )
+                  }
 
                   return (
                     <>
                       {grupos.map((grupo) => {
                         const itens = pontosChecklist.filter((item: any) => (item.tipo || 'seccionamento') === grupo.tipo)
-                        if (itens.length === 0) return null
 
                         return (
                           <div key={grupo.tipo} className="mb-6">
-                            <h4 className="text-lg font-semibold text-gray-800 mb-3">{grupo.titulo}</h4>
-                            {itens.map((item: any, itemIndex: number) => {
+                            <div className="flex items-center justify-between mb-3">
+                              <h4 className="text-lg font-semibold text-gray-800">{grupo.titulo}</h4>
+                              <button
+                                onClick={() => handleAddSeccionamentoItem(grupo.tipo)}
+                                className={`px-3 py-2 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 ${grupo.btnClass}`}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                Adicionar
+                              </button>
+                            </div>
+                            {itens.length > 0 ? itens.map((item: any, itemIndex: number) => {
                               const originalIndex = item.__index ?? itemIndex
                               const numero = item.numero || (itemIndex + 1)
                               const label = `${grupo.prefixo}${numero}`
@@ -2198,8 +2287,6 @@ export default function ObraDetailPage() {
                                 .map((photo: any) => toFotoInfoIfUrl(photo))
                                 .filter(Boolean) as FotoInfo[]
                               const mostrarTrecho = grupo.tipo !== 'seccionamento' && (posteInicio || posteFim)
-
-                              if (fotos.length === 0) return null
 
                               return (
                                 <div key={`${grupo.tipo}_${originalIndex}`} className={`mb-4 p-4 rounded-lg border-l-4 ${grupo.containerClass}`}>
@@ -2216,7 +2303,9 @@ export default function ObraDetailPage() {
                                   <PhotoGallery photos={fotos} title="Fotos" sectionKey={`secc_${originalIndex}_fotos`} {...galleryProps} />
                                 </div>
                               )
-                            })}
+                            }) : (
+                              <p className="text-sm text-gray-500 italic">Nenhum item adicionado ainda.</p>
+                            )}
                           </div>
                         )
                       })}
@@ -2242,16 +2331,16 @@ export default function ObraDetailPage() {
 
                 {/* 7. Padrão Geral */}
                 <PhotoGallery photos={obra.fotos_checklist_padrao_geral || []} title="9. Padrão de Ligação - Vista Geral" sectionKey="fotos_checklist_padrao_geral" {...galleryProps} />
-                
+
                 {/* 8. Padrão Interno */}
                 <PhotoGallery photos={obra.fotos_checklist_padrao_interno || []} title="10. Padrão de Ligação - Interno" sectionKey="fotos_checklist_padrao_interno" {...galleryProps} />
-                
+
                 {/* 9. Flying */}
                 <PhotoGallery photos={obra.fotos_checklist_frying || []} title="11. Flying" sectionKey="fotos_checklist_frying" {...galleryProps} />
-                
+
                 {/* 10. Abertura e Fechamento de Pulo */}
                 <PhotoGallery photos={obra.fotos_checklist_abertura_fechamento_pulo || []} title="12. Abertura e Fechamento de Pulo" sectionKey="fotos_checklist_abertura_fechamento_pulo" {...galleryProps} />
-                
+
                 {/* 11. Hastes Aplicadas e Medição do Termômetro */}
                 <div className="mb-6">
                   <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 13. Hastes Aplicadas e Medição do Termômetro</h4>
@@ -2440,6 +2529,28 @@ export default function ObraDetailPage() {
                             placeholder="Nome do responsável"
                             value={editForm.responsavel}
                             onChange={(e) => setEditForm({ ...editForm, responsavel: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Campo: Tipo de Serviço / Book */}
+                      <div className="flex flex-col gap-1.5 col-span-2">
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Tipo de Serviço / Book
+                        </label>
+                        <div className="relative">
+                          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 12h6m2 9H7a2 2 0 01-2-2V7a2 2 0 012-2h3.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0117 6.414V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                          <input
+                            type="text"
+                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            placeholder="Ex: Checklist de Fiscalização"
+                            value={editForm.tipo_servico}
+                            onChange={(e) => setEditForm({ ...editForm, tipo_servico: e.target.value })}
                             required
                           />
                         </div>

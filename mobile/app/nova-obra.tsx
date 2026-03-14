@@ -756,7 +756,7 @@ export default function NovaObra() {
 
     const obraData: any = {
       id: finalObraId,
-      ...(currentServerId && { serverId: currentServerId }),
+      ...((isEditMode && currentServerId) && { serverId: currentServerId }),
       obra: obra?.trim() || '',
       data: data || '',
       responsavel: isCompUser ? (equipe || 'COM-CZ') : (responsavel || ''),
@@ -917,6 +917,13 @@ export default function NovaObra() {
   useEffect(() => {
     autoSaveRef.current = performAutoSave;
   }, [performAutoSave]);
+
+  // Evita reaproveitar serverId de uma edição anterior ao iniciar novo book.
+  useEffect(() => {
+    if (!isEditMode) {
+      setCurrentServerId(null);
+    }
+  }, [isEditMode]);
 
   // Carregar dados da obra em modo de edição
   useEffect(() => {
@@ -5033,7 +5040,7 @@ export default function NovaObra() {
       const obraData: any = {
         id: finalObraId,
         // ✅ CRÍTICO: Preservar serverId se já foi sincronizada (evita duplicação)
-        ...(currentServerId && { serverId: currentServerId }),
+        ...((isEditMode && currentServerId) && { serverId: currentServerId }),
         obra: obra?.trim() || '',
         data: data || '',
         responsavel: isCompUser ? (equipe || 'COM-CZ') : (responsavel || ''),
@@ -8124,10 +8131,14 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        const newLength = numPostes + 1;
-                        setNumPostes(newLength);
-                        setFotosPostes([...fotosPostes, {
-                          numero: '', // Novo poste sem número
+                        setNumPostes(prev => prev + 1);
+                        setFotosPostes(prev => {
+                          const proximoNumero = prev.reduce((max, poste) => {
+                            const numero = parseInt(poste.numero || '0', 10);
+                            return Number.isFinite(numero) ? Math.max(max, numero) : max;
+                          }, 0) + 1;
+                          return [{
+                          numero: String(proximoNumero),
                           status: '', // Novo poste sem status
                           isAditivo: false, // Não é aditivo por padrão
                           posteInteiro: [],
@@ -8137,9 +8148,9 @@ export default function NovaObra() {
                           conexao2: [],
                           maiorEsforco: [],
                           menorEsforco: [],
-                        }]);
-                        // ✅ Aviso simples
-                        showToast('Poste adicionado! Role a tela para baixo para ver o novo poste.', 'success');
+                        }, ...prev];
+                        });
+                        showToast('Poste adicionado abaixo do botao.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Poste</Text>
@@ -8149,7 +8160,7 @@ export default function NovaObra() {
                   {fotosPostes.map((poste, posteIndex) => (
                     <View key={posteIndex} style={styles.posteCard}>
                       <Text style={styles.posteTitle}>
-                        Poste {posteIndex + 1}{poste.numero ? ` - ${poste.isAditivo ? 'AD-' : ''}P${poste.numero}` : ''}
+                        Poste {poste.numero || (posteIndex + 1)}{poste.numero ? ` - ${poste.isAditivo ? 'AD-' : ''}P${poste.numero}` : ''}
                         {poste.status === 'instalado' && poste.posteInteiro.length > 0 && poste.descricao.length > 0 && poste.engaste.length > 0 &&
                          poste.conexao1.length > 0 && poste.conexao2.length > 0 &&
                          poste.maiorEsforco.length >= 2 && poste.menorEsforco.length >= 2 && ' ✓'}
@@ -8626,10 +8637,15 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        const newLength = numEmendas + 1;
-                        setNumEmendas(newLength);
-                        setFotosEmendas([...fotosEmendas, { numero: '', posteInicio: '', posteFim: '', fotos: [] }]);
-                        showToast('Ponto de emenda adicionado! Role a tela para baixo para ver.', 'success');
+                        setNumEmendas(prev => prev + 1);
+                        setFotosEmendas(prev => {
+                          const proximoNumero = prev.reduce((max, emenda) => {
+                            const numero = parseInt(emenda.numero || '0', 10);
+                            return Number.isFinite(numero) ? Math.max(max, numero) : max;
+                          }, 0) + 1;
+                          return [{ numero: String(proximoNumero), posteInicio: '', posteFim: '', fotos: [] }, ...prev];
+                        });
+                        showToast('Ponto de emenda adicionado abaixo do botao.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -8759,10 +8775,15 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        const newLength = numPodas + 1;
-                        setNumPodas(newLength);
-                        setFotosPodas([...fotosPodas, { numero: '', posteInicio: '', posteFim: '', fotos: [] }]);
-                        showToast('Ponto de poda adicionado! Role a tela para baixo para ver.', 'success');
+                        setNumPodas(prev => prev + 1);
+                        setFotosPodas(prev => {
+                          const proximoNumero = prev.reduce((max, poda) => {
+                            const numero = parseInt(poda.numero || '0', 10);
+                            return Number.isFinite(numero) ? Math.max(max, numero) : max;
+                          }, 0) + 1;
+                          return [{ numero: String(proximoNumero), posteInicio: '', posteFim: '', fotos: [] }, ...prev];
+                        });
+                        showToast('Ponto de poda adicionado abaixo do botao.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -8893,11 +8914,16 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        const newLength = numSeccionamentos + 1;
-                        setNumSeccionamentos(newLength);
-                        setFotosSeccionamentos([...fotosSeccionamentos, { numero: '', posteInicio: '', posteFim: '', fotos: [] }]);
+                        setNumSeccionamentos(prev => prev + 1);
+                        setFotosSeccionamentos(prev => {
+                          const proximoNumero = prev.reduce((max, sec) => {
+                            const numero = parseInt(sec.numero || '0', 10);
+                            return Number.isFinite(numero) ? Math.max(max, numero) : max;
+                          }, 0) + 1;
+                          return [{ numero: String(proximoNumero), posteInicio: '', posteFim: '', fotos: [] }, ...prev];
+                        });
                         // ✅ Aviso simples
-                        showToast('Ponto de seccionamento adicionado! Role a tela para baixo para ver.', 'success');
+                        showToast('Ponto de seccionamento adicionado abaixo do botao.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -8997,11 +9023,16 @@ export default function NovaObra() {
                       style={styles.posteAddButton}
                       onPress={() => {
                         setNumAterramentosCerca(prev => {
-                          const newLength = prev + 1;
-                          setFotosAterramentosCerca(curr => [...curr, { numero: '', fotos: [] }]);
+                          setFotosAterramentosCerca(curr => {
+                            const proximoNumero = curr.reduce((max, aterr) => {
+                              const numero = parseInt(aterr.numero || '0', 10);
+                              return Number.isFinite(numero) ? Math.max(max, numero) : max;
+                            }, 0) + 1;
+                            return [{ numero: String(proximoNumero), fotos: [] }, ...curr];
+                          });
                           // ✅ Aviso simples
-                          showToast('Ponto de aterramento adicionado! Role a tela para baixo para ver.', 'success');
-                          return newLength;
+                          showToast('Ponto de aterramento adicionado abaixo do botao.', 'success');
+                          return prev + 1;
                         });
                       }}
                     >
@@ -9277,13 +9308,20 @@ export default function NovaObra() {
                     <TouchableOpacity
                       style={styles.posteAddButton}
                       onPress={() => {
-                        setNumPontosHastesTermometros(numPontosHastesTermometros + 1);
-                        setPontosHastesTermometros([...pontosHastesTermometros, {
-                          numero: '',
+                        setNumPontosHastesTermometros(prev => prev + 1);
+                        setPontosHastesTermometros(prev => {
+                          const proximoNumero = prev.reduce((max, ponto) => {
+                            const numero = parseInt(ponto.numero || '0', 10);
+                            return Number.isFinite(numero) ? Math.max(max, numero) : max;
+                          }, 0) + 1;
+                          return [{
+                          numero: String(proximoNumero),
                           isAditivo: false,
                           fotoHaste: [],
                           fotoTermometro: [],
-                        }]);
+                        }, ...prev];
+                        });
+                        showToast('Ponto adicionado abaixo do botao.', 'success');
                       }}
                     >
                       <Text style={styles.posteButtonText}>➕ Adicionar Ponto</Text>
@@ -9293,7 +9331,7 @@ export default function NovaObra() {
                   {pontosHastesTermometros.map((ponto, pontoIndex) => (
                     <View key={pontoIndex} style={styles.posteCard}>
                       <Text style={styles.posteTitle}>
-                        Ponto {pontoIndex + 1}{ponto.numero ? ` - ${ponto.isAditivo ? 'AD-' : ''}P${ponto.numero}` : ''}
+                        Ponto {ponto.numero || (pontoIndex + 1)}{ponto.numero ? ` - ${ponto.isAditivo ? 'AD-' : ''}P${ponto.numero}` : ''}
                         {ponto.fotoHaste.length > 0 && ponto.fotoTermometro.length > 0 && ' ✓'}
                       </Text>
 
@@ -11990,6 +12028,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
 
 
 
