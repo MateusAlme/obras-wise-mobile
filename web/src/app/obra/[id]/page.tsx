@@ -652,6 +652,18 @@ export default function ObraDetailPage() {
     return getChecklistPostesForDisplay(normalized, flatPhotos)
   }
 
+  // Converte postes_data (Linha Viva / Cava em Rocha) para ter FotoInfo nas fotos
+  function convertPostesDataJSONBPhotos(jsonbData: any): any {
+    if (!jsonbData || !Array.isArray(jsonbData)) return jsonbData
+    return jsonbData.map((poste: any) => ({
+      ...poste,
+      fotos_antes: convertChecklistPhotoRefs(poste.fotos_antes || []),
+      fotos_durante: convertChecklistPhotoRefs(poste.fotos_durante || []),
+      fotos_depois: convertChecklistPhotoRefs(poste.fotos_depois || []),
+      fotos_medicao: convertChecklistPhotoRefs(poste.fotos_medicao || []),
+    }))
+  }
+
   async function loadObra(id: string) {
     try {
       const { data, error } = await supabase
@@ -720,6 +732,7 @@ export default function ObraDetailPage() {
         fotos_vazamento_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_instalado),
         fotos_vazamento_instalacao: convertPhotoIdsToFotoInfo(data.fotos_vazamento_instalacao),
         // Converter estruturas JSONB do checklist (formato novo)
+        postes_data: convertPostesDataJSONBPhotos(data.postes_data),
         checklist_postes_data: convertChecklistPostesJSONBPhotos(data.checklist_postes_data, fotosChecklistPostes),
         checklist_seccionamentos_data: convertChecklistJSONBPhotos(data.checklist_seccionamentos_data),
         checklist_aterramentos_cerca_data: convertChecklistJSONBPhotos(data.checklist_aterramentos_cerca_data),
@@ -2066,15 +2079,54 @@ export default function ObraDetailPage() {
           <div className="card-padded">
             <h2 className="text-xl font-bold text-slate-900 mb-6">Registro Fotográfico</h2>
 
-            {deveExibirGaleria('fotos_antes', obra.tipo_servico) && (
+            {deveExibirGaleria('fotos_antes', obra.tipo_servico) && !(Array.isArray(obra.postes_data) && obra.postes_data.length > 0) && (
               <PhotoGallery photos={obra.fotos_antes || []} title="Fotos Antes" sectionKey="fotos_antes" {...galleryProps} />
             )}
-            {deveExibirGaleria('fotos_durante', obra.tipo_servico) && (
+            {deveExibirGaleria('fotos_durante', obra.tipo_servico) && !(Array.isArray(obra.postes_data) && obra.postes_data.length > 0) && (
               <PhotoGallery photos={obra.fotos_durante || []} title="Fotos Durante" sectionKey="fotos_durante" {...galleryProps} />
             )}
-            {deveExibirGaleria('fotos_depois', obra.tipo_servico) && (
+            {deveExibirGaleria('fotos_depois', obra.tipo_servico) && !(Array.isArray(obra.postes_data) && obra.postes_data.length > 0) && (
               <PhotoGallery photos={obra.fotos_depois || []} title="Fotos Depois" sectionKey="fotos_depois" {...galleryProps} />
             )}
+
+            {/* Checklist de Postes (Linha Viva / Cava em Rocha / Book de Aterramento / Fundação Especial) */}
+            {Array.isArray(obra.postes_data) && obra.postes_data.length > 0 && (() => {
+              const isBookAterramento = obra.tipo_servico === 'Book de Aterramento'
+              const sections = isBookAterramento
+                ? [
+                    { key: 'fotos_antes', label: 'Vala Aberta' },
+                    { key: 'fotos_durante', label: 'Hastes' },
+                    { key: 'fotos_depois', label: 'Vala Fechada' },
+                    { key: 'fotos_medicao', label: 'Medição Terrômetro' },
+                  ]
+                : [
+                    { key: 'fotos_antes', label: 'Fotos Antes' },
+                    { key: 'fotos_durante', label: 'Fotos Durante' },
+                    { key: 'fotos_depois', label: 'Fotos Depois' },
+                  ]
+              return (
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Checklist de Postes</h3>
+                  {obra.postes_data!.map((poste: any, posteIndex: number) => {
+                    const label = `Poste P${poste.numero || posteIndex + 1}`
+                    const totalFotos = sections.reduce((acc, s) => acc + (poste[s.key]?.length || 0), 0)
+                    return (
+                      <div key={posteIndex} className="mb-4 p-4 rounded-lg bg-green-50 border-l-4 border-green-500">
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="px-3 py-1 rounded-full text-sm font-bold bg-green-500 text-white">{label}</span>
+                          <span className="text-sm text-gray-500">{totalFotos} foto(s)</span>
+                          {poste.observacao ? <span className="text-sm text-gray-600 italic">{poste.observacao}</span> : null}
+                        </div>
+                        {sections.map(s => (
+                          <PhotoGallery key={s.key} photos={poste[s.key] || []} title={s.label} sectionKey={`postes_data_${posteIndex}_${s.key}`} {...galleryProps} />
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
+
             {deveExibirGaleria('fotos_abertura', obra.tipo_servico) && (
               <PhotoGallery photos={obra.fotos_abertura || []} title="Fotos Abertura de Chave" sectionKey="fotos_abertura" {...galleryProps} />
             )}

@@ -73,6 +73,8 @@ export interface Obra {
   fotos_checklist_panoramica_final?: FotoInfo[]
   fotos_checklist_postes?: FotoInfo[]
   fotos_checklist_seccionamentos?: FotoInfo[]
+  // LINHA VIVA / CAVA EM ROCHA - Dados dos postes
+  postes_data?: any[]
   // CHECKLIST - Dados estruturados (novo formato JSONB)
   checklist_postes_data?: any[]
   checklist_seccionamentos_data?: any[]

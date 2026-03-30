@@ -148,6 +148,7 @@ export default function ReportsPage() {
   const [exportingAllPdf, setExportingAllPdf] = useState(false)
   const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletingBulk, setDeletingBulk] = useState(false)
   const [photoActionKey, setPhotoActionKey] = useState<string | null>(null)
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; label: string } | null>(null)
   const [editingObra, setEditingObra] = useState<Obra | null>(null)
@@ -277,15 +278,7 @@ export default function ReportsPage() {
   const stats = useMemo(() => {
     const totalObras = filteredObras.length
     const obrasComAtipicidade = filteredObras.filter((o) => o.tem_atipicidade).length
-    const totalFotos = filteredObras.reduce((acc, obra) => {
-      let count = 0
-      if (obra.fotos_antes?.length) count += obra.fotos_antes.length
-      if (obra.fotos_durante?.length) count += obra.fotos_durante.length
-      if (obra.fotos_depois?.length) count += obra.fotos_depois.length
-      if (obra.fotos_abertura?.length) count += obra.fotos_abertura.length
-      if (obra.fotos_fechamento?.length) count += obra.fotos_fechamento.length
-      return acc + count
-    }, 0)
+    const totalFotos = filteredObras.reduce((acc, obra) => acc + getTotalPhotosCount(obra), 0)
 
     return {
       totalObras,
@@ -374,6 +367,12 @@ export default function ReportsPage() {
     if (obra.fotos_transformador_antes_retirar?.length) count += obra.fotos_transformador_antes_retirar.length
     if (obra.fotos_transformador_tombamento_retirado?.length) count += obra.fotos_transformador_tombamento_retirado.length
     if (obra.fotos_transformador_placa_retirado?.length) count += obra.fotos_transformador_placa_retirado.length
+    // Linha Viva / Cava em Rocha - postes_data
+    if (Array.isArray(obra.postes_data)) {
+      obra.postes_data.forEach((p: any) => {
+        count += (p.fotos_antes?.length || 0) + (p.fotos_durante?.length || 0) + (p.fotos_depois?.length || 0) + (p.fotos_medicao?.length || 0)
+      })
+    }
     return count
   }
 
@@ -785,6 +784,81 @@ export default function ReportsPage() {
     }
   }
 
+  async function handleDeleteSelectedObras() {
+    if (selectedObras.size === 0) {
+      alert('Selecione ao menos uma obra para excluir.')
+      return
+    }
+
+    const obrasSelecionadas = obras.filter((obra) => selectedObras.has(obra.id))
+    const resumoObras = obrasSelecionadas
+      .slice(0, 5)
+      .map((obra) => obra.obra || obra.id.slice(0, 8))
+      .join(', ')
+    const sufixoResumo = obrasSelecionadas.length > 5 ? ` e mais ${obrasSelecionadas.length - 5}` : ''
+    const confirmMessage = `Tem certeza que deseja EXCLUIR ${obrasSelecionadas.length} obra(s)?\n\nObras selecionadas: ${resumoObras}${sufixoResumo}\n\nEsta ação é IRREVERSÍVEL e irá:\n- Deletar as obras do banco de dados\n- Deletar todas as fotos associadas\n\nDigite "EXCLUIR" para confirmar:`
+
+    const confirmation = window.prompt(confirmMessage)
+
+    if (confirmation !== 'EXCLUIR') {
+      if (confirmation !== null) {
+        alert('Exclusão cancelada. Digite exatamente "EXCLUIR" para confirmar.')
+      }
+      return
+    }
+
+    setDeletingBulk(true)
+    setOpenMenuId(null)
+    setMenuPosition(null)
+
+    try {
+      const response = await fetch('/api/obras/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ obraIds: obrasSelecionadas.map((obra) => obra.id) }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao excluir obras selecionadas')
+      }
+
+      const deletedIds: string[] = Array.isArray(result.deletedIds) ? result.deletedIds : []
+      if (deletedIds.length > 0) {
+        setObras((prev) => prev.filter((obra) => !deletedIds.includes(obra.id)))
+        setSelectedObras((prev) => {
+          const next = new Set(prev)
+          deletedIds.forEach((id) => next.delete(id))
+          return next
+        })
+      }
+
+      if (result.failed?.length) {
+        const failures = result.failed
+          .slice(0, 5)
+          .map((item: { id: string; error: string }) => `${item.id.slice(0, 8)}: ${item.error}`)
+          .join('\n')
+
+        alert(
+          `${deletedIds.length} obra(s) excluída(s) com sucesso.\n${result.failed.length} falha(s) ocorreram.\n${result.photosDeleted || 0} foto(s) removidas.\n\nFalhas:\n${failures}`
+        )
+        return
+      }
+
+      alert(
+        `${deletedIds.length} obra(s) excluída(s) com sucesso!\n${result.photosDeleted || 0} foto(s) removidas.`
+      )
+    } catch (error: any) {
+      console.error('Erro ao excluir obras em lote:', error)
+      alert(`Erro ao excluir obras selecionadas: ${error.message}`)
+    } finally {
+      setDeletingBulk(false)
+    }
+  }
+
   function openEditModal(obra: Obra) {
     setEditError('')
     // Normaliza a data para YYYY-MM-DD (campo type="date")
@@ -1055,6 +1129,18 @@ export default function ReportsPage() {
               </svg>
               Novo Book
             </button>
+            {isAdmin && (
+              <button
+                onClick={handleDeleteSelectedObras}
+                disabled={selectedObras.size === 0 || deletingBulk}
+                className="px-6 py-3.5 bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-700 hover:to-red-800 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all flex items-center gap-3 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                {deletingBulk ? 'Excluindo Selecionadas...' : `Excluir Selecionadas (${selectedObras.size})`}
+              </button>
+            )}
             <button
               onClick={exportAllToPdf}
               disabled={selectedObras.size === 0 || exportingAllPdf}
@@ -1611,8 +1697,17 @@ export default function ReportsPage() {
                 {/* Resumo de seções */}
                 {(() => {
                   const bookSections = getSectionsForBook(selectedObraForBook.tipo_servico)
-                  const withPhotos = bookSections.filter(s => convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length > 0).length
-                  const totalFotosBook = bookSections.reduce((acc, s) => acc + convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length, 0)
+                  const postesLVData: any[] = (selectedObraForBook as any).postes_data
+                  const hasPostesLV = Array.isArray(postesLVData) && postesLVData.length > 0
+                  const totalFotosPostesLV = hasPostesLV
+                    ? postesLVData.reduce((acc: number, p: any) => acc + (p.fotos_antes?.length || 0) + (p.fotos_durante?.length || 0) + (p.fotos_depois?.length || 0) + (p.fotos_medicao?.length || 0), 0)
+                    : 0
+                  const withPhotos = hasPostesLV
+                    ? (totalFotosPostesLV > 0 ? 1 : 0)
+                    : bookSections.filter(s => convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length > 0).length
+                  const totalFotosBook = hasPostesLV
+                    ? totalFotosPostesLV
+                    : bookSections.reduce((acc, s) => acc + convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length, 0)
                   return (
                     <div className="flex items-center gap-4 mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
                       <div className="flex items-center gap-2 text-sm">
@@ -1692,6 +1787,66 @@ export default function ReportsPage() {
                         <div className={`absolute top-1 left-1 ${colorMap[color] ?? 'bg-slate-600'} text-white text-xs font-bold px-1.5 py-0.5 rounded shadow`}>#{idx + 1}</div>
                       </div>
                     )
+
+                    // ── POSTES (Linha Viva / Cava / Book de Aterramento / Fundação Especial) ──
+                    const postesDataRender: any[] = (selectedObraForBook as any).postes_data
+                    if (Array.isArray(postesDataRender) && postesDataRender.length > 0) {
+                      const isBookAterr = selectedObraForBook.tipo_servico === 'Book de Aterramento'
+                      const subKeysPostes = isBookAterr
+                        ? [
+                            { key: 'fotos_antes', label: 'Vala Aberta', color: 'blue' },
+                            { key: 'fotos_durante', label: 'Hastes', color: 'orange' },
+                            { key: 'fotos_depois', label: 'Vala Fechada', color: 'green' },
+                            { key: 'fotos_medicao', label: 'Medição Terrômetro', color: 'teal' },
+                          ]
+                        : [
+                            { key: 'fotos_antes', label: 'Fotos Antes', color: 'blue' },
+                            { key: 'fotos_durante', label: 'Fotos Durante', color: 'orange' },
+                            { key: 'fotos_depois', label: 'Fotos Depois', color: 'green' },
+                          ]
+                      const totalFotosPostes = postesDataRender.reduce((acc: number, p: any) => acc + subKeysPostes.reduce((a, s) => a + (p[s.key]?.length || 0), 0), 0)
+                      return (
+                        <div key="postes_data_block" className="rounded-2xl border border-green-200 bg-green-50 overflow-hidden shadow-sm">
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <div className="bg-green-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
+                              <h4 className="font-bold text-xs uppercase tracking-wider">Checklist de Postes</h4>
+                            </div>
+                            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                              {postesDataRender.length} poste{postesDataRender.length !== 1 ? 's' : ''} · {totalFotosPostes} foto{totalFotosPostes !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                          <div className="px-4 pb-4 space-y-2">
+                            {postesDataRender.map((poste: any, pIdx: number) => {
+                              const labelP = `P${poste.numero || pIdx + 1}`
+                              const hasAnyP = subKeysPostes.some(s => (poste[s.key] || []).length > 0)
+                              if (!hasAnyP) return null
+                              return (
+                                <div key={pIdx} className="bg-white rounded-xl border border-green-100 overflow-hidden">
+                                  <div className="flex items-center gap-3 px-3 py-2 bg-green-100/60 border-b border-green-100">
+                                    <span className="font-bold text-sm text-green-900">{labelP}</span>
+                                    <span className="text-xs text-green-400 ml-auto">
+                                      {subKeysPostes.reduce((a, s) => a + (poste[s.key]?.length || 0), 0)} foto{subKeysPostes.reduce((a, s) => a + (poste[s.key]?.length || 0), 0) !== 1 ? 's' : ''}
+                                    </span>
+                                  </div>
+                                  {subKeysPostes.map(ss => {
+                                    const urls = (poste[ss.key] || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
+                                    if (urls.length === 0) return null
+                                    return (
+                                      <div key={ss.key} className="px-3 py-2 border-t border-green-50">
+                                        <p className="text-xs font-semibold text-green-600 mb-2 uppercase tracking-wide">{ss.label} ({urls.length})</p>
+                                        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
+                                          {urls.map((url, i) => renderPhotoThumb(url, `${labelP} ${ss.label}`, i, ss.color))}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    }
 
                     return getSectionsForBook(selectedObraForBook.tipo_servico).map((section) => {
                       const sectionKey = String(section.key)
@@ -2213,27 +2368,30 @@ export default function ReportsPage() {
               </button>
             </div>
 
-            {/* Separador + Excluir */}
-            <div className="border-t border-slate-100 mx-2" />
-            <div className="px-2 py-2">
-              <button
-                onClick={() => {
-                  const obraAtual = filteredObras.find(o => o.id === openMenuId)
-                  if (obraAtual) handleDeleteObra(obraAtual)
-                  setOpenMenuId(null)
-                  setMenuPosition(null)
-                }}
-                disabled={deletingId === openMenuId}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <span className="w-7 h-7 bg-red-100 group-hover:bg-red-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
-                  <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </span>
-                {deletingId === openMenuId ? 'Excluindo...' : 'Excluir Obra'}
-              </button>
-            </div>
+            {isAdmin && (
+              <>
+                <div className="border-t border-slate-100 mx-2" />
+                <div className="px-2 py-2">
+                  <button
+                    onClick={() => {
+                      const obraAtual = filteredObras.find(o => o.id === openMenuId)
+                      if (obraAtual) handleDeleteObra(obraAtual)
+                      setOpenMenuId(null)
+                      setMenuPosition(null)
+                    }}
+                    disabled={deletingId === openMenuId || deletingBulk}
+                    className="w-full px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="w-7 h-7 bg-red-100 group-hover:bg-red-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                      <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </span>
+                    {deletingId === openMenuId ? 'Excluindo...' : 'Excluir Obra'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </AppShell>

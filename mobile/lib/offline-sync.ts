@@ -1628,6 +1628,13 @@ export const syncObra = async (
   onProgress?: (progress: UploadProgress) => void
 ): Promise<{ success: boolean; newId?: string }> => {
   try {
+    // Validar número da obra antes de sincronizar (deve ter 8 ou 10 dígitos numéricos)
+    const obraNumero = obra.obra?.trim() || '';
+    if (!/^\d+$/.test(obraNumero) || (obraNumero.length !== 8 && obraNumero.length !== 10)) {
+      console.error(`❌ [syncObra] Número inválido: "${obraNumero}" (${obraNumero.length} dígitos). Deve ter 8 ou 10 dígitos. Sync bloqueado.`);
+      return { success: false };
+    }
+
     // Marcar como "sincronizando"
     await updatePendingObraStatus(obra.id, 'syncing');
 

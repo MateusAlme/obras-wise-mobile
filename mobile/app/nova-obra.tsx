@@ -30,11 +30,12 @@ import {
   saveObraOffline,
   syncAllPendingObras,
   getPendingObras,
+  getLocalObras,
   startAutoSync,
   updateObraOffline,
   saveObraLocal,
 } from '../lib/offline-sync';
-import type { PendingObra } from '../lib/offline-sync';
+import type { PendingObra, LocalObra } from '../lib/offline-sync';
 import {
   backupPhoto,
   getPhotosByObra,
@@ -1556,6 +1557,55 @@ export default function NovaObra() {
     } catch (error) {
       console.error('Erro ao carregar obras pendentes:', error);
     }
+  };
+
+  const normalizeComparableValue = (value?: string | null) => (value || '').trim().toLowerCase();
+
+  const findSimilarOpenObra = async (
+    obraNumero: string,
+    tipoServicoAtual: string
+  ): Promise<PendingObra | LocalObra | null> => {
+    const [obrasLocais, obrasPendentes] = await Promise.all([getLocalObras(), getPendingObras()]);
+    const currentEquipe = normalizeComparableValue(isAdminUser ? equipeExecutora : equipe);
+    const idsIgnorados = new Set(
+      [backupObraId, obraId, currentServerId].filter((value): value is string => Boolean(value))
+    );
+
+    const obrasConhecidas = [
+      ...obrasLocais,
+      ...obrasPendentes.filter((obraPendente) => !obrasLocais.some((obraLocal) => obraLocal.id === obraPendente.id)),
+    ];
+
+    const obrasSemelhantes = obrasConhecidas
+      .filter((obraExistente) => {
+        const mesmoNumero =
+          normalizeComparableValue(obraExistente.obra) === normalizeComparableValue(obraNumero);
+        const mesmoTipo =
+          normalizeComparableValue(obraExistente.tipo_servico) === normalizeComparableValue(tipoServicoAtual);
+        const mesmaEquipe =
+          !currentEquipe || normalizeComparableValue(obraExistente.equipe) === currentEquipe;
+        const aberta = normalizeComparableValue(obraExistente.status) !== 'finalizada';
+        const mesmoRegistro =
+          idsIgnorados.has(obraExistente.id) ||
+          ('serverId' in obraExistente &&
+            typeof obraExistente.serverId === 'string' &&
+            idsIgnorados.has(obraExistente.serverId));
+
+        return mesmoNumero && mesmoTipo && mesmaEquipe && aberta && !mesmoRegistro;
+      })
+      .sort((a, b) => {
+        const prioridadeA = a.status === 'rascunho' ? 0 : 1;
+        const prioridadeB = b.status === 'rascunho' ? 0 : 1;
+        if (prioridadeA !== prioridadeB) {
+          return prioridadeA - prioridadeB;
+        }
+
+        const dataA = new Date((a as any).created_at || a.data || 0).getTime();
+        const dataB = new Date((b as any).created_at || b.data || 0).getTime();
+        return dataB - dataA;
+      });
+
+    return obrasSemelhantes[0] || null;
   };
 
   const getSyncStatusLabel = (status: PendingObra['sync_status']) => {
@@ -3299,6 +3349,36 @@ export default function NovaObra() {
         'O número da obra deve ter EXATAMENTE 8 ou 10 dígitos.\n\n✅ Aceito: 8 dígitos (ex: 12345678) ou 10 dígitos (ex: 0032401637)\n❌ Atual: ' + obraNumero.length + ' dígitos (' + obraNumero + ')'
       );
       return;
+    }
+
+    // Verificar obra semelhante já existente (mesmo número + tipo de serviço)
+    if (!isEditMode) {
+      const obraSemelhante = await findSimilarOpenObra(obraNumero, tipoServico);
+      if (obraSemelhante) {
+        Alert.alert(
+          '⚠️ Obra Semelhante Encontrada',
+          `Já existe uma obra "${tipoServico}" com o número ${obraNumero} em andamento.\n\nDeseja continuar de onde parou ou abrir uma nova obra?`,
+          [
+            {
+              text: 'Continuar obra existente',
+              onPress: () => {
+                try {
+                  const payload = encodeURIComponent(JSON.stringify(obraSemelhante));
+                  router.push({ pathname: '/obra-detalhe', params: { data: payload } });
+                } catch {
+                  router.back();
+                }
+              },
+            },
+            {
+              text: 'Abrir nova obra',
+              onPress: () => prosseguirSalvamento(),
+            },
+            { text: 'Cancelar', style: 'cancel' },
+          ]
+        );
+        return;
+      }
     }
 
     // TRANSFORMADOR - Status e Laudo são obrigatórios

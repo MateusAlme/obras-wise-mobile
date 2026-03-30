@@ -176,6 +176,12 @@ export default function DashboardPage() {
       'fotos_transformador_antes_retirar','fotos_transformador_tombamento_retirado','fotos_transformador_placa_retirado',
     ]
     fields.forEach(f => { if ((obra as any)[f]?.length) count += (obra as any)[f].length })
+    // Linha Viva / Cava em Rocha - postes_data
+    if (Array.isArray(obra.postes_data)) {
+      obra.postes_data.forEach((p: any) => {
+        count += (p.fotos_antes?.length || 0) + (p.fotos_durante?.length || 0) + (p.fotos_depois?.length || 0) + (p.fotos_medicao?.length || 0)
+      })
+    }
     return count
   }
 

@@ -225,6 +225,18 @@ function hasRealPhotos(structuredData: any[] | undefined): boolean {
   })
 }
 
+function countPostesDataPhotos(postesData: any[] | undefined): number {
+  if (!Array.isArray(postesData) || postesData.length === 0) return 0
+
+  return postesData.reduce((total, poste) => {
+    return total +
+      normalizePhotoRefs(poste?.fotos_antes).length +
+      normalizePhotoRefs(poste?.fotos_durante).length +
+      normalizePhotoRefs(poste?.fotos_depois).length +
+      normalizePhotoRefs(poste?.fotos_medicao).length
+  }, 0)
+}
+
 /**
  * Carrega uma foto e retorna a imagem como data URL junto com suas dimensões originais
  * NÃO adiciona placa na imagem - a placa será renderizada separadamente no PDF
@@ -775,9 +787,21 @@ export async function generatePDF(obra: Obra) {
   const photoCounts = photoFields.map(f => ({
     label: f.label,
     count: obra[f.key]?.length || 0
-  })).filter(p => p.count > 0)
+  }))
 
-  if (photoCounts.length > 0) {
+  const postesDataCount = countPostesDataPhotos(obra.postes_data)
+  if (postesDataCount > 0) {
+    photoCounts.push({
+      label: Array.isArray(obra.postes_data) && obra.postes_data.some((poste: any) => normalizePhotoRefs(poste?.fotos_medicao).length > 0)
+        ? 'Postes/Medição'
+        : 'Postes',
+      count: postesDataCount
+    })
+  }
+
+  const visiblePhotoCounts = photoCounts.filter(p => p.count > 0)
+
+  if (visiblePhotoCounts.length > 0) {
     yPos += 3
 
     // Sombra
@@ -800,7 +824,7 @@ export async function generatePDF(obra: Obra) {
     pdf.setFontSize(8)
     yPos += 14
 
-    photoCounts.forEach((p, idx) => {
+    visiblePhotoCounts.forEach((p, idx) => {
       if (xOffset > pageWidth - margin - 50) {
         xOffset = margin + 6
         yPos += 10
@@ -909,12 +933,48 @@ export async function generatePDF(obra: Obra) {
     }
   }
 
+  const addPostesDataSections = async () => {
+    if (!Array.isArray(obra.postes_data) || obra.postes_data.length === 0) return
+
+    const isBookAterramento = obra.tipo_servico === 'Book de Aterramento'
+    const sectionConfigs = isBookAterramento
+      ? [
+          { key: 'fotos_antes', label: 'Vala Aberta' },
+          { key: 'fotos_durante', label: 'Hastes Aplicadas' },
+          { key: 'fotos_depois', label: 'Vala Fechada' },
+          { key: 'fotos_medicao', label: 'Medição Terrômetro' },
+        ]
+      : [
+          { key: 'fotos_antes', label: 'Fotos Antes' },
+          { key: 'fotos_durante', label: 'Fotos Durante' },
+          { key: 'fotos_depois', label: 'Fotos Depois' },
+          { key: 'fotos_medicao', label: 'Fotos Medição' },
+        ]
+
+    for (let posteIndex = 0; posteIndex < obra.postes_data.length; posteIndex++) {
+      const poste = obra.postes_data[posteIndex]
+      const prefixo = poste?.isAditivo ? 'AD-P' : 'P'
+      const label = poste?.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`
+
+      for (const section of sectionConfigs) {
+        const photos = normalizePhotoRefs(poste?.[section.key])
+        if (photos.length === 0) continue
+
+        await addPhotosSection(
+          photos,
+          `${obra.tipo_servico} - ${label} - ${section.label}`
+        )
+      }
+    }
+  }
+
   // Adicionar cada seção de fotos
   await addPhotosSection(obra.fotos_antes, 'Fotos Antes')
   await addPhotosSection(obra.fotos_durante, 'Fotos Durante')
   await addPhotosSection(obra.fotos_depois, 'Fotos Depois')
   await addPhotosSection(obra.fotos_abertura, 'Fotos Abertura Chave')
   await addPhotosSection(obra.fotos_fechamento, 'Fotos Fechamento Chave')
+  await addPostesDataSections()
 
   // DITAIS
   await addPhotosSection(obra.fotos_ditais_abertura, 'DITAIS - Desligar/Abertura')
