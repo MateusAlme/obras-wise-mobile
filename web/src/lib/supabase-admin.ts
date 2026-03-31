@@ -35,17 +35,45 @@ export interface AdminUser {
  * Listar todos os usuários do sistema web (admin/viewer)
  */
 export async function listAdminUsers(): Promise<AdminUser[]> {
-  const { data, error } = await supabaseAdmin
-    .from('vw_usuarios_sistema')
-    .select('*')
+  // Buscar perfis da tabela profiles (roles, nomes, avatars)
+  const { data: profiles, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, email, full_name, role, avatar_url, created_at, updated_at')
+    .in('role', ['admin', 'viewer'])
     .order('created_at', { ascending: false })
 
-  if (error) {
-    console.error('Erro ao listar usuários admin:', error)
-    throw error
+  if (profileError) {
+    console.error('Erro ao listar profiles:', profileError)
+    throw profileError
   }
 
-  return data || []
+  if (!profiles || profiles.length === 0) return []
+
+  // Buscar dados de auth (last_sign_in_at, email_confirmed_at) via Admin API
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.listUsers({
+    perPage: 1000
+  })
+
+  if (authError) {
+    console.error('Erro ao listar auth users:', authError)
+    // Retorna sem dados de auth em vez de falhar completamente
+    return profiles.map(p => ({
+      ...p,
+      last_sign_in_at: null,
+      email_confirmed_at: null,
+    }))
+  }
+
+  const authMap = new Map(authData.users.map(u => [u.id, u]))
+
+  return profiles.map(p => {
+    const authUser = authMap.get(p.id)
+    return {
+      ...p,
+      last_sign_in_at: authUser?.last_sign_in_at || null,
+      email_confirmed_at: authUser?.email_confirmed_at || null,
+    }
+  })
 }
 
 /**
