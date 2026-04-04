@@ -453,8 +453,66 @@ function renderPlacaBelowImage(
   return placaHeight
 }
 
-export async function generatePDF(obra: Obra) {
-  const pdf = new jsPDF()
+type LogoData = { dataUrl: string; width: number; height: number }
+
+async function loadPdfLogo(src: string): Promise<LogoData | null> {
+  try {
+    return await new Promise<LogoData>((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.width
+          canvas.height = img.height
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(img, 0, 0)
+          resolve({ dataUrl: canvas.toDataURL('image/png'), width: img.width, height: img.height })
+        } catch (err) {
+          reject(err)
+        }
+      }
+      img.onerror = () => reject(new Error(`Erro ao carregar logo: ${src}`))
+      img.src = src
+    })
+  } catch (error) {
+    console.error(`Falha ao carregar logo ${src}:`, error)
+    return null
+  }
+}
+
+function addPdfFooters(
+  pdf: jsPDF,
+  centerLabel: string,
+  margin: number,
+  pageWidth: number,
+  pageHeight: number
+) {
+  const totalPages = (pdf.internal.pages as any[]).length - 1
+  for (let i = 1; i <= totalPages; i++) {
+    pdf.setPage(i)
+    pdf.setDrawColor(220, 220, 220)
+    pdf.setLineWidth(0.3)
+    pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15)
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(140, 140, 140)
+    pdf.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, margin, pageHeight - 8)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(0, 102, 204)
+    pdf.text(centerLabel, pageWidth / 2, pageHeight - 8, { align: 'center' })
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(140, 140, 140)
+    pdf.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' })
+  }
+}
+
+async function addObraContentToPdf(
+  pdf: jsPDF,
+  obra: Obra,
+  logoTeccelData: LogoData | null,
+  logoEnergisaData: LogoData | null
+): Promise<void> {
   const pageWidth = pdf.internal.pageSize.getWidth()
   const pageHeight = pdf.internal.pageSize.getHeight()
   const margin = 15
@@ -463,76 +521,6 @@ export async function generatePDF(obra: Obra) {
   const availableWidth = pageWidth - margin * 2
   const imageWidth = availableWidth
   const maxImageHeight = pageHeight - margin * 2 - 35 // Espaço para título da seção + placa
-
-  // Carregar logo da Energisa com dimensões
-  let logoEnergisaData: { dataUrl: string; width: number; height: number } | null = null
-
-  try {
-    logoEnergisaData = await new Promise<{ dataUrl: string; width: number; height: number }>((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas')
-          canvas.width = img.width
-          canvas.height = img.height
-          const ctx = canvas.getContext('2d')!
-          ctx.drawImage(img, 0, 0)
-          resolve({
-            dataUrl: canvas.toDataURL('image/png'),
-            width: img.width,
-            height: img.height
-          })
-        } catch (err) {
-          console.error('Erro ao processar logo Energisa:', err)
-          reject(err)
-        }
-      }
-      img.onerror = (err) => {
-        console.error('Erro ao carregar logo Energisa:', err)
-        reject(new Error('Erro ao carregar logo Energisa'))
-      }
-      img.src = '/logo_energisa.png'
-    })
-  } catch (error) {
-    console.error('Falha ao carregar logo da Energisa:', error)
-    logoEnergisaData = null
-  }
-
-  // Carregar logo da Teccel
-  let logoTeccelData: { dataUrl: string; width: number; height: number } | null = null
-
-  try {
-    logoTeccelData = await new Promise<{ dataUrl: string; width: number; height: number }>((resolve, reject) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas')
-          canvas.width = img.width
-          canvas.height = img.height
-          const ctx = canvas.getContext('2d')!
-          ctx.drawImage(img, 0, 0)
-          resolve({
-            dataUrl: canvas.toDataURL('image/png'),
-            width: img.width,
-            height: img.height
-          })
-        } catch (err) {
-          console.error('Erro ao processar logo Teccel:', err)
-          reject(err)
-        }
-      }
-      img.onerror = (err) => {
-        console.error('Erro ao carregar logo Teccel:', err)
-        reject(new Error('Erro ao carregar logo Teccel'))
-      }
-      img.src = '/logo_teccel.png'
-    })
-  } catch (error) {
-    console.error('Falha ao carregar logo da Teccel:', error)
-    logoTeccelData = null
-  }
 
   // ========== PÁGINA DE CAPA / RESUMO ==========
 
@@ -1153,39 +1141,47 @@ export async function generatePDF(obra: Obra) {
   await addPhotosSection(obra.doc_fvbt, 'Documentação - FVBT (Formulário de Vistoria de Baixa Tensão)')
   await addPhotosSection(obra.doc_termo_desistencia_lpt, 'Documentação - Termo de Desistência LPT')
 
-  // Footer profissional para todas as páginas
-  const totalPages = pdf.internal.pages.length - 1 // -1 porque a primeira página é null
-  for (let i = 1; i <= totalPages; i++) {
-    pdf.setPage(i)
+}
 
-    // Linha divisória no rodapé
-    pdf.setDrawColor(220, 220, 220)
-    pdf.setLineWidth(0.3)
-    pdf.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15)
+export async function generatePDF(obra: Obra) {
+  const [logoTeccelData, logoEnergisaData] = await Promise.all([
+    loadPdfLogo('/logo_teccel.png'),
+    loadPdfLogo('/logo_energisa.png'),
+  ])
 
-    pdf.setFontSize(7)
-    pdf.setFont('helvetica', 'normal')
-    pdf.setTextColor(140, 140, 140)
+  const pdf = new jsPDF()
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 15
 
-    // Esquerda: Data de geração
-    pdf.text(
-      `Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`,
-      margin,
-      pageHeight - 8
-    )
+  await addObraContentToPdf(pdf, obra, logoTeccelData, logoEnergisaData)
+  addPdfFooters(pdf, `Equipe: ${obra.equipe}`, margin, pageWidth, pageHeight)
 
-    // Centro: Equipe (destacado)
-    pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(0, 102, 204) // Azul corporativo
-    pdf.text(`Equipe: ${obra.equipe}`, pageWidth / 2, pageHeight - 8, { align: 'center' })
+  const nomeArquivo = `Obra_${obra.obra}_${obra.equipe.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`
+  pdf.save(nomeArquivo)
+}
 
-    // Direita: Número da página
-    pdf.setFont('helvetica', 'normal')
-    pdf.setTextColor(140, 140, 140)
-    pdf.text(`Página ${i} de ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' })
+export async function generateCombinedPDF(obras: Obra[]) {
+  if (obras.length === 0) return
+
+  const [logoTeccelData, logoEnergisaData] = await Promise.all([
+    loadPdfLogo('/logo_teccel.png'),
+    loadPdfLogo('/logo_energisa.png'),
+  ])
+
+  const pdf = new jsPDF()
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const margin = 15
+
+  for (let i = 0; i < obras.length; i++) {
+    if (i > 0) pdf.addPage()
+    await addObraContentToPdf(pdf, obras[i], logoTeccelData, logoEnergisaData)
   }
 
-  // Salvar PDF com nome incluindo equipe
-  const nomeArquivo = `Obra_${obra.obra}_${obra.equipe.replace(/\s+/g, '_')}_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`
+  const obraNum = obras[0]?.obra || 'sem-numero'
+  addPdfFooters(pdf, `Obra: ${obraNum}`, margin, pageWidth, pageHeight)
+
+  const nomeArquivo = `Obra_${obraNum}_Combinado_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`
   pdf.save(nomeArquivo)
 }

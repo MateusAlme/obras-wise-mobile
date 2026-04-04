@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase, type Obra, type FotoInfo, getObraStatus } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
-import { generatePDF } from '@/lib/pdf-generator'
+import { generatePDF, generateCombinedPDF } from '@/lib/pdf-generator'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
@@ -144,6 +144,7 @@ export default function ReportsPage() {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const [exportingId, setExportingId] = useState<string | null>(null)
+  const [exportingCombinedId, setExportingCombinedId] = useState<string | null>(null)
   const [exportingXlsx, setExportingXlsx] = useState(false)
   const [exportingAllPdf, setExportingAllPdf] = useState(false)
   const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
@@ -668,6 +669,36 @@ export default function ReportsPage() {
     }
   }
 
+  async function handleExportByObraNumber(obra: Obra) {
+    if (!obra.obra) {
+      await handleExportSinglePDF(obra)
+      return
+    }
+    setOpenMenuId(null)
+    setExportingCombinedId(obra.id)
+    try {
+      // Buscar todas as obras com o mesmo número de obra no banco
+      const { data, error } = await supabase
+        .from('obras')
+        .select('*')
+        .eq('obra', obra.obra)
+        .order('equipe', { ascending: true })
+      if (error) throw error
+      const obras = data as Obra[]
+      if (obras.length <= 1) {
+        // Só uma obra com esse número, baixar individual
+        await generatePDF(obras[0] || obra)
+      } else {
+        await generateCombinedPDF(obras)
+      }
+    } catch (error) {
+      console.error('Erro ao gerar PDF combinado:', error)
+      alert('Erro ao gerar PDF combinado')
+    } finally {
+      setExportingCombinedId(null)
+    }
+  }
+
   async function exportToExcel() {
     if (selectedObras.size === 0) {
       alert('Selecione pelo menos uma obra para exportar')
@@ -723,16 +754,32 @@ export default function ReportsPage() {
     try {
       const obrasToExport = filteredObras.filter(o => selectedObras.has(o.id))
 
-      for (let i = 0; i < obrasToExport.length; i++) {
-        const obra = obrasToExport[i]
-        await generatePDF(obra)
-        // Pequeno delay entre downloads para evitar bloqueio do navegador
-        if (i < obrasToExport.length - 1) {
+      // Agrupar por número de obra — mesmo nº = equipes diferentes = 1 PDF combinado
+      const grupos = new Map<string, Obra[]>()
+      for (const obra of obrasToExport) {
+        const chave = obra.obra || obra.id // obras sem número ficam sozinhas
+        if (!grupos.has(chave)) grupos.set(chave, [])
+        grupos.get(chave)!.push(obra)
+      }
+
+      const gruposList = Array.from(grupos.values())
+      for (let i = 0; i < gruposList.length; i++) {
+        const grupo = gruposList[i]
+        if (grupo.length === 1) {
+          await generatePDF(grupo[0])
+        } else {
+          // Ordenar por equipe para consistência no PDF
+          grupo.sort((a, b) => (a.equipe || '').localeCompare(b.equipe || ''))
+          await generateCombinedPDF(grupo)
+        }
+        if (i < gruposList.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 500))
         }
       }
 
-      alert(`${obrasToExport.length} PDF(s) exportado(s) com sucesso!`)
+      const totalPdfs = gruposList.length
+      const totalObras = obrasToExport.length
+      alert(`${totalPdfs} PDF(s) gerado(s) com ${totalObras} book(s) no total.${totalPdfs < totalObras ? `\n(${totalObras - totalPdfs} book(s) combinados por terem o mesmo Nº de obra)` : ''}`)
     } catch (error) {
       console.error('Erro ao exportar PDFs:', error)
       alert('Erro ao exportar PDFs')
@@ -2365,6 +2412,23 @@ export default function ReportsPage() {
                   </svg>
                 </span>
                 {exportingId === openMenuId ? 'Gerando PDF...' : 'Exportar PDF'}
+              </button>
+
+              {/* Baixar todos com mesmo Nº de obra (equipes diferentes) */}
+              <button
+                onClick={() => {
+                  const obraAtual = filteredObras.find(o => o.id === openMenuId)
+                  if (obraAtual) handleExportByObraNumber(obraAtual)
+                }}
+                disabled={exportingCombinedId === openMenuId}
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="w-7 h-7 bg-indigo-100 group-hover:bg-indigo-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                  <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                </span>
+                {exportingCombinedId === openMenuId ? 'Gerando PDF...' : 'Baixar todas equipes (mesmo Nº)'}
               </button>
             </div>
 
