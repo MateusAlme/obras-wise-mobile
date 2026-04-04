@@ -1179,9 +1179,11 @@ export async function generateCombinedPDF(obras: Obra[]) {
     await addObraContentToPdf(pdf, obras[i], logoTeccelData, logoEnergisaData)
   }
 
-  const obraNum = obras[0]?.obra || 'sem-numero'
-  addPdfFooters(pdf, `Obra: ${obraNum}`, margin, pageWidth, pageHeight)
+  const nums = [...new Set(obras.map(o => o.obra).filter(Boolean))]
+  const obraLabel = nums.length === 1 ? `Obra: ${nums[0]}` : `Obras: ${nums.slice(0, 3).join(', ')}${nums.length > 3 ? '...' : ''}`
+  const obraFileTag = nums.length === 1 ? nums[0] : `${nums[0]}_e_outros`
+  addPdfFooters(pdf, obraLabel, margin, pageWidth, pageHeight)
 
-  const nomeArquivo = `Obra_${obraNum}_Combinado_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`
+  const nomeArquivo = `Obra_${obraFileTag}_Combinado_${format(new Date(), 'yyyy-MM-dd_HHmm')}.pdf`
   pdf.save(nomeArquivo)
 }

@@ -752,34 +752,17 @@ export default function ReportsPage() {
 
     setExportingAllPdf(true)
     try {
-      const obrasToExport = filteredObras.filter(o => selectedObras.has(o.id))
+      // Ordenar por número de obra, depois por equipe para consistência no PDF
+      const obrasToExport = filteredObras
+        .filter(o => selectedObras.has(o.id))
+        .sort((a, b) => (a.obra || '').localeCompare(b.obra || '') || (a.equipe || '').localeCompare(b.equipe || ''))
 
-      // Agrupar por número de obra — mesmo nº = equipes diferentes = 1 PDF combinado
-      const grupos = new Map<string, Obra[]>()
-      for (const obra of obrasToExport) {
-        const chave = obra.obra || obra.id // obras sem número ficam sozinhas
-        if (!grupos.has(chave)) grupos.set(chave, [])
-        grupos.get(chave)!.push(obra)
+      // Gerar sempre 1 único PDF com todos os books selecionados
+      if (obrasToExport.length === 1) {
+        await generatePDF(obrasToExport[0])
+      } else {
+        await generateCombinedPDF(obrasToExport)
       }
-
-      const gruposList = Array.from(grupos.values())
-      for (let i = 0; i < gruposList.length; i++) {
-        const grupo = gruposList[i]
-        if (grupo.length === 1) {
-          await generatePDF(grupo[0])
-        } else {
-          // Ordenar por equipe para consistência no PDF
-          grupo.sort((a, b) => (a.equipe || '').localeCompare(b.equipe || ''))
-          await generateCombinedPDF(grupo)
-        }
-        if (i < gruposList.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500))
-        }
-      }
-
-      const totalPdfs = gruposList.length
-      const totalObras = obrasToExport.length
-      alert(`${totalPdfs} PDF(s) gerado(s) com ${totalObras} book(s) no total.${totalPdfs < totalObras ? `\n(${totalObras - totalPdfs} book(s) combinados por terem o mesmo Nº de obra)` : ''}`)
     } catch (error) {
       console.error('Erro ao exportar PDFs:', error)
       alert('Erro ao exportar PDFs')
