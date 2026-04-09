@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
 import {
   PhotoMetadata,
   getAllPhotoMetadata,
@@ -15,6 +14,9 @@ import { captureError } from './sentry';
 const UPLOAD_QUEUE_KEY = '@photo_upload_queue';
 const MAX_RETRIES = 3; // Reduzido de 5 para 3
 const RETRY_DELAYS = [1000, 3000, 5000]; // Reduzido: 1s, 3s, 5s (total 9s)
+const UPLOAD_TIMEOUT_MS = 90_000; // 90 segundos por foto antes de timeout
+const SUPABASE_STORAGE_URL = 'https://hiuagpzaelcocyxutgdt.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdWFncHphZWxjb2N5eHV0Z2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3NDE1ODAsImV4cCI6MjA3NzMxNzU4MH0.sEp1yx9p_RGPWUIQ1bzE2aYx1YdPiKHFZJ-GnG4a-N8';
 
 interface UploadToSupabaseResult {
   success: boolean;
@@ -148,10 +150,14 @@ const uploadPhotoToSupabase = async (
     // ✅ Usar foto comprimida para upload, com fallback para backup original
     let photoUri = photoMetadata.compressedPath;
 
+    // Determinar MIME type e extensão (suporta PDFs e imagens)
+    const contentType = photoMetadata.mimeType || 'image/jpeg';
+    const fileExt = contentType === 'application/pdf' ? 'pdf' : 'jpg';
+
     // Criar nome único do arquivo com timestamp e random ID para evitar conflitos
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substr(2, 9);
-    const fileName = `${photoMetadata.type}_${timestamp}_${randomId}_${photoMetadata.index}.jpg`;
+    const fileName = `${photoMetadata.type}_${timestamp}_${randomId}_${photoMetadata.index}.${fileExt}`;
     // Usar obraId como pasta para organizar as fotos
     const filePath = `${folderName}/${fileName}`;
 
@@ -175,70 +181,41 @@ const uploadPhotoToSupabase = async (
       console.log(`✅ Usando backup original: ${Math.round((fileInfo.size || 0) / 1024)}KB`);
     }
 
-    console.log(`📤 Lendo arquivo (${Math.round((fileInfo.size || 0) / 1024)}KB):`, photoUri);
+    console.log(`📤 Enviando para Supabase via uploadAsync: ${filePath} (${Math.round((fileInfo.size || 0) / 1024)}KB, ${contentType})`);
 
-    // Ler arquivo como base64 para upload
-    let base64 = await FileSystem.readAsStringAsync(photoUri, {
-      encoding: FileSystem.EncodingType.Base64,
+    // Upload nativo sem carregar arquivo na memória JS (evita pico de memória com base64)
+    const uploadUrl = `${SUPABASE_STORAGE_URL}/storage/v1/object/obra-photos/${filePath}`;
+
+    const uploadPromise = FileSystem.uploadAsync(uploadUrl, photoUri, {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        'Content-Type': contentType,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        apikey: SUPABASE_ANON_KEY,
+        'x-upsert': 'true',
+      },
     });
 
-    console.log(`📤 Base64 lido, tamanho: ${Math.round(base64.length / 1024)}KB`);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Upload timeout após ${UPLOAD_TIMEOUT_MS / 1000}s`)), UPLOAD_TIMEOUT_MS)
+    );
 
-    // Decodificar base64 para bytes sem usar atob (não disponível em RN)
-    const base64ToBytes = (base64String: string): Uint8Array => {
-      // Tabela de decodificação base64
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-      const lookup = new Uint8Array(256);
-      for (let i = 0; i < chars.length; i++) {
-        lookup[chars.charCodeAt(i)] = i;
-      }
+    const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
 
-      const len = base64String.length;
-      const bytes = new Uint8Array((len * 3) / 4);
-      let p = 0;
-
-      for (let i = 0; i < len; i += 4) {
-        const encoded1 = lookup[base64String.charCodeAt(i)];
-        const encoded2 = lookup[base64String.charCodeAt(i + 1)];
-        const encoded3 = lookup[base64String.charCodeAt(i + 2)];
-        const encoded4 = lookup[base64String.charCodeAt(i + 3)];
-
-        bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
-        bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
-        bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
-      }
-
-      return bytes;
-    };
-
-    const fileBytes = base64ToBytes(base64);
-    base64 = '';
-
-    console.log(`📤 Enviando para Supabase: ${filePath}`);
-
-    // Upload do arquivo
-    const { data, error } = await supabase.storage
-      .from('obra-photos')
-      .upload(filePath, fileBytes, {
-        contentType: 'image/jpeg',
-        upsert: false
-      });
-
-    if (error) {
-      console.error(`❌ Erro no upload para ${filePath}:`, {
-        message: error.message,
-        statusCode: (error as any).statusCode,
-        details: (error as any).details
-      });
-      return { success: false, error: `Upload falhou: ${error.message}` };
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      let errorMessage = `HTTP ${uploadResult.status}`;
+      try {
+        const errorBody = JSON.parse(uploadResult.body || '{}');
+        errorMessage = errorBody.error || errorBody.message || errorMessage;
+      } catch {}
+      console.error(`❌ Erro no upload para ${filePath}: ${errorMessage}`);
+      return { success: false, error: `Upload falhou: ${errorMessage}` };
     }
 
     console.log(`✅ Upload bem-sucedido: ${filePath}`);
 
-    // Obter URL pública
-    const supabaseUrl = 'https://hiuagpzaelcocyxutgdt.supabase.co';
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/obra-photos/${filePath}`;
-
+    const publicUrl = `${SUPABASE_STORAGE_URL}/storage/v1/object/public/obra-photos/${filePath}`;
     return { success: true, url: publicUrl };
 
   } catch (error: any) {
@@ -288,8 +265,8 @@ const uploadPhotoWithRetry = async (
       await updateQueueItemStatus(photoMetadata.id, 'success');
       await removeFromQueue(photoMetadata.id);
 
-      // Deletar backup após confirmação
-      setTimeout(() => deletePhotoBackup(photoMetadata.id), 5000);
+      // Deletar backup local após upload confirmado (sem await para não bloquear progresso)
+      deletePhotoBackup(photoMetadata.id).catch(err => console.warn('⚠️ Falha ao deletar backup local:', err));
 
       return {
         photoId: photoMetadata.id,

@@ -2057,15 +2057,8 @@ export default function ObraDetalhe() {
               return true;
             }
             // Documentação - Todos os docs aparecem no book Documentação
-            if (isServicoDocumentacao && section.key.startsWith('doc_')) {
-              // Evitar duplicação: quando Transformador ou Medidor, não mostrar versões genéricas
-              // porque já estão aparecendo como doc_laudo_transformador_servico e doc_cadastro_medidor_servico
-              if (isServicoTransformador && section.key === 'doc_laudo_transformador') {
-                return false; // Já aparece como doc_laudo_transformador_servico
-              }
-              if (isServicoMedidor && section.key === 'doc_cadastro_medidor') {
-                return false; // Já aparece como doc_cadastro_medidor_servico
-              }
+            // Excluir entradas _servico (são específicas de outros tipos de serviço)
+            if (isServicoDocumentacao && section.key.startsWith('doc_') && !section.key.endsWith('_servico')) {
               return true;
             }
             // Altimetria

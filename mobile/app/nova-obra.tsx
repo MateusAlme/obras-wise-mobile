@@ -23,8 +23,7 @@ import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-// NOTA: DocumentPicker requer Expo Dev Client (não funciona no Expo Go)
-// import * as DocumentPicker from 'expo-document-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   checkInternetConnection,
   saveObraOffline,
@@ -306,6 +305,7 @@ export default function NovaObra() {
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [tempObraId, setTempObraId] = useState<string>(`temp_${Date.now()}`);
+  const autoSaveObraIdRef = useRef<string>(`local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`);
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
   const [syncingPending, setSyncingPending] = useState(false);
   // ✅ Guardar serverId para não perder quando salvar novamente
@@ -614,11 +614,14 @@ export default function NovaObra() {
   // ✅ AUTO-SAVE: Atualizar função de salvamento silencioso sempre que os estados mudarem
   // Usamos useCallback para criar uma função estável que acessa os valores atuais
   const performAutoSave = useCallback(async () => {
+    // Número de obra é obrigatório para salvar rascunho (evita criar entradas vazias no histórico)
+    if (!obra) {
+      console.log('⚠️ Auto-save ignorado: número de obra não preenchido');
+      return;
+    }
+
     // ✅ Verificar se há QUALQUER informação para salvar (muito menos restritivo)
     const hasAnyData =
-      data ||
-      obra ||
-      responsavel ||
       tipoServico ||
       fotosAntes.length > 0 ||
       fotosDurante.length > 0 ||
@@ -656,7 +659,7 @@ export default function NovaObra() {
 
     const finalObraId = isEditMode && obraId
       ? obraId
-      : `local_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+      : autoSaveObraIdRef.current;
 
     const extractPhotoDataFull = (fotos: FotoData[]) => {
       return fotos.map(f => {
@@ -2832,34 +2835,24 @@ export default function NovaObra() {
     'doc_laudo_religador' | 'doc_apr' | 'doc_fvbt' | 'doc_termo_desistencia_lpt' | 'doc_autorizacao_passagem' |
     'doc_materiais_previsto' | 'doc_materiais_realizado'
   ) => {
-    // NOTA: DocumentPicker requer Expo Dev Client
-    Alert.alert(
-      'Funcionalidade Indisponível',
-      'Upload de documentos PDF requer Expo Dev Client.\n\n' +
-      'Para usar esta funcionalidade, execute:\n' +
-      'npx expo install expo-dev-client\n' +
-      'npx expo prebuild\n' +
-      'npx expo run:android'
-    );
-    return;
-
-    /* CÓDIGO ORIGINAL (requer expo-document-picker)
     setUploadingPhoto(true);
 
     try {
-      // Selecionar documento PDF
+      // Aceitar PDF e imagens (JPG/PNG como alternativa ao scanner)
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: ['application/pdf', 'image/*'],
         copyToCacheDirectory: true,
       });
 
       if (result.canceled) {
-        setUploadingPhoto(false);
         return;
       }
 
-      // Obter localização
-      const location = await getCurrentLocation();
+      const asset = result.assets[0];
+      const docMimeType = asset.mimeType || 'application/pdf';
+
+      // Obter localização (sem GPS para documentos)
+      const location = { latitude: null, longitude: null };
 
       // Obter índice do próximo documento
       let index = 0;
@@ -2874,66 +2867,53 @@ export default function NovaObra() {
       else if (tipo === 'doc_materiais_previsto') index = docMateriaisPrevisto.length;
       else if (tipo === 'doc_materiais_realizado') index = docMateriaisRealizado.length;
 
-      // FAZER BACKUP PERMANENTE DO DOCUMENTO
+      // Fazer backup permanente do documento com MIME type correto
       const docMetadata = await backupPhoto(
-        result.assets[0].uri,
-        tempObraId,
+        asset.uri,
+        backupObraId,
         tipo,
         index,
         location.latitude,
-        location.longitude
+        location.longitude,
+        docMimeType
       );
 
       const docData: FotoData = {
-        uri: result.assets[0].uri,
+        uri: asset.uri, // URI local para exibição (será vazio para PDFs no render)
         latitude: location.latitude,
         longitude: location.longitude,
         utmX: docMetadata.utmX,
         utmY: docMetadata.utmY,
         utmZone: docMetadata.utmZone,
-        photoId: docMetadata.id, // Guardar ID do backup
+        photoId: docMetadata.id,
       };
 
-      // Adicionar à fila de upload vinculando à obra temporária
+      // Adicionar à fila de upload vinculando à obra
       await addToUploadQueue(docMetadata.id, backupObraId);
 
       // Atualizar estado
-      if (tipo === 'doc_cadastro_medidor') {
-        setDocCadastroMedidor([...docCadastroMedidor, docData]);
-      } else if (tipo === 'doc_laudo_transformador') {
-        setDocLaudoTransformador([...docLaudoTransformador, docData]);
-      } else if (tipo === 'doc_laudo_regulador') {
-        setDocLaudoRegulador([...docLaudoRegulador, docData]);
-      } else if (tipo === 'doc_laudo_religador') {
-        setDocLaudoReligador([...docLaudoReligador, docData]);
-      } else if (tipo === 'doc_apr') {
-        setDocApr([...docApr, docData]);
-      } else if (tipo === 'doc_fvbt') {
-        setDocFvbt([...docFvbt, docData]);
-      } else if (tipo === 'doc_termo_desistencia_lpt') {
-        setDocTermoDesistenciaLpt([...docTermoDesistenciaLpt, docData]);
-      } else if (tipo === 'doc_autorizacao_passagem') {
-        setDocAutorizacaoPassagem([...docAutorizacaoPassagem, docData]);
-      } else if (tipo === 'doc_materiais_previsto') {
-        setDocMateriaisPrevisto([...docMateriaisPrevisto, docData]);
-      } else if (tipo === 'doc_materiais_realizado') {
-        setDocMateriaisRealizado([...docMateriaisRealizado, docData]);
-      }
+      if (tipo === 'doc_cadastro_medidor') setDocCadastroMedidor(prev => [...prev, docData]);
+      else if (tipo === 'doc_laudo_transformador') setDocLaudoTransformador(prev => [...prev, docData]);
+      else if (tipo === 'doc_laudo_regulador') setDocLaudoRegulador(prev => [...prev, docData]);
+      else if (tipo === 'doc_laudo_religador') setDocLaudoReligador(prev => [...prev, docData]);
+      else if (tipo === 'doc_apr') setDocApr(prev => [...prev, docData]);
+      else if (tipo === 'doc_fvbt') setDocFvbt(prev => [...prev, docData]);
+      else if (tipo === 'doc_termo_desistencia_lpt') setDocTermoDesistenciaLpt(prev => [...prev, docData]);
+      else if (tipo === 'doc_autorizacao_passagem') setDocAutorizacaoPassagem(prev => [...prev, docData]);
+      else if (tipo === 'doc_materiais_previsto') setDocMateriaisPrevisto(prev => [...prev, docData]);
+      else if (tipo === 'doc_materiais_realizado') setDocMateriaisRealizado(prev => [...prev, docData]);
 
-      Alert.alert(
-        '✅ Documento PDF protegido!',
-        docMetadata.utmX && docMetadata.utmY
-          ? `📍 UTM: X=${docMetadata.utmX.toFixed(0)} Y=${docMetadata.utmY.toFixed(0)} (${docMetadata.utmZone})\n💾 Backup salvo localmente`
-          : '💾 Documento salvo com backup local (sem localização)'
+      showToast(
+        docMimeType === 'application/pdf' ? '📄 PDF salvo com backup local' : '📷 Imagem salva com backup local',
+        'success'
       );
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao selecionar documento:', error);
       Alert.alert('Erro', 'Não foi possível selecionar o documento. Tente novamente.');
     } finally {
       setUploadingPhoto(false);
     }
-    */
   };
 
   const removePhoto = (
@@ -3460,23 +3440,7 @@ export default function NovaObra() {
       return;
     }
 
-    // DOCUMENTAÇÃO - Laudos de Regulador e Religador são obrigatórios (quando aplicável)
-    if (isServicoDocumentacao) {
-      // Verificar se pelo menos um laudo foi anexado (Transformador, Regulador ou Religador)
-      const temAlgumLaudo =
-        docLaudoTransformador.length > 0 ||
-        docLaudoRegulador.length > 0 ||
-        docLaudoReligador.length > 0 ||
-        docCadastroMedidor.length > 0;
-
-      if (!temAlgumLaudo) {
-        Alert.alert(
-          'Documentação Obrigatória',
-          'É obrigatório anexar pelo menos um documento:\n\n• Laudo de Transformador\n• Laudo de Regulador\n• Laudo de Religador\n• Cadastro de Medidor\n\nPor favor, adicione pelo menos um documento antes de salvar.'
-        );
-        return;
-      }
-    }
+    // DOCUMENTAÇÃO - todos os documentos são opcionais, o usuário envia apenas o necessário
 
     // CHECKLIST - Validar fotos dos postes (Maior Esforço e Menor Esforço - 2 fotos cada)
     if (isServicoChecklist && numPostes > 0) {
@@ -5505,18 +5469,14 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* CADASTRO DE MEDIDOR - OBRIGATÓRIO QUANDO MEDIDOR (exceto Documentação) */}
+          {/* CADASTRO DE MEDIDOR - OBRIGATÓRIO QUANDO INSTALAÇÃO DO MEDIDOR */}
           {isServicoMedidor && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                📋 Cadastro de Medidor {!isServicoDocumentacao && '(OBRIGATÓRIO)'}
-                {isServicoDocumentacao && '(Opcional)'}
+                📋 Cadastro de Medidor (OBRIGATÓRIO)
               </Text>
               <Text style={styles.hint}>
-                {!isServicoDocumentacao
-                  ? 'É obrigatório anexar o cadastro do medidor para finalizar a obra. Use o modo scanner para melhor qualidade.'
-                  : 'Você pode anexar o cadastro do medidor aqui. Use o modo scanner para melhor qualidade.'
-                }
+                É obrigatório anexar o cadastro do medidor para finalizar a obra. Use o modo scanner para melhor qualidade.
               </Text>
 
               <View style={styles.docSection}>
@@ -5575,18 +5535,14 @@ export default function NovaObra() {
             </View>
           )}
 
-          {/* LAUDO TRANSFORMADOR - OBRIGATÓRIO QUANDO TRANSFORMADOR INSTALADO (exceto Documentação) */}
+          {/* LAUDO TRANSFORMADOR - OBRIGATÓRIO QUANDO TRANSFORMADOR INSTALADO */}
           {isServicoTransformador && transformadorStatus === 'Instalado' && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                ⚡ Laudo de Transformador {!isServicoDocumentacao && '(OBRIGATÓRIO)'}
-                {isServicoDocumentacao && '(Opcional)'}
+                ⚡ Laudo de Transformador (OBRIGATÓRIO)
               </Text>
               <Text style={styles.hint}>
-                {!isServicoDocumentacao
-                  ? 'É obrigatório anexar o laudo do transformador instalado para finalizar a obra. Use o modo scanner para melhor qualidade.'
-                  : 'Você pode anexar o laudo do transformador instalado aqui. Use o modo scanner para melhor qualidade.'
-                }
+                É obrigatório anexar o laudo do transformador instalado para finalizar a obra. Use o modo scanner para melhor qualidade.
               </Text>
 
               <View style={styles.docSection}>

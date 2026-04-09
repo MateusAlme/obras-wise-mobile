@@ -11,6 +11,9 @@ const PENDING_OBRAS_KEY = '@obras_pending_sync';
 const SYNC_STATUS_KEY = '@sync_status';
 const LOCAL_OBRAS_KEY = '@obras_local'; // Nova chave para todas as obras locais
 let syncInProgress = false;
+// Debounce global para evitar múltiplos triggers simultâneos do auto-sync
+// (vários screens registram startAutoSync ao mesmo tempo)
+let autoSyncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 export interface PendingObra {
   id: string;
@@ -2619,13 +2622,18 @@ export const updateSyncStatus = async (): Promise<void> => {
 export const startAutoSync = (onSyncComplete?: (result: { success: number; failed: number }) => void) => {
   return NetInfo.addEventListener(state => {
     if (state.isConnected && state.isInternetReachable) {
-      // Aguardar 2 segundos após conectar para garantir estabilidade
-      setTimeout(async () => {
+      // Debounce global: cancela timers anteriores e reagenda (previne múltiplos
+      // listeners de screens diferentes disparando syncs simultâneos)
+      if (autoSyncDebounceTimer !== null) {
+        clearTimeout(autoSyncDebounceTimer);
+      }
+      autoSyncDebounceTimer = setTimeout(async () => {
+        autoSyncDebounceTimer = null;
         const result = await syncAllPendingObras();
         if (result.success > 0 || result.failed > 0) {
           onSyncComplete?.(result);
         }
-      }, 2000);
+      }, 3000); // 3 segundos para estabilidade da rede
     }
   });
 };

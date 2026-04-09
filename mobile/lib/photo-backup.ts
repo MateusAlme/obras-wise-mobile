@@ -76,6 +76,7 @@ export interface PhotoMetadata {
   supabaseUrl?: string; // URL pública após upload para o Supabase
   retries: number;
   lastRetryAt?: string;
+  mimeType?: string; // MIME type do arquivo (padrão: 'image/jpeg', PDFs: 'application/pdf')
 }
 
 /**
@@ -168,40 +169,45 @@ export const backupPhoto = async (
     'vazamento_instalacao',
   index: number,
   latitude: number | null,
-  longitude: number | null
+  longitude: number | null,
+  mimeType: string = 'image/jpeg'
 ): Promise<PhotoMetadata> => {
   try {
     await ensureEnoughStorageForBackup(uri);
     await ensureBackupDirectoryExists();
 
+    const isPdf = mimeType === 'application/pdf';
+    const ext = isPdf ? 'pdf' : 'jpg';
     const photoId = `${obraId}_${type}_${index}_${Date.now()}`;
-    const filename = `${photoId}.jpg`;
+    const filename = `${photoId}.${ext}`;
     const backupPath = `${PHOTO_BACKUP_DIR}${filename}`;
-    const compressedFilename = `${photoId}_compressed.jpg`;
+    const compressedFilename = `${photoId}_compressed.${ext}`;
     const compressedPath = `${PHOTO_BACKUP_DIR}${compressedFilename}`;
 
-    // 1. Copiar foto original para backup
+    // 1. Copiar arquivo original para backup
     await FileSystem.copyAsync({
       from: uri,
       to: backupPath
     });
 
-    // 2. Criar versão comprimida (ou usar original se falhar)
+    // 2. Criar versão comprimida (apenas para imagens; PDFs são copiados sem compressão)
     let compressedUri = uri;
-    try {
-      compressedUri = await compressPhoto(uri);
+    if (!isPdf) {
+      try {
+        compressedUri = await compressPhoto(uri);
 
-      // ✅ Verificar se a compressão gerou um arquivo válido
-      const compressedInfo = await FileSystem.getInfoAsync(compressedUri);
-      if (!compressedInfo.exists) {
-        console.warn('Arquivo comprimido não existe, usando original');
-        compressedUri = uri;
+        // ✅ Verificar se a compressão gerou um arquivo válido
+        const compressedInfo = await FileSystem.getInfoAsync(compressedUri);
+        if (!compressedInfo.exists) {
+          console.warn('Arquivo comprimido não existe, usando original');
+          compressedUri = uri;
+        }
+      } catch (error) {
+        console.warn('Compressão falhou, usando arquivo original:', error);
       }
-    } catch (error) {
-      console.warn('Compressão falhou, usando foto original:', error);
     }
 
-    // ✅ Tentar copiar arquivo comprimido
+    // ✅ Tentar copiar arquivo comprimido (ou original para PDFs)
     try {
       await FileSystem.copyAsync({
         from: compressedUri,
@@ -216,12 +222,12 @@ export const backupPhoto = async (
       });
     }
 
-    // ✅ Verificar se o arquivo comprimido foi salvo corretamente ANTES de criar metadados
+    // ✅ Verificar se o arquivo foi salvo corretamente ANTES de criar metadados
     const finalCompressedInfo = await FileSystem.getInfoAsync(compressedPath);
     if (!finalCompressedInfo.exists) {
-      throw new Error('Falha ao salvar arquivo comprimido - arquivo não existe após cópia');
+      throw new Error('Falha ao salvar arquivo - não existe após cópia');
     }
-    console.log(`✅ Arquivo comprimido verificado: ${Math.round((finalCompressedInfo.size || 0) / 1024)}KB`);
+    console.log(`✅ Arquivo verificado (${isPdf ? 'PDF' : 'imagem'}): ${Math.round((finalCompressedInfo.size || 0) / 1024)}KB`);
 
     // 3. Converter coordenadas para UTM
     const utmCoords = convertToUTM(latitude, longitude);
@@ -242,7 +248,8 @@ export const backupPhoto = async (
       utmZone: utmCoords.utmZone,
       timestamp: new Date().toISOString(),
       uploaded: false,
-      retries: 0
+      retries: 0,
+      mimeType,
     };
 
     // 5. Salvar metadata
@@ -342,28 +349,30 @@ export const getZombiePhotos = async (obraId?: string): Promise<PhotoMetadata[]>
  * Reseta fotos zombie para permitir novo upload
  */
 export const resetZombiePhotos = async (obraId?: string): Promise<number> => {
-  const zombies = await getZombiePhotos(obraId);
-  let count = 0;
+  try {
+    const allMetadata = await getAllPhotoMetadata();
+    let count = 0;
 
-  for (const zombie of zombies) {
-    try {
-      // Resetar o status de uploaded para false
-      const allMetadata = await getAllPhotoMetadata();
-      const updated = allMetadata.map(m => {
-        if (m.id === zombie.id) {
-          return { ...m, uploaded: false, uploadUrl: undefined, retries: 0 };
-        }
-        return m;
-      });
+    const updated = allMetadata.map(m => {
+      const isZombie = m.uploaded && (!m.uploadUrl || m.uploadUrl === '');
+      const matchesObra = !obraId || m.obraId === obraId;
+      if (isZombie && matchesObra) {
+        count++;
+        console.log(`✅ Foto zombie resetada: ${m.id}`);
+        return { ...m, uploaded: false, uploadUrl: undefined, retries: 0 };
+      }
+      return m;
+    });
+
+    if (count > 0) {
       await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(updated));
-      count++;
-      console.log(`✅ Foto zombie resetada: ${zombie.id}`);
-    } catch (error) {
-      console.error(`❌ Erro ao resetar foto zombie ${zombie.id}:`, error);
     }
-  }
 
-  return count;
+    return count;
+  } catch (error) {
+    console.error('❌ Erro ao resetar fotos zombie:', error);
+    return 0;
+  }
 };
 
 /**

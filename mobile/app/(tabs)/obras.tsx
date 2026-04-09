@@ -4,8 +4,9 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, syncAllPendingObrasWithProgress, type CancellationToken } from '../../lib/offline-sync';
+import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, syncAllPendingObrasWithProgress, removePendingObra, removeLocalObra, type CancellationToken } from '../../lib/offline-sync';
 import type { PendingObra, LocalObra } from '../../lib/offline-sync';
+import { getQueueStats, retryFailedUploads } from '../../lib/photo-queue';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SyncProgressModal, type ObraSyncProgress } from '../../components/SyncProgressModal';
 
@@ -73,6 +74,10 @@ export default function Obras() {
   const [syncModalVisible, setSyncModalVisible] = useState(false);
   const [syncProgress, setSyncProgress] = useState<ObraSyncProgress | null>(null);
   const cancellationTokenRef = useRef<CancellationToken>({ cancelled: false });
+
+  // Estado de status das fotos na fila de upload
+  const [photoStats, setPhotoStats] = useState({ pending: 0, uploading: 0, failed: 0 });
+  const [syncingPhotos, setSyncingPhotos] = useState(false);
 
   const isCompressorBook = (obra: { tipo_servico?: string; creator_role?: string }) => {
     return obra?.tipo_servico === 'Cava em Rocha' || obra?.creator_role === 'compressor';
@@ -404,8 +409,17 @@ export default function Obras() {
     }
   };
 
+  const loadPhotoStats = async () => {
+    try {
+      const stats = await getQueueStats();
+      setPhotoStats({ pending: stats.pending, uploading: stats.uploading, failed: stats.failed });
+    } catch (error) {
+      console.error('Erro ao carregar status das fotos:', error);
+    }
+  };
+
   const reloadAllObras = async () => {
-    await Promise.all([loadPendingObras(), loadCachedObras()]);
+    await Promise.all([loadPendingObras(), loadCachedObras(), loadPhotoStats()]);
     // ✅ CORREÇÃO: Sempre carregar obras locais, independente do estado online/offline
     // Rascunhos e obras offline devem aparecer imediatamente
     await carregarObras();
@@ -631,6 +645,54 @@ export default function Obras() {
     cancellationTokenRef.current.cancelled = true;
   };
 
+  const handleSyncPhotos = async () => {
+    if (syncingPhotos || !isOnline) return;
+    setSyncingPhotos(true);
+    try {
+      if (photoStats.failed > 0) {
+        await retryFailedUploads();
+      } else {
+        await syncAllPendingObras();
+      }
+      await loadPhotoStats();
+      await loadPendingObras();
+    } catch (error) {
+      console.error('Erro ao sincronizar fotos:', error);
+    } finally {
+      setSyncingPhotos(false);
+    }
+  };
+
+  const handleDeleteObra = (obra: ObraListItem) => {
+    const obraLabel = obra.obra ? `Obra ${obra.obra}` : 'este rascunho';
+    Alert.alert(
+      'Remover rascunho',
+      `Deseja remover ${obraLabel}? Esta ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Rascunhos podem estar em @obras_local (saveObraLocal) ou
+              // em @obras_pending_sync (addObraOffline). Remove das duas para garantir.
+              await Promise.all([
+                removePendingObra(obra.id),
+                removeLocalObra(obra.id),
+              ]);
+              // Recarrega ambas as fontes que alimentam combinedObras
+              await Promise.all([loadPendingObras(), carregarObras()]);
+            } catch (error) {
+              console.error('Erro ao remover obra:', error);
+              Alert.alert('Erro', 'Não foi possível remover o rascunho. Tente novamente.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleLogout = async () => {
     Alert.alert('Sair', 'Deseja sair do aplicativo?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -741,6 +803,64 @@ export default function Obras() {
           />
         </View>
 
+        {/* Banner de status de fotos */}
+        {(photoStats.failed > 0 || photoStats.pending > 0 || photoStats.uploading > 0) ? (
+          <View style={[
+            styles.photoSyncBanner,
+            photoStats.failed > 0 ? styles.photoSyncBannerFailed
+              : photoStats.uploading > 0 ? styles.photoSyncBannerUploading
+              : styles.photoSyncBannerPending,
+          ]}>
+            <View style={styles.photoSyncBannerInfo}>
+              {photoStats.uploading > 0 ? (
+                <Text style={styles.photoSyncBannerTitle}>
+                  Enviando {photoStats.uploading} foto(s)...
+                </Text>
+              ) : photoStats.failed > 0 ? (
+                <>
+                  <Text style={styles.photoSyncBannerTitle}>
+                    {photoStats.failed} foto(s) com falha no envio
+                  </Text>
+                  <Text style={styles.photoSyncBannerSubtitle}>
+                    Toque em "Tentar novamente" para reenviar
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.photoSyncBannerTitle}>
+                    {photoStats.pending} foto(s) aguardando envio
+                  </Text>
+                  <Text style={styles.photoSyncBannerSubtitle}>
+                    {isOnline ? 'Conectado — toque para enviar agora' : 'Aguardando conexao com a internet'}
+                  </Text>
+                </>
+              )}
+            </View>
+            {photoStats.uploading === 0 && (
+              <TouchableOpacity
+                style={[
+                  styles.photoSyncBannerButton,
+                  (!isOnline || syncingPhotos) && styles.photoSyncBannerButtonDisabled,
+                ]}
+                onPress={handleSyncPhotos}
+                disabled={!isOnline || syncingPhotos}
+              >
+                {syncingPhotos ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.photoSyncBannerButtonText}>
+                    {photoStats.failed > 0 ? 'Tentar novamente' : 'Enviar'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : combinedObras.length > 0 ? (
+          <View style={styles.photoSyncBannerAll}>
+            <Text style={styles.photoSyncBannerAllText}>Todas as fotos sincronizadas</Text>
+          </View>
+        ) : null}
+
         {pendingObrasDaEquipe.length > 0 && (
           <View style={styles.syncBanner}>
             <View style={styles.syncBannerInfo}>
@@ -798,16 +918,15 @@ export default function Obras() {
             const isPartialSync = obra.sync_status === 'partial' || (!!obra.serverId && obra.synced === false);
 
             return (
-              <TouchableOpacity
+              <View
                 key={`${obra.origem}_${obra.id}`}
                 style={[
                   styles.obraCard,
                   isFinalizada && styles.obraCardFinalizada,
                   isRascunho && styles.obraCardRascunho
                 ]}
-                onPress={() => handleOpenObra(obra)}
               >
-                {/* Indicador de Sincronização */}
+                {/* Indicador de Sincronização - absoluto relativo ao card externo */}
                 <View style={[styles.syncIndicatorContainer, isSmallScreen && styles.syncIndicatorContainerSmall]}>
                   {isSynced ? (
                     <View style={styles.syncIndicatorSynced}>
@@ -827,59 +946,74 @@ export default function Obras() {
                   )}
                 </View>
 
-                <View style={[styles.obraHeader, isSmallScreen && styles.obraHeaderSmall]}>
-                  <View style={styles.obraHeaderLeft}>
-                    <Text style={styles.obraNumero}>Obra {obra.obra}</Text>
-                    <Text style={styles.obraData}>{formatarData(obra.data)}</Text>
+                {/* Área principal clicável para abrir detalhes */}
+                <TouchableOpacity activeOpacity={0.7} onPress={() => handleOpenObra(obra)}>
+                  <View style={[styles.obraHeader, isSmallScreen && styles.obraHeaderSmall]}>
+                    <View style={styles.obraHeaderLeft}>
+                      <Text style={styles.obraNumero}>Obra {obra.obra}</Text>
+                      <Text style={styles.obraData}>{formatarData(obra.data)}</Text>
+                    </View>
                   </View>
-                </View>
 
-                {/* Status badges abaixo do header */}
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                  {isFinalizada && (
-                    <View style={styles.statusBadgeFinalizada}>
-                      <Text style={styles.statusBadgeText}>Finalizada</Text>
-                    </View>
-                  )}
-                  {isRascunho && (
-                    <View style={styles.statusBadgeRascunho}>
-                      <Text style={styles.statusBadgeText}>Rascunho</Text>
-                    </View>
-                  )}
-                  {isAberta && !isRascunho && (
-                    <View style={styles.statusBadgeAberta}>
-                      <Text style={styles.statusBadgeText}>Em aberto</Text>
-                    </View>
-                  )}
-                </View>
+                  {/* Status badges abaixo do header */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {isFinalizada && (
+                      <View style={styles.statusBadgeFinalizada}>
+                        <Text style={styles.statusBadgeText}>Finalizada</Text>
+                      </View>
+                    )}
+                    {isRascunho && (
+                      <View style={styles.statusBadgeRascunho}>
+                        <Text style={styles.statusBadgeText}>Rascunho</Text>
+                      </View>
+                    )}
+                    {isAberta && !isRascunho && (
+                      <View style={styles.statusBadgeAberta}>
+                        <Text style={styles.statusBadgeText}>Em aberto</Text>
+                      </View>
+                    )}
+                  </View>
 
-                {isFinalizada && obra.finalizada_em && (
-                  <View style={styles.infoFinalizacao}>
-                    <Text style={styles.infoFinalizacaoText}>
-                      Finalizada em {formatarData(obra.finalizada_em)}
-                    </Text>
+                  {isFinalizada && obra.finalizada_em && (
+                    <View style={styles.infoFinalizacao}>
+                      <Text style={styles.infoFinalizacaoText}>
+                        Finalizada em {formatarData(obra.finalizada_em)}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.obraInfo}>
+                    <Text style={styles.obraLabel}>Responsavel:</Text>
+                    <Text style={styles.obraValue}>{obra.responsavel}</Text>
+                  </View>
+
+                  <View style={styles.obraInfo}>
+                    <Text style={styles.obraLabel}>Equipe:</Text>
+                    <Text style={styles.obraValue}>{obra.equipe}</Text>
+                  </View>
+
+                  <View style={styles.obraInfo}>
+                    <Text style={styles.obraLabel}>Servico:</Text>
+                    <Text style={styles.obraValue}>{obra.tipo_servico || '-'}</Text>
+                  </View>
+
+                  {renderStatusBadge(obra)}
+
+                  <Text style={styles.verMais}>Toque para ver detalhes</Text>
+                </TouchableOpacity>
+
+                {/* Botão remover - irmão do TouchableOpacity, sem aninhamento */}
+                {obra.origem === 'offline' && !obra.serverId && (
+                  <View style={styles.cardFooter}>
+                    <TouchableOpacity
+                      style={styles.deleteObraButton}
+                      onPress={() => handleDeleteObra(obra)}
+                    >
+                      <Text style={styles.deleteObraButtonText}>Remover rascunho</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
-
-                <View style={styles.obraInfo}>
-                  <Text style={styles.obraLabel}>Responsavel:</Text>
-                  <Text style={styles.obraValue}>{obra.responsavel}</Text>
-                </View>
-
-                <View style={styles.obraInfo}>
-                  <Text style={styles.obraLabel}>Equipe:</Text>
-                  <Text style={styles.obraValue}>{obra.equipe}</Text>
-                </View>
-
-                <View style={styles.obraInfo}>
-                  <Text style={styles.obraLabel}>Servico:</Text>
-                  <Text style={styles.obraValue}>{obra.tipo_servico || '-'}</Text>
-                </View>
-
-                {renderStatusBadge(obra)}
-
-                <Text style={styles.verMais}>Toque para ver detalhes</Text>
-              </TouchableOpacity>
+              </View>
             );
           })
         )}
@@ -1301,6 +1435,74 @@ const styles = StyleSheet.create({
   syncBadgeFailed: {
     backgroundColor: '#ffebee',
   },
+  photoSyncBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  photoSyncBannerFailed: {
+    backgroundColor: '#ffebee',
+    borderLeftWidth: 4,
+    borderLeftColor: '#e53935',
+  },
+  photoSyncBannerPending: {
+    backgroundColor: '#fff3e0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#ff9800',
+  },
+  photoSyncBannerUploading: {
+    backgroundColor: '#e3f2fd',
+    borderLeftWidth: 4,
+    borderLeftColor: '#1976d2',
+  },
+  photoSyncBannerInfo: {
+    flex: 1,
+    marginRight: 8,
+  },
+  photoSyncBannerTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+  photoSyncBannerSubtitle: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  photoSyncBannerButton: {
+    backgroundColor: '#1565c0',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  photoSyncBannerButtonDisabled: {
+    backgroundColor: '#aaa',
+  },
+  photoSyncBannerButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  photoSyncBannerAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#43a047',
+  },
+  photoSyncBannerAllText: {
+    color: '#2e7d32',
+    fontSize: 13,
+    fontWeight: '500',
+  },
   syncBadgeText: {
     fontSize: 13,
     fontWeight: '600',
@@ -1462,6 +1664,21 @@ const styles = StyleSheet.create({
   logoutButtonText: {
     color: '#fff',
     fontSize: 14,
+    fontWeight: '600',
+  },
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    marginTop: 10,
+    paddingTop: 8,
+    alignItems: 'flex-start',
+  },
+  deleteObraButton: {
+    paddingVertical: 4,
+  },
+  deleteObraButtonText: {
+    fontSize: 13,
+    color: '#dc3545',
     fontWeight: '600',
   },
 });
