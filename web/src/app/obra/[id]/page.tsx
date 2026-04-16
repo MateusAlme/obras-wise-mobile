@@ -2178,6 +2178,43 @@ export default function ObraDetailPage() {
               </div>
             ) : null}
 
+            {/* Altimetria */}
+            {(obra.fotos_altimetria_lado_fonte?.length || obra.fotos_altimetria_medicao_fonte?.length || obra.fotos_altimetria_lado_carga?.length || obra.fotos_altimetria_medicao_carga?.length) ? (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Altimetria</h3>
+                <PhotoGallery photos={obra.fotos_altimetria_lado_fonte || []} title="Lado Fonte" sectionKey="fotos_altimetria_lado_fonte" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_altimetria_medicao_fonte || []} title="Medição Fonte" sectionKey="fotos_altimetria_medicao_fonte" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_altimetria_lado_carga || []} title="Lado Carga" sectionKey="fotos_altimetria_lado_carga" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_altimetria_medicao_carga || []} title="Medição Carga" sectionKey="fotos_altimetria_medicao_carga" {...galleryProps} />
+              </div>
+            ) : null}
+
+            {/* Vazamento e Limpeza de Transformador */}
+            {(obra.fotos_vazamento_evidencia?.length || obra.fotos_vazamento_equipamentos_limpeza?.length || obra.fotos_vazamento_tombamento_retirado?.length || obra.fotos_vazamento_placa_retirado?.length || obra.fotos_vazamento_tombamento_instalado?.length || obra.fotos_vazamento_placa_instalado?.length || obra.fotos_vazamento_instalacao?.length) ? (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Vazamento e Limpeza de Transformador</h3>
+                <PhotoGallery photos={obra.fotos_vazamento_evidencia || []} title="Evidência" sectionKey="fotos_vazamento_evidencia" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_vazamento_equipamentos_limpeza || []} title="Equipamentos de Limpeza" sectionKey="fotos_vazamento_equipamentos_limpeza" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_vazamento_tombamento_retirado || []} title="Tombamento Retirado" sectionKey="fotos_vazamento_tombamento_retirado" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_vazamento_placa_retirado || []} title="Placa Retirada" sectionKey="fotos_vazamento_placa_retirado" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_vazamento_tombamento_instalado || []} title="Tombamento Instalado" sectionKey="fotos_vazamento_tombamento_instalado" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_vazamento_placa_instalado || []} title="Placa Instalada" sectionKey="fotos_vazamento_placa_instalado" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_vazamento_instalacao || []} title="Instalação" sectionKey="fotos_vazamento_instalacao" {...galleryProps} />
+              </div>
+            ) : null}
+
+            {/* Instalação do Medidor */}
+            {(obra.fotos_medidor_padrao?.length || obra.fotos_medidor_leitura?.length || obra.fotos_medidor_selo_born?.length || obra.fotos_medidor_selo_caixa?.length || obra.fotos_medidor_identificador_fase?.length) ? (
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-4">Instalação do Medidor</h3>
+                <PhotoGallery photos={obra.fotos_medidor_padrao || []} title="Padrão" sectionKey="fotos_medidor_padrao" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_medidor_leitura || []} title="Leitura" sectionKey="fotos_medidor_leitura" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_medidor_selo_born || []} title="Selo Born" sectionKey="fotos_medidor_selo_born" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_medidor_selo_caixa || []} title="Selo Caixa" sectionKey="fotos_medidor_selo_caixa" {...galleryProps} />
+                <PhotoGallery photos={obra.fotos_medidor_identificador_fase || []} title="Identificador de Fase" sectionKey="fotos_medidor_identificador_fase" {...galleryProps} />
+              </div>
+            ) : null}
+
             {/* Checklist de Fiscalização */}
             {(obra.tipo_servico === 'Checklist' || obra.tipo_servico === 'Checklist de Fiscalização') ? (
               <div className="mt-8 pt-8 border-t border-gray-200">

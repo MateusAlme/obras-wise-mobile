@@ -76,6 +76,13 @@ const EQUIPES_FALLBACK = [
   'LV 01 CJZ', 'LV 02 PTS', 'LV 03 JR PTS',
 ];
 
+const sanitizeObrasPayload = <T extends Record<string, any>>(payload: T): T => {
+  const sanitized = { ...payload } as Record<string, any>;
+  // Compatibilidade com backend sem esta migration aplicada.
+  delete sanitized.fotos_transformador_laudo_retirado;
+  return sanitized as T;
+};
+
 export default function NovaObra() {
   const router = useRouter();
   const params = useLocalSearchParams<{ editMode?: string; obraData?: string }>();
@@ -1092,27 +1099,22 @@ export default function NovaObra() {
             const match = photoId.match(/^(.+)_(\d+)_(\d+)$/);
             if (match) {
               const prefixWithType = match[1];
-              const photoIndex = parseInt(match[2]);
+              const photoIndex = parseInt(match[2], 10);
 
-              // Extrair tipo do prefixWithType (remover obraId)
-              const knownTypes = [
-                'doc_laudo_transformador', 'doc_laudo_regulador', 'doc_laudo_religador',
-                'doc_cadastro_medidor', 'doc_apr', 'doc_fvbt', 'doc_termo_desistencia_lpt',
-                'doc_autorizacao_passagem', 'doc_materiais_previsto', 'doc_materiais_realizado',
-                'transformador_tombamento_instalado', 'transformador_componente_instalado',
-                'transformador_placa_instalado', 'transformador_instalado', 'transformador_laudo',
-                'antes', 'durante', 'depois', 'abertura', 'fechamento'
-              ];
+              // Buscar tipo de forma dinâmica para cobrir todos os módulos (incluindo aterramento)
+              const availableTypes = Array.from(
+                new Set(localPhotos.map(p => p.type).filter(Boolean))
+              ).sort((a, b) => b.length - a.length);
 
-              for (const type of knownTypes) {
-                if (prefixWithType.endsWith('_' + type)) {
-                  // Encontrar foto com mesmo tipo e index
-                  photo = localPhotos.find(p => p.type === type && p.index === photoIndex);
-                  if (photo) {
-                    console.log(`🔄 [mapPhotos] Encontrou foto por tipo+index: ${type}[${photoIndex}]`);
-                    return photo;
-                  }
-                  break;
+              const matchedType = availableTypes.find(
+                (type) => prefixWithType === type || prefixWithType.endsWith(`_${type}`)
+              );
+
+              if (matchedType) {
+                photo = localPhotos.find(p => p.type === matchedType && p.index === photoIndex);
+                if (photo) {
+                  console.log(`🔄 [mapPhotos] Encontrou foto por tipo+index: ${matchedType}[${photoIndex}]`);
+                  return photo;
                 }
               }
             }
@@ -1803,17 +1805,29 @@ export default function NovaObra() {
 
   const getCurrentLocation = async () => {
     try {
-      // PROTEÇÃO: Timeout de 10 segundos para evitar travamento
+      // RÁPIDO: Usar última posição conhecida (retorna instantaneamente, sem esperar novo fix GPS)
+      const lastKnown = await Location.getLastKnownPositionAsync({
+        maxAge: 5 * 60 * 1000, // Aceitar posição de até 5 minutos atrás
+        requiredAccuracy: 100,  // Precisão máxima aceitável: 100 metros
+      });
+
+      if (lastKnown?.coords?.latitude && lastKnown?.coords?.longitude) {
+        return {
+          latitude: lastKnown.coords.latitude,
+          longitude: lastKnown.coords.longitude,
+        };
+      }
+
+      // FALLBACK: Se não há posição recente, tentar uma leitura rápida com timeout curto
       const location = await Promise.race([
         Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.High,
+          accuracy: Location.Accuracy.Balanced,
         }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('GPS timeout')), 10000)
+          setTimeout(() => reject(new Error('GPS timeout')), 3000)
         )
       ]);
 
-      // VALIDAÇÃO: Verificar se coordenadas são válidas
       if (!location?.coords?.latitude || !location?.coords?.longitude) {
         throw new Error('Coordenadas inválidas');
       }
@@ -1823,15 +1837,7 @@ export default function NovaObra() {
         longitude: location.coords.longitude,
       };
     } catch (error: any) {
-      // PROTEÇÃO ROBUSTA: Nunca crashar, sempre retornar coordenadas nulas
-      console.warn('⚠️ Erro ao obter localização GPS:', error?.message || error);
-
-      // Mensagem amigável apenas se não for timeout silencioso
-      if (!error?.message?.includes('timeout')) {
-        console.error('📍 GPS Error Details:', error);
-      }
-
-      // NÃO mostrar alert aqui - será tratado no takePicture
+      console.warn('⚠️ GPS indisponível:', error?.message || error);
       return { latitude: null, longitude: null };
     }
   };
@@ -1947,6 +1953,9 @@ export default function NovaObra() {
         exif: false,
       };
 
+      // Iniciar GPS em paralelo com a câmera
+      const locationPromise = getCurrentLocation();
+
       const result = source === 'camera'
         ? await ImagePicker.launchCameraAsync(pickerOptions)
         : await ImagePicker.launchImageLibraryAsync(pickerOptions);
@@ -1957,7 +1966,7 @@ export default function NovaObra() {
       }
 
       const photoUri = result.assets[0].uri;
-      const location = await getCurrentLocation();
+      const location = await locationPromise;
 
       const posteAtual = postesData.find(p => p.id === posteId);
       const identificacaoPoste = posteAtual ? getPosteCodigo(posteAtual) : posteId;
@@ -2129,6 +2138,12 @@ export default function NovaObra() {
             exif: false,
           };
 
+      // Iniciar GPS em paralelo com a câmera (fotos normais)
+      // Enquanto o usuário enquadra a foto, o GPS já resolve em background
+      const locationPromise = isDocument
+        ? Promise.resolve({ latitude: null, longitude: null })
+        : getCurrentLocation();
+
       const result = source === 'camera'
         ? await ImagePicker.launchCameraAsync(pickerOptions)
         : await ImagePicker.launchImageLibraryAsync(pickerOptions);
@@ -2141,10 +2156,8 @@ export default function NovaObra() {
       let photoUri = result.assets[0].uri;
       console.log(`📸 ${isDocument ? '📄 DOCUMENTO' : '📷 FOTO'} - URI ORIGINAL:`, photoUri);
 
-      // Obter GPS apenas para fotos normais (não para documentos)
-      const location = isDocument
-        ? { latitude: null, longitude: null }
-        : await getCurrentLocation();
+      // GPS já deve estar resolvido (rodou em paralelo com a câmera)
+      const location = await locationPromise;
 
       // Para documentos, NÃO adicionar placa
       if (isDocument) {
@@ -3953,6 +3966,8 @@ export default function NovaObra() {
         ...photoIds.doc_fvbt,
         ...photoIds.doc_termo_desistencia_lpt,
         ...photoIds.doc_autorizacao_passagem,
+        ...photoIds.doc_materiais_previsto,
+        ...photoIds.doc_materiais_realizado,
         ...(isServicoPostesComFotos
           ? postesData.flatMap(poste => [
               ...poste.fotosAntes.map(f => f.photoId).filter(Boolean) as string[],
@@ -4516,7 +4531,7 @@ export default function NovaObra() {
 
         const { error: updateError } = await supabase
           .from('obras')
-          .update({
+          .update(sanitizeObrasPayload({
             fotos_antes: mergePhotos(obraAtual.fotos_antes, fotosAntesUploaded),
             fotos_durante: mergePhotos(obraAtual.fotos_durante, fotosDuranteUploaded),
             fotos_depois: mergePhotos(obraAtual.fotos_depois, fotosDepoisUploaded),
@@ -4618,7 +4633,7 @@ export default function NovaObra() {
                 fotoTermometro: extractPhotoDataFull(ponto.fotoTermometro),
               })),
             }),
-          })
+          }))
           .eq('id', obraId);
 
         error = updateError;
@@ -4632,7 +4647,7 @@ export default function NovaObra() {
         const { error: insertError } = await supabase
           .from('obras')
           .insert([
-            {
+            sanitizeObrasPayload({
               ...obraData,
               ...(isServicoPostesComFotos && postesDataUploaded && {
                 postes_data: postesDataUploaded,
@@ -4691,7 +4706,7 @@ export default function NovaObra() {
               fotos_checklist_seccionamentos: fotosChecklistSeccionamentosUploaded,
               fotos_checklist_aterramento_cerca: fotosChecklistAterramentoCercaUploaded,
               user_id: null,
-            },
+            }),
           ]);
 
         error = insertError;
@@ -5048,6 +5063,8 @@ export default function NovaObra() {
         doc_fvbt: extractPhotoData(docFvbt) as string[],
         doc_termo_desistencia_lpt: extractPhotoData(docTermoDesistenciaLpt) as string[],
         doc_autorizacao_passagem: extractPhotoData(docAutorizacaoPassagem) as string[],
+        doc_materiais_previsto: extractPhotoData(docMateriaisPrevisto) as string[],
+        doc_materiais_realizado: extractPhotoData(docMateriaisRealizado) as string[],
         // Linha Viva / Cava em Rocha - Dados dos postes (condicional pois é estrutura diferente)
         ...(isServicoPostesComFotos && {
           postes_data: postesData.map(poste => ({

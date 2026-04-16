@@ -316,6 +316,7 @@ const PHOTO_SECTIONS = [
   { key: 'fotos_vazamento_tombamento_instalado', label: 'Vazamento - Tombamento Transformador Instalado' },
   { key: 'fotos_vazamento_placa_instalado', label: 'Vazamento - Placa Transformador Instalado' },
   { key: 'fotos_vazamento_instalacao', label: 'Vazamento - Instalação do Transformador' },
+  { key: 'doc_apr', label: 'Documentação - APR (Análise Preliminar de Risco)' },
   { key: 'doc_cadastro_medidor', label: 'Documentação - Cadastro de Medidor' },
   { key: 'doc_laudo_transformador', label: 'Documentação - Laudo de Transformador' },
   { key: 'doc_laudo_regulador', label: 'Documentação - Laudo de Regulador' },
@@ -323,6 +324,8 @@ const PHOTO_SECTIONS = [
   { key: 'doc_fvbt', label: 'Documentação - FVBT (Formulário de Vistoria de Baixa Tensão)' },
   { key: 'doc_termo_desistencia_lpt', label: 'Documentação - Termo de Desistência LPT' },
   { key: 'doc_autorizacao_passagem', label: 'Documentação - Autorização de Passagem' },
+  { key: 'doc_materiais_previsto', label: 'Documentação - Materiais Previsto' },
+  { key: 'doc_materiais_realizado', label: 'Documentação - Materiais Realizado' },
 ] as const;
 
 const formatDate = (value?: string) => {
@@ -660,6 +663,8 @@ export default function ObraDetalhe() {
         ...(sourceObra.doc_laudo_regulador || []),
         ...(sourceObra.doc_laudo_religador || []),
         ...(sourceObra.doc_fvbt || []),
+        ...(sourceObra.doc_materiais_previsto || []),
+        ...(sourceObra.doc_materiais_realizado || []),
         // Adicionar photoIds de postes_data
         ...(sourceObra.postes_data || []).flatMap((poste: any) => [
           ...(poste.fotos_antes || []),
@@ -1073,6 +1078,8 @@ export default function ObraDetalhe() {
       'doc_fvbt': 'doc_fvbt',
       'doc_termo_desistencia_lpt': 'doc_termo_desistencia_lpt',
       'doc_autorizacao_passagem': 'doc_autorizacao_passagem',
+      'doc_materiais_previsto': 'doc_materiais_previsto',
+      'doc_materiais_realizado': 'doc_materiais_realizado',
     };
 
     // Pegar fotos do banco (URL) ou IDs (AsyncStorage offline-first)
@@ -1287,6 +1294,9 @@ export default function ObraDetalhe() {
           if (!getPhotosForSection('fotos_vazamento_evidencia').length) faltantes.push('Evidência');
           if (!getPhotosForSection('fotos_vazamento_equipamentos_limpeza').length) faltantes.push('Equipamentos');
           // Outros campos são opcionais
+          break;
+        case 'Documentação':
+          // Todos os documentos do book de documentação são opcionais
           break;
         default:
           // Serviços padrão (Emenda, Poda, Cava em Rocha, etc)

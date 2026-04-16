@@ -44,44 +44,10 @@ async function renderPhotoWithPlacaMobile(
   imageUri: string,
   placaData: PlacaData
 ): Promise<string> {
-  console.log('📱 [PLACA MOBILE] Iniciando renderização com Canvas...')
-
-  try {
-    // Importar dependências
-    const ReactNative = await import('react-native')
-    const { View, Image, Text, StyleSheet, Dimensions } = ReactNative
-    const viewShot = await import('react-native-view-shot')
-    const { captureRef } = viewShot
-    const FileSystem = await import('expo-file-system')
-
-    // 1. Calcular UTM e endereço
-    let utmDisplay = ''
-    if (placaData.latitude && placaData.longitude) {
-      const utm = latLongToUTM(placaData.latitude, placaData.longitude)
-      utmDisplay = formatUTM(utm)
-      console.log('📱 [PLACA MOBILE] UTM calculado:', utmDisplay)
-    }
-
-    // REMOVIDO: Busca de endereço (causava erro offline)
-    // Agora mostra apenas: UTM, Data/Hora, Equipe, Obra, Serviço
-
-    // 2. Usar renderização em Canvas
-    // IMPORTANTE: No build nativo, podemos usar APIs mais avançadas
-    // Por enquanto, retornamos foto original e deixamos o componente PhotoWithPlaca fazer o trabalho visual
-
-    // TODO: Implementar Skia Canvas quando disponível no build nativo
-    // Por enquanto, a placa aparece como overlay visual através do componente PhotoWithPlaca
-
-    console.log('📱 [PLACA MOBILE] Build nativo detectado')
-    console.log('💡 Placa será aplicada visualmente pelo componente PhotoWithPlaca')
-    console.log('💡 Para placa GRAVADA na imagem, use a versão WEB: http://10.0.0.116:8081')
-
-    return imageUri
-
-  } catch (error) {
-    console.error('❌ [PLACA MOBILE] Erro:', error)
-    return imageUri
-  }
+  // No mobile a placa é exibida via overlay no componente de UI.
+  // Evitamos processamento extra pós-captura para reduzir latência.
+  void placaData
+  return imageUri
 }
 
 /**

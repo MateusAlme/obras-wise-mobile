@@ -47,6 +47,7 @@ export interface PendingObra {
   fotos_transformador_placa_instalado: string[];
   fotos_transformador_instalado: string[];
   fotos_transformador_antes_retirar: string[];
+  fotos_transformador_laudo_retirado: string[];
   fotos_transformador_tombamento_retirado: string[];
   fotos_transformador_placa_retirado: string[];
   fotos_transformador_conexoes_primarias_instalado: string[];
@@ -77,6 +78,8 @@ export interface PendingObra {
   doc_fvbt: string[];
   doc_termo_desistencia_lpt: string[];
   doc_autorizacao_passagem: string[];
+  doc_materiais_previsto: string[];
+  doc_materiais_realizado: string[];
   // Altimetria - 4 fotos
   fotos_altimetria_lado_fonte: string[];
   fotos_altimetria_medicao_fonte: string[];
@@ -274,6 +277,7 @@ type PhotoGroupIds = {
   transformador_conexoes_primarias_instalado: string[];
   transformador_conexoes_secundarias_instalado: string[];
   transformador_antes_retirar: string[];
+  transformador_laudo_retirado: string[];
   transformador_tombamento_retirado: string[];
   transformador_placa_retirado: string[];
   transformador_conexoes_primarias_retirado: string[];
@@ -302,6 +306,8 @@ type PhotoGroupIds = {
   doc_fvbt: string[];
   doc_termo_desistencia_lpt: string[];
   doc_autorizacao_passagem: string[];
+  doc_materiais_previsto: string[];
+  doc_materiais_realizado: string[];
   // Altimetria - 4 fotos
   altimetria_lado_fonte: string[];
   altimetria_medicao_fonte: string[];
@@ -315,6 +321,13 @@ type PhotoGroupIds = {
   vazamento_tombamento_instalado: string[];
   vazamento_placa_instalado: string[];
   vazamento_instalacao: string[];
+};
+
+const sanitizeObrasPayload = <T extends Record<string, any>>(payload: T): T => {
+  const sanitized = { ...payload } as Record<string, any>;
+  // Compatibilidade com ambientes sem a coluna ainda migrada no Supabase.
+  delete sanitized.fotos_transformador_laudo_retirado;
+  return sanitized as T;
 };
 
 /**
@@ -926,6 +939,8 @@ export const saveObraOffline = async (
     | 'doc_fvbt'
     | 'doc_termo_desistencia_lpt'
     | 'doc_autorizacao_passagem'
+    | 'doc_materiais_previsto'
+    | 'doc_materiais_realizado'
     | 'fotos_altimetria_lado_fonte'
     | 'fotos_altimetria_medicao_fonte'
     | 'fotos_altimetria_lado_carga'
@@ -1006,6 +1021,8 @@ export const saveObraOffline = async (
       doc_fvbt: photoIds.doc_fvbt ?? [],
       doc_termo_desistencia_lpt: photoIds.doc_termo_desistencia_lpt ?? [],
       doc_autorizacao_passagem: photoIds.doc_autorizacao_passagem ?? [],
+      doc_materiais_previsto: photoIds.doc_materiais_previsto ?? [],
+      doc_materiais_realizado: photoIds.doc_materiais_realizado ?? [],
       // Altimetria
       fotos_altimetria_lado_fonte: photoIds.altimetria_lado_fonte ?? [],
       fotos_altimetria_medicao_fonte: photoIds.altimetria_medicao_fonte ?? [],
@@ -1127,6 +1144,7 @@ export const updateObraOffline = async (
         fotos_transformador_conexoes_primarias_instalado: updatedPhotoIds.transformador_conexoes_primarias_instalado ?? [],
         fotos_transformador_conexoes_secundarias_instalado: updatedPhotoIds.transformador_conexoes_secundarias_instalado ?? [],
         fotos_transformador_antes_retirar: updatedPhotoIds.transformador_antes_retirar ?? [],
+        fotos_transformador_laudo_retirado: updatedPhotoIds.transformador_laudo_retirado ?? [],
         fotos_transformador_tombamento_retirado: updatedPhotoIds.transformador_tombamento_retirado ?? [],
         fotos_transformador_placa_retirado: updatedPhotoIds.transformador_placa_retirado ?? [],
         fotos_transformador_conexoes_primarias_retirado: updatedPhotoIds.transformador_conexoes_primarias_retirado ?? [],
@@ -1153,6 +1171,8 @@ export const updateObraOffline = async (
         doc_fvbt: updatedPhotoIds.doc_fvbt ?? [],
         doc_termo_desistencia_lpt: updatedPhotoIds.doc_termo_desistencia_lpt ?? [],
         doc_autorizacao_passagem: updatedPhotoIds.doc_autorizacao_passagem ?? [],
+        doc_materiais_previsto: updatedPhotoIds.doc_materiais_previsto ?? [],
+        doc_materiais_realizado: updatedPhotoIds.doc_materiais_realizado ?? [],
         fotos_altimetria_lado_fonte: updatedPhotoIds.altimetria_lado_fonte ?? [],
         fotos_altimetria_medicao_fonte: updatedPhotoIds.altimetria_medicao_fonte ?? [],
         fotos_altimetria_lado_carga: updatedPhotoIds.altimetria_lado_carga ?? [],
@@ -1206,6 +1226,7 @@ export const updateObraOffline = async (
       fotos_transformador_conexoes_primarias_instalado: [...(existingObra.fotos_transformador_conexoes_primarias_instalado ?? []), ...(updatedPhotoIds.transformador_conexoes_primarias_instalado ?? [])],
       fotos_transformador_conexoes_secundarias_instalado: [...(existingObra.fotos_transformador_conexoes_secundarias_instalado ?? []), ...(updatedPhotoIds.transformador_conexoes_secundarias_instalado ?? [])],
       fotos_transformador_antes_retirar: [...(existingObra.fotos_transformador_antes_retirar ?? []), ...(updatedPhotoIds.transformador_antes_retirar ?? [])],
+      fotos_transformador_laudo_retirado: [...((existingObra as any).fotos_transformador_laudo_retirado ?? []), ...(updatedPhotoIds.transformador_laudo_retirado ?? [])],
       fotos_transformador_tombamento_retirado: [...(existingObra.fotos_transformador_tombamento_retirado ?? []), ...(updatedPhotoIds.transformador_tombamento_retirado ?? [])],
       fotos_transformador_placa_retirado: [...(existingObra.fotos_transformador_placa_retirado ?? []), ...(updatedPhotoIds.transformador_placa_retirado ?? [])],
       fotos_transformador_conexoes_primarias_retirado: [...(existingObra.fotos_transformador_conexoes_primarias_retirado ?? []), ...(updatedPhotoIds.transformador_conexoes_primarias_retirado ?? [])],
@@ -1232,6 +1253,8 @@ export const updateObraOffline = async (
       doc_fvbt: [...(existingObra.doc_fvbt ?? []), ...(updatedPhotoIds.doc_fvbt ?? [])],
       doc_termo_desistencia_lpt: [...(existingObra.doc_termo_desistencia_lpt ?? []), ...(updatedPhotoIds.doc_termo_desistencia_lpt ?? [])],
       doc_autorizacao_passagem: [...(existingObra.doc_autorizacao_passagem ?? []), ...(updatedPhotoIds.doc_autorizacao_passagem ?? [])],
+      doc_materiais_previsto: [...(existingObra.doc_materiais_previsto ?? []), ...(updatedPhotoIds.doc_materiais_previsto ?? [])],
+      doc_materiais_realizado: [...(existingObra.doc_materiais_realizado ?? []), ...(updatedPhotoIds.doc_materiais_realizado ?? [])],
       fotos_altimetria_lado_fonte: [...(existingObra.fotos_altimetria_lado_fonte ?? []), ...(updatedPhotoIds.altimetria_lado_fonte ?? [])],
       fotos_altimetria_medicao_fonte: [...(existingObra.fotos_altimetria_medicao_fonte ?? []), ...(updatedPhotoIds.altimetria_medicao_fonte ?? [])],
       fotos_altimetria_lado_carga: [...(existingObra.fotos_altimetria_lado_carga ?? []), ...(updatedPhotoIds.altimetria_lado_carga ?? [])],
@@ -1687,90 +1710,145 @@ export const syncObra = async (
     const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
     const postesDataConverted = await convertPostesData((obra as any).postes_data);
 
-    // Obter URLs das fotos uploadadas
-    console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas...`);
+    // Obter URLs das fotos uploadadas - PARALELIZADO ⚡
+    console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas (em paralelo)...`);
     console.log(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
     console.log(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
     console.log(`   - fotos_depois: ${obra.fotos_depois?.length || 0} IDs`);
-    console.log(`   - doc_apr: ${obra.doc_apr?.length || 0} IDs - ${JSON.stringify(obra.doc_apr || [])}`);
-    console.log(`   - doc_laudo_transformador: ${obra.doc_laudo_transformador?.length || 0} IDs`);
-    console.log(`   - fotos_transformador_tombamento_instalado: ${obra.fotos_transformador_tombamento_instalado?.length || 0} IDs`);
 
-    // Debug: mostrar IDs exatos quando há IDs em campos de transformador ou documentos
-    if (obra.fotos_transformador_tombamento_instalado?.length > 0) {
-      console.log(`   📋 IDs em fotos_transformador_tombamento_instalado: ${JSON.stringify(obra.fotos_transformador_tombamento_instalado)}`);
-    }
-    if (obra.doc_laudo_transformador?.length > 0) {
-      console.log(`   📋 IDs em doc_laudo_transformador: ${JSON.stringify(obra.doc_laudo_transformador)}`);
-    }
-
-    const fotosAntesMetadata = await getPhotoMetadatasByIds(obra.fotos_antes || []);
-    const fotosDuranteMetadata = await getPhotoMetadatasByIds(obra.fotos_durante || []);
-    const fotosDepoisMetadata = await getPhotoMetadatasByIds(obra.fotos_depois || []);
-    const fotosAberturaMetadata = await getPhotoMetadatasByIds(obra.fotos_abertura || []);
-    const fotosFechamentoMetadata = await getPhotoMetadatasByIds(obra.fotos_fechamento || []);
-    const fotosDitaisAberturaMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_abertura || []);
-    const fotosDitaisImpedirMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_impedir || []);
-    const fotosDitaisTestarMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_testar || []);
-    const fotosDitaisAterrarMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_aterrar || []);
-    const fotosDitaisSinalizarMetadata = await getPhotoMetadatasByIds(obra.fotos_ditais_sinalizar || []);
-    const fotosAterramentoValaAbertaMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_vala_aberta || []);
-    const fotosAterramentoHastesMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_hastes || []);
-    const fotosAterramentoValaFechadaMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_vala_fechada || []);
-    const fotosAterramentoMedicaoMetadata = await getPhotoMetadatasByIds(obra.fotos_aterramento_medicao || []);
-    // Transformador - Usar fallback por obraId+tipo para maior robustez
-    const fotosTransformadorLaudoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_laudo || [], obra.id, 'transformador_laudo');
-    const fotosTransformadorComponenteInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_componente_instalado || [], obra.id, 'transformador_componente_instalado');
-    const fotosTransformadorTombamentoInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_instalado || [], obra.id, 'transformador_tombamento_instalado');
-    const fotosTransformadorTapeMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_tape || [], obra.id, 'transformador_tape');
-    const fotosTransformadorPlacaInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_instalado || [], obra.id, 'transformador_placa_instalado');
-    const fotosTransformadorInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_instalado || [], obra.id, 'transformador_instalado');
-    const fotosTransformadorAntesRetirarMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_antes_retirar || [], obra.id, 'transformador_antes_retirar');
-    const fotosTransformadorTombamentoRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_retirado || [], obra.id, 'transformador_tombamento_retirado');
-    const fotosTransformadorPlacaRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_retirado || [], obra.id, 'transformador_placa_retirado');
-    const fotosTransformadorConexoesPrimariasInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_instalado || [], obra.id, 'transformador_conexoes_primarias_instalado');
-    const fotosTransformadorConexoesSecundariasInstaladoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_instalado || [], obra.id, 'transformador_conexoes_secundarias_instalado');
-    const fotosTransformadorConexoesPrimariasRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_retirado || [], obra.id, 'transformador_conexoes_primarias_retirado');
-    const fotosTransformadorConexoesSecundariasRetiradoMetadata = await getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_retirado || [], obra.id, 'transformador_conexoes_secundarias_retirado');
-    const fotosMedidorPadraoMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_padrao || []);
-    const fotosMedidorLeituraMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_leitura || []);
-    const fotosMedidorSeloBornMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_selo_born || []);
-    const fotosMedidorSeloCaixaMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_selo_caixa || []);
-    const fotosMedidorIdentificadorFaseMetadata = await getPhotoMetadatasByIds(obra.fotos_medidor_identificador_fase || []);
-    // Checklist de Fiscalização
-    const fotosChecklistCroquiMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_croqui || []);
-    const fotosChecklistPanoramicaInicialMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_inicial || []);
-    const fotosChecklistChedeMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_chede || []);
-    const fotosChecklistAterramentoCercaMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_aterramento_cerca || []);
-    const fotosChecklistPadraoGeralMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_padrao_geral || []);
-    const fotosChecklistPadraoInternoMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_padrao_interno || []);
-    const fotosChecklistFryingMetadata = await getPhotoMetadatasByIds((obra as any).fotos_checklist_frying || []);
-    const fotosChecklistAberturaFechamentoPuloMetadata = await getPhotoMetadatasByIds((obra as any).fotos_checklist_abertura_fechamento_pulo || []);
-    const fotosChecklistPanoramicaFinalMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_final || []);
-    const fotosChecklistPostesMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_postes || []);
-    const fotosChecklistSeccionamentosMetadata = await getPhotoMetadatasByIds(obra.fotos_checklist_seccionamentos || []);
-    // Documentação (PDFs) - Usar fallback por obraId+tipo para maior robustez
-    const docCadastroMedidorMetadata = await getPhotoMetadatasWithFallback(obra.doc_cadastro_medidor || [], obra.id, 'doc_cadastro_medidor');
-    const docLaudoTransformadorMetadata = await getPhotoMetadatasWithFallback(obra.doc_laudo_transformador || [], obra.id, 'doc_laudo_transformador');
-    const docLaudoReguladorMetadata = await getPhotoMetadatasWithFallback(obra.doc_laudo_regulador || [], obra.id, 'doc_laudo_regulador');
-    const docLaudoReligadorMetadata = await getPhotoMetadatasWithFallback(obra.doc_laudo_religador || [], obra.id, 'doc_laudo_religador');
-    const docAprMetadata = await getPhotoMetadatasWithFallback(obra.doc_apr || [], obra.id, 'doc_apr');
-    const docFvbtMetadata = await getPhotoMetadatasWithFallback(obra.doc_fvbt || [], obra.id, 'doc_fvbt');
-    const docTermoDesistenciaLptMetadata = await getPhotoMetadatasWithFallback(obra.doc_termo_desistencia_lpt || [], obra.id, 'doc_termo_desistencia_lpt');
-    const docAutorizacaoPassagemMetadata = await getPhotoMetadatasWithFallback(obra.doc_autorizacao_passagem || [], obra.id, 'doc_autorizacao_passagem');
-    // Altimetria
-    const fotosAltimetriaLadoFonteMetadata = await getPhotoMetadatasByIds(obra.fotos_altimetria_lado_fonte || []);
-    const fotosAltimetriaMedicaoFonteMetadata = await getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_fonte || []);
-    const fotosAltimetriaLadoCargaMetadata = await getPhotoMetadatasByIds(obra.fotos_altimetria_lado_carga || []);
-    const fotosAltimetriaMedicaoCargaMetadata = await getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_carga || []);
-    // Vazamento e Limpeza de Transformador
-    const fotosVazamentoEvidenciaMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_evidencia || []);
-    const fotosVazamentoEquipamentosLimpezaMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_equipamentos_limpeza || []);
-    const fotosVazamentoTombamentoRetiradoMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_tombamento_retirado || []);
-    const fotosVazamentoPlacaRetiradoMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_placa_retirado || []);
-    const fotosVazamentoTombamentoInstaladoMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_tombamento_instalado || []);
-    const fotosVazamentoPlacaInstaladoMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_placa_instalado || []);
-    const fotosVazamentoInstalacaoMetadata = await getPhotoMetadatasByIds(obra.fotos_vazamento_instalacao || []);
+    const [
+      fotosAntesMetadata,
+      fotosDuranteMetadata,
+      fotosDepoisMetadata,
+      fotosAberturaMetadata,
+      fotosFechamentoMetadata,
+      fotosDitaisAberturaMetadata,
+      fotosDitaisImpedirMetadata,
+      fotosDitaisTestarMetadata,
+      fotosDitaisAterrarMetadata,
+      fotosDitaisSinalizarMetadata,
+      fotosAterramentoValaAbertaMetadata,
+      fotosAterramentoHastesMetadata,
+      fotosAterramentoValaFechadaMetadata,
+      fotosAterramentoMedicaoMetadata,
+      fotosTransformadorLaudoMetadata,
+      fotosTransformadorComponenteInstaladoMetadata,
+      fotosTransformadorTombamentoInstaladoMetadata,
+      fotosTransformadorTapeMetadata,
+      fotosTransformadorPlacaInstaladoMetadata,
+      fotosTransformadorInstaladoMetadata,
+      fotosTransformadorAntesRetirarMetadata,
+      fotosTransformadorLaudoRetiradoMetadata,
+      fotosTransformadorTombamentoRetiradoMetadata,
+      fotosTransformadorPlacaRetiradoMetadata,
+      fotosTransformadorConexoesPrimariasInstaladoMetadata,
+      fotosTransformadorConexoesSecundariasInstaladoMetadata,
+      fotosTransformadorConexoesPrimariasRetiradoMetadata,
+      fotosTransformadorConexoesSecundariasRetiradoMetadata,
+      fotosMedidorPadraoMetadata,
+      fotosMedidorLeituraMetadata,
+      fotosMedidorSeloBornMetadata,
+      fotosMedidorSeloCaixaMetadata,
+      fotosMedidorIdentificadorFaseMetadata,
+      fotosChecklistCroquiMetadata,
+      fotosChecklistPanoramicaInicialMetadata,
+      fotosChecklistChedeMetadata,
+      fotosChecklistAterramentoCercaMetadata,
+      fotosChecklistPadraoGeralMetadata,
+      fotosChecklistPadraoInternoMetadata,
+      fotosChecklistFryingMetadata,
+      fotosChecklistAberturaFechamentoPuloMetadata,
+      fotosChecklistPanoramicaFinalMetadata,
+      fotosChecklistPostesMetadata,
+      fotosChecklistSeccionamentosMetadata,
+      docCadastroMedidorMetadata,
+      docLaudoTransformadorMetadata,
+      docLaudoReguladorMetadata,
+      docLaudoReligadorMetadata,
+      docAprMetadata,
+      docFvbtMetadata,
+      docTermoDesistenciaLptMetadata,
+      docAutorizacaoPassagemMetadata,
+      docMateriaisPrevistoMetadata,
+      docMateriaisRealizadoMetadata,
+      fotosAltimetriaLadoFonteMetadata,
+      fotosAltimetriaMedicaoFonteMetadata,
+      fotosAltimetriaLadoCargaMetadata,
+      fotosAltimetriaMedicaoCargaMetadata,
+      fotosVazamentoEvidenciaMetadata,
+      fotosVazamentoEquipamentosLimpezaMetadata,
+      fotosVazamentoTombamentoRetiradoMetadata,
+      fotosVazamentoPlacaRetiradoMetadata,
+      fotosVazamentoTombamentoInstaladoMetadata,
+      fotosVazamentoPlacaInstaladoMetadata,
+      fotosVazamentoInstalacaoMetadata,
+    ] = await Promise.all([
+      getPhotoMetadatasByIds(obra.fotos_antes || []),
+      getPhotoMetadatasByIds(obra.fotos_durante || []),
+      getPhotoMetadatasByIds(obra.fotos_depois || []),
+      getPhotoMetadatasByIds(obra.fotos_abertura || []),
+      getPhotoMetadatasByIds(obra.fotos_fechamento || []),
+      getPhotoMetadatasByIds(obra.fotos_ditais_abertura || []),
+      getPhotoMetadatasByIds(obra.fotos_ditais_impedir || []),
+      getPhotoMetadatasByIds(obra.fotos_ditais_testar || []),
+      getPhotoMetadatasByIds(obra.fotos_ditais_aterrar || []),
+      getPhotoMetadatasByIds(obra.fotos_ditais_sinalizar || []),
+      getPhotoMetadatasByIds(obra.fotos_aterramento_vala_aberta || []),
+      getPhotoMetadatasByIds(obra.fotos_aterramento_hastes || []),
+      getPhotoMetadatasByIds(obra.fotos_aterramento_vala_fechada || []),
+      getPhotoMetadatasByIds(obra.fotos_aterramento_medicao || []),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_laudo || [], obra.id, 'transformador_laudo'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_componente_instalado || [], obra.id, 'transformador_componente_instalado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_instalado || [], obra.id, 'transformador_tombamento_instalado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_tape || [], obra.id, 'transformador_tape'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_instalado || [], obra.id, 'transformador_placa_instalado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_instalado || [], obra.id, 'transformador_instalado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_antes_retirar || [], obra.id, 'transformador_antes_retirar'),
+      getPhotoMetadatasWithFallback((obra as any).fotos_transformador_laudo_retirado || [], obra.id, 'transformador_laudo_retirado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_retirado || [], obra.id, 'transformador_tombamento_retirado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_retirado || [], obra.id, 'transformador_placa_retirado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_instalado || [], obra.id, 'transformador_conexoes_primarias_instalado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_instalado || [], obra.id, 'transformador_conexoes_secundarias_instalado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_retirado || [], obra.id, 'transformador_conexoes_primarias_retirado'),
+      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_retirado || [], obra.id, 'transformador_conexoes_secundarias_retirado'),
+      getPhotoMetadatasByIds(obra.fotos_medidor_padrao || []),
+      getPhotoMetadatasByIds(obra.fotos_medidor_leitura || []),
+      getPhotoMetadatasByIds(obra.fotos_medidor_selo_born || []),
+      getPhotoMetadatasByIds(obra.fotos_medidor_selo_caixa || []),
+      getPhotoMetadatasByIds(obra.fotos_medidor_identificador_fase || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_croqui || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_inicial || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_chede || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_aterramento_cerca || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_padrao_geral || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_padrao_interno || []),
+      getPhotoMetadatasByIds((obra as any).fotos_checklist_frying || []),
+      getPhotoMetadatasByIds((obra as any).fotos_checklist_abertura_fechamento_pulo || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_final || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_postes || []),
+      getPhotoMetadatasByIds(obra.fotos_checklist_seccionamentos || []),
+      getPhotoMetadatasWithFallback(obra.doc_cadastro_medidor || [], obra.id, 'doc_cadastro_medidor'),
+      getPhotoMetadatasWithFallback(obra.doc_laudo_transformador || [], obra.id, 'doc_laudo_transformador'),
+      getPhotoMetadatasWithFallback(obra.doc_laudo_regulador || [], obra.id, 'doc_laudo_regulador'),
+      getPhotoMetadatasWithFallback(obra.doc_laudo_religador || [], obra.id, 'doc_laudo_religador'),
+      getPhotoMetadatasWithFallback(obra.doc_apr || [], obra.id, 'doc_apr'),
+      getPhotoMetadatasWithFallback(obra.doc_fvbt || [], obra.id, 'doc_fvbt'),
+      getPhotoMetadatasWithFallback(obra.doc_termo_desistencia_lpt || [], obra.id, 'doc_termo_desistencia_lpt'),
+      getPhotoMetadatasWithFallback(obra.doc_autorizacao_passagem || [], obra.id, 'doc_autorizacao_passagem'),
+      getPhotoMetadatasWithFallback(obra.doc_materiais_previsto || [], obra.id, 'doc_materiais_previsto'),
+      getPhotoMetadatasWithFallback(obra.doc_materiais_realizado || [], obra.id, 'doc_materiais_realizado'),
+      getPhotoMetadatasByIds(obra.fotos_altimetria_lado_fonte || []),
+      getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_fonte || []),
+      getPhotoMetadatasByIds(obra.fotos_altimetria_lado_carga || []),
+      getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_carga || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_evidencia || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_equipamentos_limpeza || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_tombamento_retirado || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_placa_retirado || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_tombamento_instalado || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_placa_instalado || []),
+      getPhotoMetadatasByIds(obra.fotos_vazamento_instalacao || []),
+    ]);
 
     // Converter todos os metadados para o formato do banco
     const fotosAntesData = convertPhotosToData(fotosAntesMetadata);
@@ -1794,6 +1872,7 @@ export const syncObra = async (
     const fotosTransformadorPlacaInstaladoData = convertPhotosToData(fotosTransformadorPlacaInstaladoMetadata);
     const fotosTransformadorInstaladoData = convertPhotosToData(fotosTransformadorInstaladoMetadata);
     const fotosTransformadorAntesRetirarData = convertPhotosToData(fotosTransformadorAntesRetirarMetadata);
+    const fotosTransformadorLaudoRetiradoData = convertPhotosToData(fotosTransformadorLaudoRetiradoMetadata);
     const fotosTransformadorTombamentoRetiradoData = convertPhotosToData(fotosTransformadorTombamentoRetiradoMetadata);
     const fotosTransformadorPlacaRetiradoData = convertPhotosToData(fotosTransformadorPlacaRetiradoMetadata);
     const fotosTransformadorConexoesPrimariasInstaladoData = convertPhotosToData(fotosTransformadorConexoesPrimariasInstaladoMetadata);
@@ -1824,6 +1903,8 @@ export const syncObra = async (
     const docFvbtData = convertPhotosToData(docFvbtMetadata);
     const docTermoDesistenciaLptData = convertPhotosToData(docTermoDesistenciaLptMetadata);
     const docAutorizacaoPassagemData = convertPhotosToData(docAutorizacaoPassagemMetadata);
+    const docMateriaisPrevistoData = convertPhotosToData(docMateriaisPrevistoMetadata);
+    const docMateriaisRealizadoData = convertPhotosToData(docMateriaisRealizadoMetadata);
     const fotosAltimetriaLadoFonteData = convertPhotosToData(fotosAltimetriaLadoFonteMetadata);
     const fotosAltimetriaMedicaoFonteData = convertPhotosToData(fotosAltimetriaMedicaoFonteMetadata);
     const fotosAltimetriaLadoCargaData = convertPhotosToData(fotosAltimetriaLadoCargaMetadata);
@@ -1929,6 +2010,7 @@ export const syncObra = async (
           fotos_transformador_placa_instalado: replaceOrKeep(fotosTransformadorPlacaInstaladoData, existingObra.fotos_transformador_placa_instalado),
           fotos_transformador_instalado: replaceOrKeep(fotosTransformadorInstaladoData, existingObra.fotos_transformador_instalado),
           fotos_transformador_antes_retirar: replaceOrKeep(fotosTransformadorAntesRetirarData, existingObra.fotos_transformador_antes_retirar),
+          fotos_transformador_laudo_retirado: replaceOrKeep(fotosTransformadorLaudoRetiradoData, (existingObra as any).fotos_transformador_laudo_retirado),
           fotos_transformador_tombamento_retirado: replaceOrKeep(fotosTransformadorTombamentoRetiradoData, existingObra.fotos_transformador_tombamento_retirado),
           fotos_transformador_placa_retirado: replaceOrKeep(fotosTransformadorPlacaRetiradoData, existingObra.fotos_transformador_placa_retirado),
           fotos_transformador_conexoes_primarias_instalado: replaceOrKeep(fotosTransformadorConexoesPrimariasInstaladoData, existingObra.fotos_transformador_conexoes_primarias_instalado),
@@ -1959,6 +2041,8 @@ export const syncObra = async (
           doc_fvbt: replaceOrKeep(docFvbtData, existingObra.doc_fvbt),
           doc_termo_desistencia_lpt: replaceOrKeep(docTermoDesistenciaLptData, existingObra.doc_termo_desistencia_lpt),
           doc_autorizacao_passagem: replaceOrKeep(docAutorizacaoPassagemData, existingObra.doc_autorizacao_passagem),
+          doc_materiais_previsto: replaceOrKeep(docMateriaisPrevistoData, existingObra.doc_materiais_previsto),
+          doc_materiais_realizado: replaceOrKeep(docMateriaisRealizadoData, existingObra.doc_materiais_realizado),
           fotos_altimetria_lado_fonte: replaceOrKeep(fotosAltimetriaLadoFonteData, existingObra.fotos_altimetria_lado_fonte),
           fotos_altimetria_medicao_fonte: replaceOrKeep(fotosAltimetriaMedicaoFonteData, existingObra.fotos_altimetria_medicao_fonte),
           fotos_altimetria_lado_carga: replaceOrKeep(fotosAltimetriaLadoCargaData, existingObra.fotos_altimetria_lado_carga),
@@ -1985,7 +2069,7 @@ export const syncObra = async (
         // Executar update
         const { error: updateError } = await supabase
           .from('obras')
-          .update(updatePayload)
+          .update(sanitizeObrasPayload(updatePayload))
           .eq('id', idToUpdate);
 
         if (updateError) {
@@ -1995,6 +2079,13 @@ export const syncObra = async (
         console.log(`✅ Obra ${idToUpdate} atualizada no servidor via sync.`);
 
         // Remover da fila
+        try {
+          const { remapServicosObraId } = await import('./servico-sync');
+          await remapServicosObraId(obra.id, idToUpdate);
+        } catch (servicoRemapError) {
+          console.error('Erro ao remapear serviços da obra (não crítico):', servicoRemapError);
+        }
+
         await removePendingObra(obra.id);
         return { success: true, newId: idToUpdate };
         }
@@ -2041,7 +2132,7 @@ export const syncObra = async (
 
       const { error: updateError } = await supabase
         .from('obras')
-        .update({
+        .update(sanitizeObrasPayload({
           data: obra.data,
           responsavel: obra.responsavel,
           tipo_servico: obra.tipo_servico,
@@ -2068,6 +2159,7 @@ export const syncObra = async (
           fotos_transformador_placa_instalado: fotosTransformadorPlacaInstaladoData,
           fotos_transformador_instalado: fotosTransformadorInstaladoData,
           fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarData,
+          fotos_transformador_laudo_retirado: fotosTransformadorLaudoRetiradoData,
           fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoData,
           fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoData,
           fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstaladoData,
@@ -2098,6 +2190,8 @@ export const syncObra = async (
           doc_fvbt: docFvbtData,
           doc_termo_desistencia_lpt: docTermoDesistenciaLptData,
           doc_autorizacao_passagem: docAutorizacaoPassagemData,
+          doc_materiais_previsto: docMateriaisPrevistoData,
+          doc_materiais_realizado: docMateriaisRealizadoData,
           fotos_altimetria_lado_fonte: fotosAltimetriaLadoFonteData,
           fotos_altimetria_medicao_fonte: fotosAltimetriaMedicaoFonteData,
           fotos_altimetria_lado_carga: fotosAltimetriaLadoCargaData,
@@ -2118,7 +2212,7 @@ export const syncObra = async (
           checklist_seccionamentos_data: checklistSeccionamentosDataConverted || null,
           checklist_aterramentos_cerca_data: checklistAterramentosDataConverted || null,
           checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || null,
-        })
+        }))
         .eq('id', existingSameBook.id);
 
       if (updateError) {
@@ -2132,6 +2226,13 @@ export const syncObra = async (
         await updatePhotosObraId(obra.id, existingSameBook.id);
       } catch (photoError) {
         console.error('Erro ao atualizar obraId das fotos (não crítico):', photoError);
+      }
+
+      try {
+        const { remapServicosObraId } = await import('./servico-sync');
+        await remapServicosObraId(obra.id, existingSameBook.id);
+      } catch (servicoRemapError) {
+        console.error('Erro ao atualizar obraId dos serviços (não crítico):', servicoRemapError);
       }
 
       // Atualizar serverId na obra local para evitar futuras duplicações
@@ -2155,7 +2256,7 @@ export const syncObra = async (
     const { data: insertedObra, error } = await supabase
       .from('obras')
       .insert([
-        {
+        sanitizeObrasPayload({
           data: obra.data,
           obra: obra.obra,
           responsavel: obra.responsavel,
@@ -2184,6 +2285,7 @@ export const syncObra = async (
           fotos_transformador_placa_instalado: fotosTransformadorPlacaInstaladoData,
           fotos_transformador_instalado: fotosTransformadorInstaladoData,
           fotos_transformador_antes_retirar: fotosTransformadorAntesRetirarData,
+          fotos_transformador_laudo_retirado: fotosTransformadorLaudoRetiradoData,
           fotos_transformador_tombamento_retirado: fotosTransformadorTombamentoRetiradoData,
           fotos_transformador_placa_retirado: fotosTransformadorPlacaRetiradoData,
           fotos_transformador_conexoes_primarias_instalado: fotosTransformadorConexoesPrimariasInstaladoData,
@@ -2214,6 +2316,8 @@ export const syncObra = async (
           doc_fvbt: docFvbtData,
           doc_termo_desistencia_lpt: docTermoDesistenciaLptData,
           doc_autorizacao_passagem: docAutorizacaoPassagemData,
+          doc_materiais_previsto: docMateriaisPrevistoData,
+          doc_materiais_realizado: docMateriaisRealizadoData,
           fotos_altimetria_lado_fonte: fotosAltimetriaLadoFonteData,
           fotos_altimetria_medicao_fonte: fotosAltimetriaMedicaoFonteData,
           fotos_altimetria_lado_carga: fotosAltimetriaLadoCargaData,
@@ -2237,7 +2341,7 @@ export const syncObra = async (
           checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || null,
           // user_id removido - Login por equipe não usa Supabase Auth
           created_at: obra.created_at || new Date().toISOString(),
-        },
+        }),
       ])
       .select('id')
       .single();
@@ -2257,6 +2361,16 @@ export const syncObra = async (
         console.error('Erro ao atualizar obraId das fotos (não crítico):', photoUpdateError);
         // Não propaga erro - sincronização foi bem sucedida
       }
+
+      try {
+        const { remapServicosObraId } = await import('./servico-sync');
+        const remapped = await remapServicosObraId(obra.id, insertedObra.id);
+        if (remapped > 0) {
+          console.log(`✅ ${remapped} serviço(s) remapeado(s) para obra ${insertedObra.id}`);
+        }
+      } catch (servicoRemapError) {
+        console.error('Erro ao atualizar obraId dos serviços (não crítico):', servicoRemapError);
+      }
     }
 
     // Remover da fila
@@ -2264,8 +2378,18 @@ export const syncObra = async (
     return { success: true, newId: finalObraId };
 
   } catch (error: any) {
+    const errorMessage: string = error?.message || '';
+    const isNetworkError = /network request failed|failed to fetch|timeout|sem conexão/i.test(errorMessage);
+
+    if (isNetworkError) {
+      // Falha de rede temporária: manter como 'pending' para tentar novamente quando voltar online
+      console.warn(`⚠️ [syncObra] Falha de rede ao sincronizar obra ${obra.obra} - mantendo como pendente para retry`);
+      await updatePendingObraStatus(obra.id, 'pending', undefined, obra.sync_attempts);
+      return { success: false };
+    }
+
     console.error('Erro ao sincronizar obra:', error);
-    const friendlyMessage = translateErrorMessage(error?.message);
+    const friendlyMessage = translateErrorMessage(errorMessage);
 
     // Incrementar contador de tentativas falhadas
     const syncAttempts = (obra.sync_attempts || 0) + 1;
@@ -2360,15 +2484,43 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
     // 2. Sincronizar obras de @obras_local que não foram sincronizadas
     const localObras = await getLocalObras();
     const pendingPhotos = await getPendingPhotos();
-    const localObrasToSync = localObras.filter(
-      o => (!o.synced || hasPendingPhotosForObra(o, pendingPhotos)) && o.sync_status !== 'syncing'
-    );
+
+    const localObrasToSync = localObras.filter(o => {
+      // Skip se já foi sincronizada e não tem modificações locais
+      if (o.synced && !o.locallyModified && o.sync_status !== 'failed') {
+        return false;
+      }
+
+      // Include se tem modificações locais
+      if (o.locallyModified) {
+        return true;
+      }
+
+      // Include se não foi sincronizada ainda
+      if (!o.synced && !o.serverId) {
+        return true;
+      }
+
+      // Include apenas se tem FOTOS PENDENTES e NÃO foi sincronizada recentemente
+      if (hasPendingPhotosForObra(o, pendingPhotos)) {
+        // Só re-sincroniza se foi marcada como 'partial' ou 'failed'
+        return o.sync_status === 'partial' || o.sync_status === 'failed';
+      }
+
+      return false;
+    });
+
     console.log(`📊 [syncAllPendingObras] Obras locais não sincronizadas: ${localObrasToSync.length}`);
 
     for (const localObra of localObrasToSync) {
       try {
-        const synced = await syncLocalObra(localObra.id);
-        if (synced) {
+        // Pular obras que já estão sendo sincronizadas
+        if (localObra.sync_status === 'syncing') {
+          continue;
+        }
+
+        const result = await syncObra(localObra);
+        if (result.success) {
           success++;
           console.log(`✅ [syncAllPendingObras] Obra local sincronizada: ${localObra.obra}`);
         } else {
@@ -2630,6 +2782,13 @@ export const startAutoSync = (onSyncComplete?: (result: { success: number; faile
       autoSyncDebounceTimer = setTimeout(async () => {
         autoSyncDebounceTimer = null;
         const result = await syncAllPendingObras();
+        // Após obras, sincronizar serviços pendentes (tabela servicos)
+        try {
+          const { syncAllPendingServicos } = await import('./servico-sync');
+          await syncAllPendingServicos();
+        } catch (servicoSyncErr) {
+          console.warn('[startAutoSync] Erro ao sincronizar serviços:', servicoSyncErr);
+        }
         if (result.success > 0 || result.failed > 0) {
           onSyncComplete?.(result);
         }

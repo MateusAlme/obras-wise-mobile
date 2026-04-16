@@ -1,14 +1,22 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, TextInput, useWindowDimensions } from 'react-native';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, syncAllPendingObrasWithProgress, removePendingObra, removeLocalObra, type CancellationToken } from '../../lib/offline-sync';
+import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, syncAllPendingObrasWithProgress, removePendingObra, removeLocalObra, syncObra, type CancellationToken } from '../../lib/offline-sync';
 import type { PendingObra, LocalObra } from '../../lib/offline-sync';
-import { getQueueStats, retryFailedUploads } from '../../lib/photo-queue';
+import { getQueueStats, retryFailedUploads, processObraPhotos } from '../../lib/photo-queue';
+import { backupPhoto, getPhotoMetadatasByIds } from '../../lib/photo-backup';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SyncProgressModal, type ObraSyncProgress } from '../../components/SyncProgressModal';
+import { ObraContainer, ServiceCard, ServiceTypeSelector } from '../../components/ServicosComponents';
+import type { Servico, SyncStatusServico, TipoServico, FotoInfo as ServicoFotoInfo } from '../../types/servico';
+import { fetchServicosForObra, createServico, markServicoComplete, appendPhotoToServicoLocal } from '../../lib/servico-sync';
+
+const isUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 const LOCAL_OBRAS_KEY = '@obras_local';
 
@@ -49,6 +57,12 @@ interface Obra {
 }
 
 type ObraListItem = (Obra & { origem: 'online' | 'offline'; sync_status?: string; error_message?: string });
+type GroupedObra = {
+  groupKey: string;
+  obraNumero: string;
+  principal: ObraListItem;
+  itens: ObraListItem[];
+};
 
 const HISTORY_CACHE_KEY = '@obras_history_cache';
 
@@ -78,6 +92,18 @@ export default function Obras() {
   // Estado de status das fotos na fila de upload
   const [photoStats, setPhotoStats] = useState({ pending: 0, uploading: 0, failed: 0 });
   const [syncingPhotos, setSyncingPhotos] = useState(false);
+  const [expandedObraId, setExpandedObraId] = useState<string | null>(null);
+  const [expandedServicoId, setExpandedServicoId] = useState<string | null>(null);
+  const [servicosPorObra, setServicosPorObra] = useState<Record<string, Servico[]>>({});
+  const [serviceSelectorVisible, setServiceSelectorVisible] = useState(false);
+  const [selectedObraIdForService, setSelectedObraIdForService] = useState<string | null>(null);
+  const [selectedObraGroupKeyForService, setSelectedObraGroupKeyForService] = useState<string | null>(null);
+  const [capturingPhotoForServico, setCapturingPhotoForServico] = useState<{
+    servicoId: string;
+    category: string;
+    obraId: string;
+  } | null>(null);
+  const [captureLoading, setCaptureLoading] = useState(false);
 
   const isCompressorBook = (obra: { tipo_servico?: string; creator_role?: string }) => {
     return obra?.tipo_servico === 'Cava em Rocha' || obra?.creator_role === 'compressor';
@@ -135,6 +161,43 @@ export default function Obras() {
     });
   }, [combinedObras, searchTerm]);
 
+  const groupObrasByNumero = useCallback((lista: ObraListItem[]): GroupedObra[] => {
+    const groups = new Map<string, GroupedObra>();
+
+    for (const obra of lista) {
+      const obraNumero = String(obra.obra || '').trim();
+      const key = obraNumero.toLowerCase();
+      const existente = groups.get(key);
+
+      if (!existente) {
+        groups.set(key, {
+          groupKey: key,
+          obraNumero,
+          principal: obra,
+          itens: [obra],
+        });
+        continue;
+      }
+
+      existente.itens.push(obra);
+
+      const dataAtual = new Date(existente.principal.created_at || existente.principal.data || 0).getTime();
+      const dataNova = new Date(obra.created_at || obra.data || 0).getTime();
+      if (dataNova > dataAtual) {
+        existente.principal = obra;
+      }
+    }
+
+    return Array.from(groups.values()).sort((a, b) => {
+      const ta = new Date(a.principal.created_at || a.principal.data || 0).getTime();
+      const tb = new Date(b.principal.created_at || b.principal.data || 0).getTime();
+      return tb - ta;
+    });
+  }, []);
+
+  const groupedCombinedObras = useMemo(() => groupObrasByNumero(combinedObras), [combinedObras, groupObrasByNumero]);
+  const groupedFilteredObras = useMemo(() => groupObrasByNumero(filteredObras), [filteredObras, groupObrasByNumero]);
+
   // ✅ Filtrar obras pendentes apenas da equipe logada para contadores
   const pendingObrasDaEquipe = useMemo(() => {
     if (isAdmin) return pendingObrasState;
@@ -163,7 +226,7 @@ export default function Obras() {
     });
 
     const unsubscribe = NetInfo.addEventListener((state) => {
-      const online = state.isConnected === true && state.isInternetReachable === true;
+      const online = state.isConnected === true && state.isInternetReachable !== false;
       setIsOnline(online);
     });
 
@@ -340,12 +403,11 @@ export default function Obras() {
       console.log('📱 Carregando obras do AsyncStorage...');
       let localObras = await getLocalObras();
 
-      // Se vazio, tentar migrar do Supabase
-      if (localObras.length === 0) {
-        console.log(`⚠️ AsyncStorage vazio - migrando de Supabase para ${roleIsAdmin ? 'todas as equipes' : `"${equipe}"`}...`);
-        await migrateObrasDeSupabase(equipe || '', role);
-        localObras = await getLocalObras();
-      }
+      // Sempre tentar sincronizar com Supabase quando online
+      // (migrateObrasDeSupabase verifica conectividade internamente e pula se offline)
+      console.log(`🔄 Sincronizando obras do Supabase para ${roleIsAdmin ? 'todas as equipes' : `"${equipe}"`}...`);
+      await migrateObrasDeSupabase(equipe || '', role);
+      localObras = await getLocalObras();
 
       // Auto-corrigir campos faltando
       await autoFixObraFields();
@@ -457,8 +519,8 @@ export default function Obras() {
   // A função foi removida para não indicar que fotos são obrigatórias
 
   const subtitleText = isOnline
-    ? `${filteredObras.length} de ${combinedObras.length} obra(s) cadastrada(s)`
-    : `${filteredObras.length} de ${combinedObras.length} obra(s) disponiveis offline`;
+    ? `${groupedFilteredObras.length} de ${groupedCombinedObras.length} obra(s) cadastrada(s)`
+    : `${groupedFilteredObras.length} de ${groupedCombinedObras.length} obra(s) disponiveis offline`;
 
   const renderStatusBadge = (obra: ObraListItem) => {
     if (obra.origem !== 'offline') {
@@ -565,8 +627,6 @@ export default function Obras() {
 
   // ========== HANDLERS ==========
 
-  // ========== HANDLERS ==========
-
   const handleOpenObra = (obra: ObraListItem) => {
     try {
       const payload = encodeURIComponent(JSON.stringify(obra));
@@ -576,6 +636,258 @@ export default function Obras() {
       });
     } catch (error) {
       console.error('Erro ao abrir detalhes da obra:', error);
+    }
+  };
+
+  const handleOpenObraBooksPage = (grupo: GroupedObra) => {
+    try {
+      router.push({
+        pathname: '/obra-books',
+        params: { obraNumero: grupo.obraNumero },
+      });
+    } catch (error) {
+      console.error('Erro ao abrir página de books da obra:', error);
+    }
+  };
+
+  const toSyncStatusServico = (obra: ObraListItem): SyncStatusServico => {
+    if (obra.sync_status === 'syncing') return 'syncing';
+    if (obra.sync_status === 'failed') return 'error';
+    if (obra.sync_status === 'partial') return 'error';
+    if (obra.serverId && obra.synced !== false) return 'synced';
+    return 'offline';
+  };
+
+  const loadServicosForObra = async (obraId: string) => {
+    try {
+      const servicos = await fetchServicosForObra(obraId);
+      setServicosPorObra((prev) => ({ ...prev, [obraId]: servicos }));
+    } catch (error) {
+      console.error('Erro ao carregar serviços da obra:', error);
+    }
+  };
+
+  const handleToggleExpandObra = async (obraId: string) => {
+    if (expandedObraId === obraId) {
+      setExpandedObraId(null);
+      setExpandedServicoId(null);
+      return;
+    }
+
+    setExpandedObraId(obraId);
+    if (!servicosPorObra[obraId]) {
+      await loadServicosForObra(obraId);
+    }
+  };
+
+  const handleAddService = (obraId: string, groupKey?: string) => {
+    setSelectedObraIdForService(obraId);
+    setSelectedObraGroupKeyForService(groupKey || null);
+    setServiceSelectorVisible(true);
+  };
+
+  const handleCreateServiceForObra = async (tipo: TipoServico) => {
+    if (!selectedObraIdForService) return;
+
+    const obra = combinedObras.find((o) => o.id === selectedObraIdForService);
+    const responsavel = obra?.responsavel;
+
+    const result = await createServico(selectedObraIdForService, tipo, responsavel);
+    if (!result.success) {
+      Alert.alert('Erro', result.error || 'Não foi possível criar o serviço.');
+      return;
+    }
+
+    await loadServicosForObra(selectedObraIdForService);
+    setExpandedObraId(selectedObraGroupKeyForService || selectedObraIdForService);
+  };
+
+  const handleMarkServiceComplete = async (obraId: string, servicoId: string) => {
+    const ok = await markServicoComplete(servicoId, obraId);
+    if (!ok) {
+      Alert.alert('Erro', 'Não foi possível atualizar o status do serviço.');
+      return;
+    }
+    await loadServicosForObra(obraId);
+  };
+
+  const handleCapturePhoto = async (servicoId: string, category: string, obraId: string) => {
+    setCapturingPhotoForServico({ servicoId, category, obraId });
+  };
+
+  const capturePhotoFromCamera = async () => {
+    if (!capturingPhotoForServico) return;
+
+    try {
+      setCaptureLoading(true);
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        Alert.alert('Permissão negada', 'É necessário permitir acesso à câmera.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await addPhotoToServico(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao tirar foto:', error);
+      Alert.alert('Erro', 'Não foi possível tirar a foto. Tente novamente.');
+    } finally {
+      setCaptureLoading(false);
+    }
+  };
+
+  const selectPhotoFromGallery = async () => {
+    if (!capturingPhotoForServico) return;
+
+    try {
+      setCaptureLoading(true);
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        Alert.alert('Permissão negada', 'É necessário permitir acesso à galeria.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await addPhotoToServico(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar imagem:', error);
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem. Tente novamente.');
+    } finally {
+      setCaptureLoading(false);
+    }
+  };
+
+  const addPhotoToServico = async (photoUri: string) => {
+    if (!capturingPhotoForServico) return;
+
+    try {
+      const { servicoId, category, obraId } = capturingPhotoForServico;
+
+      // Backup da foto
+      const photoMetadata = await backupPhoto(
+        photoUri,
+        obraId,
+        category as any,
+        0, // index
+        null, // latitude
+        null, // longitude
+        'image/jpeg'
+      );
+
+      // Atualizar serviço com a nova foto
+      const servicos = servicosPorObra[obraId] || [];
+      const servicoIdx = servicos.findIndex((s) => s.id === servicoId);
+
+      if (servicoIdx >= 0) {
+        const servico = servicos[servicoIdx];
+        const fieldName = category as keyof Servico;
+        const rawPhotos = (servico[fieldName] as unknown[]) || [];
+        const photos = rawPhotos as ServicoFotoInfo[];
+
+        const isServicoLocal = !isUuid(servicoId) || !isUuid(obraId);
+
+        if (isServicoLocal || !isOnline) {
+          const updatedLocal = [...rawPhotos];
+          const alreadyExists = updatedLocal.some((item: any) => {
+            if (typeof item === 'string') return item === photoMetadata.id;
+            if (item && item.id) return item.id === photoMetadata.id;
+            return false;
+          });
+
+          if (!alreadyExists) {
+            updatedLocal.push(photoMetadata.id);
+          }
+
+          const localSaved = await appendPhotoToServicoLocal(servicoId, obraId, fieldName as any, photoMetadata.id, photoMetadata.compressedPath, { latitude: photoMetadata.latitude, longitude: photoMetadata.longitude, utmX: photoMetadata.utmX, utmY: photoMetadata.utmY, utmZone: photoMetadata.utmZone });
+          if (!localSaved) {
+            Alert.alert('Erro', 'Não foi possível salvar a foto localmente neste serviço.');
+            return;
+          }
+
+          const updatedServicos = [...servicos];
+          updatedServicos[servicoIdx] = {
+            ...servico,
+            [fieldName]: updatedLocal,
+          } as Servico;
+          setServicosPorObra((prev) => ({ ...prev, [obraId]: updatedServicos }));
+
+          Alert.alert('Sucesso', isOnline ? 'Foto salva localmente e pendente de sincronização.' : 'Foto salva localmente.');
+          setCapturingPhotoForServico(null);
+          return;
+        }
+
+        let publicUrl: string | undefined;
+        if (isOnline) {
+          await processObraPhotos(obraId, undefined, [photoMetadata.id]);
+          const [uploadedMetadata] = await getPhotoMetadatasByIds([photoMetadata.id]);
+          publicUrl = uploadedMetadata?.uploadUrl || uploadedMetadata?.supabaseUrl;
+        }
+
+        const normalizedPhotos: ServicoFotoInfo[] = photos.map((photo) => {
+          const { uri, ...rest } = photo;
+          return {
+            ...rest,
+            url: rest.url || uri,
+            utm_x: rest.utm_x ?? (rest.utmX ? Number(rest.utmX) : undefined),
+            utm_y: rest.utm_y ?? (rest.utmY ? Number(rest.utmY) : undefined),
+          };
+        });
+
+        // Adicionar nova foto
+        const novaFoto: ServicoFotoInfo = {
+          url: publicUrl || photoMetadata.compressedPath,
+          latitude: photoMetadata.latitude,
+          longitude: photoMetadata.longitude,
+          utm_x: photoMetadata.utmX ?? undefined,
+          utm_y: photoMetadata.utmY ?? undefined,
+          utm_zone: photoMetadata.utmZone || undefined,
+          timestamp: new Date().getTime(),
+          takenAt: new Date().toISOString(),
+        };
+
+        const updatedPhotos = [...normalizedPhotos, novaFoto];
+
+        // Atualizar no Supabase e AsyncStorage
+        const { error } = await supabase
+          .from('servicos')
+          .update({ [fieldName]: updatedPhotos, updated_at: new Date().toISOString() })
+          .eq('id', servicoId);
+
+        if (!error) {
+          // Atualizar cache local
+          const updatedServicos = [...servicos];
+          updatedServicos[servicoIdx] = {
+            ...servico,
+            [fieldName]: updatedPhotos,
+          } as Servico;
+          setServicosPorObra((prev) => ({ ...prev, [obraId]: updatedServicos }));
+
+          Alert.alert('Sucesso', 'Foto adicionada!');
+        } else {
+          Alert.alert('Upload pendente', 'Foto salva no dispositivo. Sincronize quando houver conexão para enviar o link público.');
+        }
+      }
+
+      setCapturingPhotoForServico(null);
+    } catch (error) {
+      console.error('Erro ao adicionar foto:', error);
+      Alert.alert('Erro', 'Não foi possível adicionar a foto.');
     }
   };
 
@@ -639,6 +951,51 @@ export default function Obras() {
     // Recarregar dados
     await loadPendingObras();
     if (result.success > 0) await carregarObras();
+  };
+
+  const handleSyncSingleObra = async (obra: ObraListItem) => {
+    if (!isOnline) {
+      Alert.alert('Sem conexão', 'Conecte-se à internet para sincronizar este rascunho.');
+      return;
+    }
+
+    const pendingObra = pendingObrasState.find((item) => item.id === obra.id) || pendingObrasState.find((item) => item.obra === obra.obra);
+    if (!pendingObra) {
+      Alert.alert('Não encontrado', 'Não foi possível localizar o rascunho para sincronização.');
+      return;
+    }
+
+    setSyncModalVisible(true);
+    setSyncProgress({
+      currentObraIndex: 0,
+      totalObras: 1,
+      currentObraName: pendingObra.obra,
+      photoProgress: { completed: 0, total: 0 },
+      overallStatus: 'syncing',
+      results: { success: 0, failed: 0 },
+      errors: [],
+    });
+
+    try {
+      const result = await syncObra(pendingObra);
+      setSyncProgress((prev) => ({
+        ...prev!,
+        overallStatus: 'completed',
+        results: { success: result.success ? 1 : 0, failed: result.success ? 0 : 1 },
+        errors: result.success ? [] : [{ obraName: pendingObra.obra, errorMessage: 'Falha ao sincronizar este rascunho.' }],
+      }));
+
+      if (result.success) {
+        await loadPendingObras();
+        await carregarObras();
+        Alert.alert('Sincronizado', 'A obra foi sincronizada com sucesso.');
+      } else {
+        Alert.alert('Falha', 'Não foi possível sincronizar esta obra.');
+      }
+    } catch (error) {
+      console.error('Erro ao sincronizar obra individual:', error);
+      Alert.alert('Erro', 'Não foi possível sincronizar esta obra.');
+    }
   };
 
   const handleCancelSync = () => {
@@ -901,7 +1258,7 @@ export default function Obras() {
               Clique no botao "+" acima ou no Dashboard para cadastrar sua primeira obra.
             </Text>
           </View>
-        ) : filteredObras.length === 0 ? (
+        ) : groupedFilteredObras.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Nenhum resultado</Text>
             <Text style={styles.cardText}>
@@ -909,106 +1266,68 @@ export default function Obras() {
             </Text>
           </View>
         ) : (
-          filteredObras.map((obra) => {
-            const isAberta = obra.status === 'em_aberto' || !obra.status;
-            const isFinalizada = obra.status === 'finalizada';
-            const isRascunho = obra.status === 'rascunho';
-            // ✅ CORREÇÃO: Considerar sincronizada se tem serverId
-            const isSynced = obra.serverId && obra.synced !== false;
-            const isPartialSync = obra.sync_status === 'partial' || (!!obra.serverId && obra.synced === false);
+          groupedFilteredObras.map((grupo) => {
+            const obra = grupo.principal;
+            const obraIds = grupo.itens.map((item) => item.id);
+
+            const servicosDb = obraIds.flatMap((id) => servicosPorObra[id] || []);
+            const servicosDbUnicos = servicosDb.filter((servico, index, lista) => {
+              return lista.findIndex((item) => item.id === servico.id) === index;
+            });
+            const legacyServicos = grupo.itens
+              .map((item) => ({
+                ...(item as any), // inclui todos os campos de fotos da obra
+                id: `legacy-${item.id}-servico`,
+                obra_id: item.id,
+                tipo_servico: (item.tipo_servico || 'Documentação') as TipoServico,
+                responsavel: item.responsavel,
+                status: item.status === 'finalizada' ? 'completo' : 'rascunho',
+                sync_status: toSyncStatusServico(item),
+                created_at: item.created_at,
+                updated_at: item.created_at,
+                fotos_antes: (item as any).fotos_antes || [],
+                fotos_durante: (item as any).fotos_durante || [],
+                fotos_depois: (item as any).fotos_depois || [],
+              } as Servico));
+
+            const legacyServicosUnicos = legacyServicos.filter((servico, index, lista) => {
+              return lista.findIndex((item) => item.id === servico.id) === index;
+            });
+
+            const servicosRender = [...servicosDbUnicos, ...legacyServicosUnicos];
+
+            // Calcular status da obra baseado nos serviços novos
+            // Se há serviços DB, considera-los. Se não, usa status original.
+            let displayStatus: 'em_aberto' | 'rascunho' | 'finalizada' = obra.status || 'em_aberto';
+            if (servicosDbUnicos.length > 0) {
+              // Há serviços novos: calcular status baseado neles
+              const todosCompletos = servicosDbUnicos.every((s) => s.status === 'completo');
+              displayStatus = todosCompletos ? 'finalizada' : 'em_aberto';
+            }
 
             return (
-              <View
-                key={`${obra.origem}_${obra.id}`}
-                style={[
-                  styles.obraCard,
-                  isFinalizada && styles.obraCardFinalizada,
-                  isRascunho && styles.obraCardRascunho
-                ]}
-              >
-                {/* Indicador de Sincronização - absoluto relativo ao card externo */}
-                <View style={[styles.syncIndicatorContainer, isSmallScreen && styles.syncIndicatorContainerSmall]}>
-                  {isSynced ? (
-                    <View style={styles.syncIndicatorSynced}>
-                      <Text style={styles.syncIndicatorIcon}>OK</Text>
-                      <Text style={styles.syncIndicatorTextSynced}>Sincronizada</Text>
-                    </View>
-                  ) : isPartialSync ? (
-                    <View style={styles.syncIndicatorPartial}>
-                      <Text style={styles.syncIndicatorIcon}>!</Text>
-                      <Text style={styles.syncIndicatorTextPartial}>Sync parcial</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.syncIndicatorPending}>
-                      <Text style={styles.syncIndicatorIcon}>...</Text>
-                      <Text style={styles.syncIndicatorTextPending}>Aguardando sync</Text>
-                    </View>
-                  )}
-                </View>
+              <View key={grupo.groupKey} style={{ marginBottom: 12 }}>
+                <ObraContainer
+                  obraId={grupo.groupKey}
+                  obraData={formatarData(obra.data)}
+                  obraTitle={grupo.obraNumero}
+                  responsavel={obra.responsavel}
+                  equipe={obra.equipe}
+                  status={displayStatus}
+                  servicos={servicosRender}
+                  isExpanded={false}
+                  onToggleExpand={() => handleOpenObraBooksPage(grupo)}
+                  onAddService={() => handleOpenObraBooksPage(grupo)}
+                />
 
-                {/* Área principal clicável para abrir detalhes */}
-                <TouchableOpacity activeOpacity={0.7} onPress={() => handleOpenObra(obra)}>
-                  <View style={[styles.obraHeader, isSmallScreen && styles.obraHeaderSmall]}>
-                    <View style={styles.obraHeaderLeft}>
-                      <Text style={styles.obraNumero}>Obra {obra.obra}</Text>
-                      <Text style={styles.obraData}>{formatarData(obra.data)}</Text>
-                    </View>
-                  </View>
+                {renderStatusBadge(obra)}
 
-                  {/* Status badges abaixo do header */}
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                    {isFinalizada && (
-                      <View style={styles.statusBadgeFinalizada}>
-                        <Text style={styles.statusBadgeText}>Finalizada</Text>
-                      </View>
-                    )}
-                    {isRascunho && (
-                      <View style={styles.statusBadgeRascunho}>
-                        <Text style={styles.statusBadgeText}>Rascunho</Text>
-                      </View>
-                    )}
-                    {isAberta && !isRascunho && (
-                      <View style={styles.statusBadgeAberta}>
-                        <Text style={styles.statusBadgeText}>Em aberto</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {isFinalizada && obra.finalizada_em && (
-                    <View style={styles.infoFinalizacao}>
-                      <Text style={styles.infoFinalizacaoText}>
-                        Finalizada em {formatarData(obra.finalizada_em)}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View style={styles.obraInfo}>
-                    <Text style={styles.obraLabel}>Responsavel:</Text>
-                    <Text style={styles.obraValue}>{obra.responsavel}</Text>
-                  </View>
-
-                  <View style={styles.obraInfo}>
-                    <Text style={styles.obraLabel}>Equipe:</Text>
-                    <Text style={styles.obraValue}>{obra.equipe}</Text>
-                  </View>
-
-                  <View style={styles.obraInfo}>
-                    <Text style={styles.obraLabel}>Servico:</Text>
-                    <Text style={styles.obraValue}>{obra.tipo_servico || '-'}</Text>
-                  </View>
-
-                  {renderStatusBadge(obra)}
-
-                  <Text style={styles.verMais}>Toque para ver detalhes</Text>
-                </TouchableOpacity>
-
-                {/* Botão remover - irmão do TouchableOpacity, sem aninhamento */}
                 {obra.origem === 'offline' && !obra.serverId && (
                   <View style={styles.cardFooter}>
-                    <TouchableOpacity
-                      style={styles.deleteObraButton}
-                      onPress={() => handleDeleteObra(obra)}
-                    >
+                    <TouchableOpacity style={styles.syncObraButton} onPress={() => handleSyncSingleObra(obra)}>
+                      <Text style={styles.syncObraButtonText}>Sincronizar obra</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.deleteObraButton} onPress={() => handleDeleteObra(obra)}>
                       <Text style={styles.deleteObraButtonText}>Remover rascunho</Text>
                     </TouchableOpacity>
                   </View>
@@ -1020,6 +1339,15 @@ export default function Obras() {
       </View>
       </ScrollView>
 
+      <ServiceTypeSelector
+        visible={serviceSelectorVisible}
+        onClose={() => {
+          setServiceSelectorVisible(false);
+          setSelectedObraIdForService(null);
+        }}
+        onSelect={handleCreateServiceForObra}
+      />
+
       {/* Modal de Progresso de Sincronização */}
       <SyncProgressModal
         visible={syncModalVisible}
@@ -1027,6 +1355,39 @@ export default function Obras() {
         onClose={() => setSyncModalVisible(false)}
         onCancel={handleCancelSync}
       />
+
+      {/* Modal para Selecionar Câmera ou Galeria */}
+      {capturingPhotoForServico && (
+        <View style={styles.photoSourceOverlay}>
+          <View style={styles.photoSourceModal}>
+            <Text style={styles.photoSourceTitle}>Adicionar Foto</Text>
+            <TouchableOpacity
+              style={styles.photoSourceButton}
+              onPress={capturePhotoFromCamera}
+              disabled={captureLoading}
+            >
+              <Text style={styles.photoSourceButtonText}>📷 Tirar Foto</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.photoSourceButton}
+              onPress={selectPhotoFromGallery}
+              disabled={captureLoading}
+            >
+              <Text style={styles.photoSourceButtonText}>🖼️ Selecionar da Galeria</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.photoSourceButton, styles.photoSourceButtonCancel]}
+              onPress={() => setCapturingPhotoForServico(null)}
+              disabled={captureLoading}
+            >
+              <Text style={styles.photoSourceButtonTextCancel}>Cancelar</Text>
+            </TouchableOpacity>
+            {captureLoading && (
+              <ActivityIndicator size="large" color="#0066cc" style={{ marginTop: 16 }} />
+            )}
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1673,6 +2034,15 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     alignItems: 'flex-start',
   },
+  syncObraButton: {
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  syncObraButtonText: {
+    fontSize: 13,
+    color: '#0066cc',
+    fontWeight: '700',
+  },
   deleteObraButton: {
     paddingVertical: 4,
   },
@@ -1680,6 +2050,53 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#dc3545',
     fontWeight: '600',
+  },
+  photoSourceOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+    zIndex: 1000,
+  },
+  photoSourceModal: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    paddingBottom: 32,
+  },
+  photoSourceTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  photoSourceButton: {
+    backgroundColor: '#0066cc',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoSourceButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
+  },
+  photoSourceButtonCancel: {
+    backgroundColor: '#E5E7EB',
+  },
+  photoSourceButtonTextCancel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B7280',
   },
 });
 

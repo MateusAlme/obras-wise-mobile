@@ -20,6 +20,7 @@ export default function Dashboard() {
   const [totalObras, setTotalObras] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pendingObras, setPendingObras] = useState<PendingObra[]>([]);
+  const [pendingObrasUnicas, setPendingObrasUnicas] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
   const isCompressor = userRole === 'compressor';
@@ -101,9 +102,8 @@ export default function Dashboard() {
         return;
       }
 
-      let query = supabase
-        .from('obras')
-        .select('*', { count: 'exact', head: true });
+      // Buscar apenas o campo 'obra' para contar obras únicas (agrupadas por número)
+      let query = supabase.from('obras').select('obra');
 
       if (role !== 'admin') {
         query = query.eq('equipe', equipe);
@@ -113,10 +113,12 @@ export default function Dashboard() {
         query = query.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
       }
 
-      const { count, error } = await query;
+      const { data, error } = await query;
 
-      if (!error && count !== null) {
-        setTotalObras(count);
+      if (!error && data) {
+        // Contar números de obra únicos (mesmo critério do agrupamento em obras.tsx)
+        const obrasUnicas = new Set(data.map((o) => String(o.obra || '').trim().toLowerCase()));
+        setTotalObras(obrasUnicas.size);
       }
     } catch (err) {
       console.error('Erro ao carregar estatisticas:', err);
@@ -142,6 +144,9 @@ export default function Dashboard() {
         return obra.tipo_servico === 'Cava em Rocha' || (obra as any).creator_role === 'compressor';
       });
       setPendingObras(pendentesDaEquipe);
+      // Contar obras únicas pendentes pelo número da obra
+      const unicas = new Set(pendentesDaEquipe.map((o) => String((o as any).obra || o.id).trim().toLowerCase()));
+      setPendingObrasUnicas(unicas.size);
     } catch (error) {
       console.error('Erro ao carregar pendencias:', error);
     }
@@ -175,12 +180,12 @@ export default function Dashboard() {
   };
 
   const pendingMessage = isOnline
-    ? pendingObras.length > 0
+    ? pendingObrasUnicas > 0
       ? isCompressor
-        ? `${pendingObras.length} book(s) de Cava em Rocha aguardando sincronizacao`
+        ? `${pendingObrasUnicas} obra(s) de Cava em Rocha aguardando sincronizacao`
         : isAdmin
-        ? `${pendingObras.length} obra(s) aguardando sincronizacao`
-        : `${pendingObras.length} obra(s) da equipe aguardando sincronizacao`
+        ? `${pendingObrasUnicas} obra(s) aguardando sincronizacao`
+        : `${pendingObrasUnicas} obra(s) da equipe aguardando sincronizacao`
       : isCompressor
       ? 'Todos os books de Cava em Rocha estao sincronizados'
       : isAdmin
@@ -212,7 +217,7 @@ export default function Dashboard() {
             </View>
           </View>
 
-          {pendingObras.length > 0 && (
+          {pendingObrasUnicas > 0 && (
             <TouchableOpacity
               style={[
                 styles.statusButton,
@@ -239,13 +244,13 @@ export default function Dashboard() {
 
         <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
           <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
-            <Text style={styles.metricLabel}>Obras da equipe</Text>
+            <Text style={styles.metricLabel}>{isAdmin ? 'Total de obras' : 'Obras da equipe'}</Text>
             <Text style={styles.metricValue}>{loading ? '...' : totalObras}</Text>
           </View>
           <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
-            <Text style={styles.metricLabel}>Pendencias</Text>
-            <Text style={[styles.metricValue, pendingObras.length > 0 && styles.metricAlert]}>
-              {loading ? '...' : pendingObras.length}
+            <Text style={styles.metricLabel}>Pendentes de sync</Text>
+            <Text style={[styles.metricValue, pendingObrasUnicas > 0 && styles.metricAlert]}>
+              {loading ? '...' : pendingObrasUnicas}
             </Text>
           </View>
         </View>
@@ -269,8 +274,8 @@ export default function Dashboard() {
           <Text style={styles.statsNumber}>{loading ? '--' : totalObras}</Text>
           <Text style={styles.cardText}>
             {totalObras === 0
-              ? 'Nenhuma obra da sua equipe cadastrada ainda.'
-              : `${totalObras} obra${totalObras > 1 ? 's' : ''} da sua equipe registrada${totalObras > 1 ? 's' : ''}.`}
+              ? 'Nenhuma obra cadastrada ainda.'
+              : `${totalObras} obra${totalObras > 1 ? 's' : ''} agrupada${totalObras > 1 ? 's' : ''} por número de obra.`}
           </Text>
         </View>
 

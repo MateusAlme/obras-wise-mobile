@@ -131,23 +131,48 @@ function getSectionsForBook(tipoServico: string) {
   return REPORT_PHOTO_SECTIONS.filter(s => keys.includes(String(s.key)))
 }
 
+type ServicoReport = {
+  id: string
+  obra_id: string
+  tipo_servico: string
+  responsavel?: string | null
+  status?: string | null
+  sync_status?: string | null
+  error_message?: string | null
+  created_at: string
+  updated_at?: string | null
+  fotos_antes?: FotoInfo[]
+  fotos_durante?: FotoInfo[]
+  fotos_depois?: FotoInfo[]
+}
+
+type ReportBook = Obra & {
+  source_table: 'obras' | 'servicos'
+  parent_obra_id?: string
+  service_id?: string
+  service_status?: string | null
+  service_sync_status?: string | null
+}
+
 export default function ReportsPage() {
   const router = useRouter()
   const { isAdmin, user, profile } = useAuth()
-  const [obras, setObras] = useState<Obra[]>([])
+  const [obras, setObras] = useState<ReportBook[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPeriod, setSelectedPeriod] = useState('todos')
   const [selectedTeam, setSelectedTeam] = useState('todas')
   const [selectedService, setSelectedService] = useState('todos')
   const [searchNumeroObra, setSearchNumeroObra] = useState('')
   const [selectedObras, setSelectedObras] = useState<Set<string>>(new Set())
+  const [expandedObraIds, setExpandedObraIds] = useState<Set<string>>(new Set())
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const [exportingId, setExportingId] = useState<string | null>(null)
   const [exportingCombinedId, setExportingCombinedId] = useState<string | null>(null)
   const [exportingXlsx, setExportingXlsx] = useState(false)
   const [exportingAllPdf, setExportingAllPdf] = useState(false)
-  const [selectedObraForBook, setSelectedObraForBook] = useState<Obra | null>(null)
+  const [selectedObraForBook, setSelectedObraForBook] = useState<ReportBook | null>(null)
+  const [servicosDaObra, setServicosDaObra] = useState<ServicoReport[]>([])
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deletingBulk, setDeletingBulk] = useState(false)
   const [photoActionKey, setPhotoActionKey] = useState<string | null>(null)
@@ -163,6 +188,9 @@ export default function ReportsPage() {
   const [equipesDB, setEquipesDB] = useState<string[]>([])
   const [tiposServicoDB, setTiposServicoDB] = useState<string[]>([])
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const isServiceRow = (obra: ReportBook) => obra.source_table === 'servicos'
+  const getSelectableRows = (rows: ReportBook[]) => rows
 
   useEffect(() => {
     loadObras()
@@ -192,13 +220,74 @@ export default function ReportsPage() {
 
   async function loadObras() {
     try {
-      const { data, error } = await supabase
-        .from('obras')
-        .select('*')
-        .order('created_at', { ascending: false })
+      const [obrasResult, servicosResult] = await Promise.allSettled([
+        supabase
+          .from('obras')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('servicos')
+          .select('*')
+          .order('created_at', { ascending: false }),
+      ])
 
-      if (error) throw error
-      setObras(data || [])
+      if (obrasResult.status !== 'fulfilled') {
+        throw obrasResult.reason
+      }
+
+      const obrasData = obrasResult.value.data || []
+      const obrasError = obrasResult.value.error
+      if (obrasError) throw obrasError
+
+      const obrasBase = obrasData.map((obra) => ({
+        ...obra,
+        source_table: 'obras' as const,
+      })) as ReportBook[]
+
+      const servicosData = servicosResult.status === 'fulfilled' ? servicosResult.value.data || [] : []
+      const servicosError = servicosResult.status === 'fulfilled' ? servicosResult.value.error : servicosResult.reason
+      if (servicosError) {
+        console.warn('[reports] Erro ao carregar servicos:', servicosError)
+      } else {
+        console.log(`[reports] ${servicosData.length} serviço(s) carregado(s) da tabela servicos`)
+      }
+
+      const obrasById = new Map(obrasBase.map((obra) => [obra.id, obra]))
+      const servicosNormalizados = servicosData.map((servico: any) => {
+        const parentObra = obrasById.get(servico.obra_id)
+        const base: Partial<ReportBook> = parentObra ? { ...parentObra } : {
+          id: servico.obra_id,
+          data: servico.created_at,
+          obra: servico.obra_id,
+          responsavel: servico.responsavel || '',
+          equipe: '',
+          tipo_servico: servico.tipo_servico,
+          tem_atipicidade: false,
+          atipicidades: [],
+          user_id: servico.user_id || '',
+          created_at: servico.created_at,
+          source_table: 'servicos' as const,
+        }
+
+        return {
+          ...base,
+          ...servico,
+          id: `servico:${servico.id}`,
+          obra: parentObra?.obra || base.obra || servico.obra_id,
+          equipe: parentObra?.equipe || base.equipe || '',
+          responsavel: servico.responsavel || parentObra?.responsavel || base.responsavel || '',
+          data: parentObra?.data || base.data || servico.created_at,
+          tipo_servico: servico.tipo_servico,
+          created_at: servico.created_at,
+          source_table: 'servicos' as const,
+          parent_obra_id: servico.obra_id,
+          service_id: servico.id,
+          service_status: servico.status,
+          service_sync_status: servico.sync_status,
+        } as ReportBook
+      })
+
+      setObras([...obrasBase, ...servicosNormalizados])
     } catch (error) {
       console.error('Erro ao carregar obras:', error)
     } finally {
@@ -216,11 +305,20 @@ export default function ReportsPage() {
   }
 
   async function loadTiposServico() {
-    const { data } = await supabase
-      .from('obras')
-      .select('tipo_servico')
-      .not('tipo_servico', 'is', null)
-    const fromDB = data ? data.map((o: { tipo_servico: string }) => o.tipo_servico).filter(Boolean) : []
+    const [obrasData, servicosData] = await Promise.all([
+      supabase
+        .from('obras')
+        .select('tipo_servico')
+        .not('tipo_servico', 'is', null),
+      supabase
+        .from('servicos')
+        .select('tipo_servico')
+        .not('tipo_servico', 'is', null),
+    ])
+
+    const fromObras = obrasData.data ? obrasData.data.map((o: { tipo_servico: string }) => o.tipo_servico).filter(Boolean) : []
+    const fromServicos = servicosData.data ? servicosData.data.map((o: { tipo_servico: string }) => o.tipo_servico).filter(Boolean) : []
+    const fromDB = [...fromObras, ...fromServicos]
     const merged = Array.from(new Set([...TIPOS_SERVICO_BASE, ...fromDB])).sort() as string[]
     setTiposServicoDB(merged)
   }
@@ -291,11 +389,21 @@ export default function ReportsPage() {
   }, [filteredObras, selectedObras])
 
   function toggleSelectAll() {
-    if (selectedObras.size === filteredObras.length) {
+    const selectableRows = getSelectableRows(filteredObras)
+    if (selectedObras.size === selectableRows.length) {
       setSelectedObras(new Set())
     } else {
-      setSelectedObras(new Set(filteredObras.map(o => o.id)))
+      setSelectedObras(new Set(selectableRows.map(o => o.id)))
     }
+  }
+
+  function toggleObraExpand(obraId: string) {
+    setExpandedObraIds(prev => {
+      const next = new Set(prev)
+      if (next.has(obraId)) next.delete(obraId)
+      else next.add(obraId)
+      return next
+    })
   }
 
   function toggleSelectObra(id: string) {
@@ -563,6 +671,11 @@ export default function ReportsPage() {
   }
 
   async function fetchObraById(obraId: string): Promise<Obra | null> {
+    const localItem = obras.find((item) => item.id === obraId)
+    if (localItem) {
+      return localItem as Obra
+    }
+
     const { data, error } = await supabase
       .from('obras')
       .select('*')
@@ -576,6 +689,21 @@ export default function ReportsPage() {
     return data || null
   }
 
+  async function fetchServicosByObraId(obraId: string): Promise<ServicoReport[]> {
+    const { data, error } = await supabase
+      .from('servicos')
+      .select('*')
+      .eq('obra_id', obraId)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error('Erro ao buscar serviços da obra:', error)
+      return []
+    }
+
+    return (data || []) as ServicoReport[]
+  }
+
   async function handleOpenBook(obraId: string) {
     let obraAtual = await fetchObraById(obraId)
     if (!obraAtual) {
@@ -586,11 +714,18 @@ export default function ReportsPage() {
       return
     }
 
-    setSelectedObraForBook(normalizeObraForPreview(obraAtual))
+    setSelectedObraForBook(normalizeObraForPreview(obraAtual as Obra) as ReportBook)
+
+    const parentObraId = (obraAtual as ReportBook).source_table === 'servicos'
+      ? (obraAtual as ReportBook).parent_obra_id || obraAtual.id.replace(/^servico:/, '')
+      : obraAtual.id
+
+    setServicosDaObra(await fetchServicosByObraId(parentObraId))
   }
 
   function handleCloseBook() {
     setSelectedObraForBook(null)
+    setServicosDaObra([])
   }
 
   function handleOpenCreateBookModal(
@@ -640,9 +775,9 @@ export default function ReportsPage() {
       if (error) throw error
       if (!data) throw new Error('Registro criado, mas resposta vazia do banco.')
 
-      setObras(prev => [data as Obra, ...prev])
+      setObras(prev => [{ ...(data as Obra), source_table: 'obras' as const }, ...prev])
       setShowCreateBookModal(false)
-      setSelectedObraForBook(normalizeObraForPreview(data as Obra))
+      setSelectedObraForBook({ ...(normalizeObraForPreview(data as Obra) as ReportBook), source_table: 'obras' })
     } catch (err: any) {
       setCreateBookError(err.message || 'Erro ao criar novo book')
     } finally {
@@ -772,7 +907,9 @@ export default function ReportsPage() {
   }
 
   async function handleDeleteObra(obra: Obra) {
-    const confirmMessage = `Tem certeza que deseja EXCLUIR a obra "${obra.obra || 'sem número'}"?\n\nEsta ação é IRREVERSÍVEL e irá:\n- Deletar a obra do banco de dados\n- Deletar todas as fotos associadas\n\nDigite "EXCLUIR" para confirmar:`
+    const isServico = (obra as ReportBook).source_table === 'servicos'
+    const label = isServico ? 'serviço' : 'obra'
+    const confirmMessage = `Tem certeza que deseja EXCLUIR ${isServico ? 'o serviço' : 'a obra'} "${obra.obra || 'sem número'}"?\n\nEsta ação é IRREVERSÍVEL.\n\nDigite "EXCLUIR" para confirmar:`
 
     const confirmation = window.prompt(confirmMessage)
 
@@ -787,17 +924,16 @@ export default function ReportsPage() {
     setOpenMenuId(null)
 
     try {
-      const response = await fetch(`/api/obras/${obra.id}`, {
-        method: 'DELETE',
-      })
-
-      const result = await response.json()
-
-      if (!result.success) {
-        throw new Error(result.error || 'Erro ao excluir obra')
+      if (isServico) {
+        const realId = (obra as ReportBook).service_id || obra.id.replace(/^servico:/, '')
+        const { error } = await supabase.from('servicos').delete().eq('id', realId)
+        if (error) throw error
+      } else {
+        const response = await fetch(`/api/obras/${obra.id}`, { method: 'DELETE' })
+        const result = await response.json()
+        if (!result.success) throw new Error(result.error || `Erro ao excluir ${label}`)
       }
 
-      // Remover obra da lista local
       setObras(prev => prev.filter(o => o.id !== obra.id))
       setSelectedObras(prev => {
         const newSet = new Set(prev)
@@ -805,10 +941,10 @@ export default function ReportsPage() {
         return newSet
       })
 
-      alert(`Obra "${obra.obra || 'sem número'}" excluída com sucesso!\n${result.photosDeleted || 0} foto(s) removidas.`)
+      alert(`${isServico ? 'Serviço' : 'Obra'} "${obra.obra || 'sem número'}" excluído com sucesso!`)
     } catch (error: any) {
-      console.error('Erro ao excluir obra:', error)
-      alert(`Erro ao excluir obra: ${error.message}`)
+      console.error(`Erro ao excluir ${label}:`, error)
+      alert(`Erro ao excluir ${label}: ${error.message}`)
     } finally {
       setDeletingId(null)
     }
@@ -938,17 +1074,33 @@ export default function ReportsPage() {
     setSavingEdit(true)
     setEditError('')
     try {
-      const { error } = await supabase
-        .from('obras')
-        .update({
-          equipe: editForm.equipe.trim(),
-          obra: editForm.obra.trim(),
-          data: editForm.data,
-          responsavel: editForm.responsavel.trim(),
-          tipo_servico: editForm.tipo_servico.trim(),
-        })
-        .eq('id', editingObra.id)
-      if (error) throw error
+      const isServico = (editingObra as ReportBook).source_table === 'servicos'
+      const realId = isServico
+        ? ((editingObra as ReportBook).service_id || editingObra.id.replace(/^servico:/, ''))
+        : editingObra.id
+
+      if (isServico) {
+        const { error } = await supabase
+          .from('servicos')
+          .update({
+            responsavel: editForm.responsavel.trim(),
+            tipo_servico: editForm.tipo_servico.trim(),
+          })
+          .eq('id', realId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('obras')
+          .update({
+            equipe: editForm.equipe.trim(),
+            obra: editForm.obra.trim(),
+            data: editForm.data,
+            responsavel: editForm.responsavel.trim(),
+            tipo_servico: editForm.tipo_servico.trim(),
+          })
+          .eq('id', realId)
+        if (error) throw error
+      }
       setObras(prev => prev.map(o =>
         o.id === editingObra.id
           ? {
@@ -1192,7 +1344,7 @@ export default function ReportsPage() {
                     <th className="px-6 py-4 text-center w-12">
                       <input
                         type="checkbox"
-                        checked={selectedObras.size === filteredObras.length && filteredObras.length > 0}
+                        checked={selectedObras.size === getSelectableRows(filteredObras).length && getSelectableRows(filteredObras).length > 0}
                         onChange={toggleSelectAll}
                         className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                       />
@@ -1221,100 +1373,168 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {filteredObras.map((obra) => (
-                    <tr
-                      key={obra.id}
-                      onDoubleClick={() => { void handleOpenBook(obra.id) }}
-                      className={`hover:bg-slate-50 transition-colors cursor-pointer ${
-                        selectedObras.has(obra.id) ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedObras.has(obra.id)}
-                          onChange={() => toggleSelectObra(obra.id)}
-                          className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
+                  {(() => {
+                    const obrasOnly = filteredObras.filter(o => !isServiceRow(o))
+                    const servicosOnly = filteredObras.filter(o => isServiceRow(o))
+
+                    // Map parent_obra_id → list of child servicos
+                    const servicosByParentId = new Map<string, ReportBook[]>()
+                    servicosOnly.forEach(s => {
+                      const pid = s.parent_obra_id
+                      if (pid) {
+                        if (!servicosByParentId.has(pid)) servicosByParentId.set(pid, [])
+                        servicosByParentId.get(pid)!.push(s)
+                      }
+                    })
+
+                    // Orphan services (parent obra filtered out)
+                    const parentIds = new Set(obrasOnly.map(o => o.id))
+                    const orphanServicos = servicosOnly.filter(s => !s.parent_obra_id || !parentIds.has(s.parent_obra_id))
+
+                    const renderStatusBadge = (o: ReportBook) => {
+                      if (isServiceRow(o)) {
+                        const cls = o.service_status === 'completo' ? 'bg-emerald-100 text-emerald-700' : o.service_status === 'em_progresso' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                        const lbl = o.service_status === 'completo' ? 'Concluído' : o.service_status === 'em_progresso' ? 'Em progresso' : 'Rascunho'
+                        return <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${cls}`}>{lbl}</span>
+                      }
+                      return getObraStatus(o) === 'concluida'
+                        ? <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">Concluída</span>
+                        : <span className="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold">Parcial</span>
+                    }
+
+                    const renderDateCell = (dateStr: string) => (
                       <td className="px-6 py-4">
-                        <span className="text-sm font-bold text-slate-900">
-                          {obra.obra || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-slate-900">{obra.equipe}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
-                          {obra.tipo_servico}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {getObraStatus(obra) === 'concluida' ? (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Concluída
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Parcial
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-semibold">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          {getTotalPhotosCount(obra)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-slate-600">
-                          {format(new Date(obra.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                        </span>
+                        <span className="text-sm text-slate-600">{format(new Date(dateStr), "dd/MM/yyyy", { locale: ptBR })}</span>
                         <br />
-                        <span className="text-xs text-slate-500">
-                          {format(new Date(obra.created_at), "HH:mm", { locale: ptBR })}
-                        </span>
+                        <span className="text-xs text-slate-500">{format(new Date(dateStr), "HH:mm", { locale: ptBR })}</span>
                       </td>
-                      <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={(e) => {
-                            if (openMenuId === obra.id) {
-                              setOpenMenuId(null)
-                              setMenuPosition(null)
-                              return
-                            }
-                            const btn = e.currentTarget as HTMLElement
-                            const rect = btn.getBoundingClientRect()
-                            const menuHeight = 280
-                            const spaceBelow = window.innerHeight - rect.bottom
-                            const top = spaceBelow < menuHeight
-                              ? rect.top - menuHeight - 4
-                              : rect.bottom + 4
-                            const left = Math.min(rect.right - 224, window.innerWidth - 236)
-                            setMenuPosition({ top, left })
-                            setOpenMenuId(obra.id)
-                          }}
-                          className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === obra.id ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
-                          title="Opções"
+                    )
+
+                    const renderServicoRow = (servico: ReportBook) => (
+                      <tr
+                        key={servico.id}
+                        onDoubleClick={() => { void handleOpenBook(servico.id) }}
+                        className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedObras.has(servico.id) ? 'bg-blue-50' : ''}`}
+                      >
+                        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedObras.has(servico.id)}
+                              onChange={() => toggleSelectObra(servico.id)}
+                              className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-sm font-bold text-slate-900">{servico.obra || '-'}</span>
+                        </td>
+                        <td className="px-6 py-4"><span className="text-sm text-slate-900">{servico.equipe}</span></td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{servico.tipo_servico}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center">{renderStatusBadge(servico)}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-semibold">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            {getTotalPhotosCount(servico)}
+                          </span>
+                        </td>
+                        {renderDateCell(servico.created_at)}
+                        <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={(e) => {
+                              if (openMenuId === servico.id) { setOpenMenuId(null); setMenuPosition(null); return }
+                              const btn = e.currentTarget as HTMLElement
+                              const rect = btn.getBoundingClientRect()
+                              const menuHeight = 280
+                              const spaceBelow = window.innerHeight - rect.bottom
+                              const top = spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 4
+                              const left = Math.min(rect.right - 224, window.innerWidth - 236)
+                              setMenuPosition({ top, left })
+                              setOpenMenuId(servico.id)
+                            }}
+                            className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === servico.id ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                            title="Opções"
+                          >
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    )
+
+                    const rows: React.ReactNode[] = []
+
+                    obrasOnly.forEach(obra => {
+                      const childServicos = servicosByParentId.get(obra.id) || []
+
+                      // ── Obra (parent) row ──
+                      rows.push(
+                        <tr
+                          key={obra.id}
+                          onDoubleClick={() => { void handleOpenBook(obra.id) }}
+                          className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedObras.has(obra.id) ? 'bg-blue-50' : ''}`}
                         >
-                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                            <circle cx="12" cy="5" r="1.5" />
-                            <circle cx="12" cy="12" r="1.5" />
-                            <circle cx="12" cy="19" r="1.5" />
-                          </svg>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={selectedObras.has(obra.id)}
+                                onChange={() => toggleSelectObra(obra.id)}
+                                className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-bold text-slate-900">{obra.obra || '-'}</span>
+                          </td>
+                          <td className="px-6 py-4"><span className="text-sm text-slate-900">{obra.equipe}</span></td>
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{obra.tipo_servico}</span>
+                          </td>
+                          <td className="px-6 py-4 text-center">{renderStatusBadge(obra)}</td>
+                          <td className="px-6 py-4 text-center">
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-semibold">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                              {getTotalPhotosCount(obra)}
+                            </span>
+                          </td>
+                          {renderDateCell(obra.created_at)}
+                          <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => {
+                                if (openMenuId === obra.id) { setOpenMenuId(null); setMenuPosition(null); return }
+                                const btn = e.currentTarget as HTMLElement
+                                const rect = btn.getBoundingClientRect()
+                                const menuHeight = 280
+                                const spaceBelow = window.innerHeight - rect.bottom
+                                const top = spaceBelow < menuHeight ? rect.top - menuHeight - 4 : rect.bottom + 4
+                                const left = Math.min(rect.right - 224, window.innerWidth - 236)
+                                setMenuPosition({ top, left })
+                                setOpenMenuId(obra.id)
+                              }}
+                              className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === obra.id ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                              title="Opções"
+                            >
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></svg>
+                            </button>
+                          </td>
+                        </tr>
+                      )
+
+                      // ── Child servico rows (always visible, flat rows) ──
+                      childServicos.forEach(servico => {
+                        rows.push(renderServicoRow(servico))
+                      })
+                    })
+
+                    // ── Orphan services (parent filtered out) ──
+                    orphanServicos.forEach(servico => {
+                      rows.push(renderServicoRow(servico))
+                    })
+
+                    return rows
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -1722,6 +1942,68 @@ export default function ReportsPage() {
                     </div>
                   </div>
                 </div>
+
+                {servicosDaObra.length > 0 && selectedObraForBook?.source_table !== 'servicos' && (
+                  <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden mb-8">
+                    <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200">
+                      <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v1h1.5A1.5 1.5 0 0119 6.5v10A1.5 1.5 0 0117.5 18H2.5A1.5 1.5 0 011 16.5v-10A1.5 1.5 0 012.5 5H4V4zm10 1V4H6v1h8z" />
+                        </svg>
+                        Serviços vinculados
+                      </h3>
+                    </div>
+                    <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {servicosDaObra.map((servico) => {
+                        const sections = getSectionsForBook(servico.tipo_servico)
+                        const totalFotosServico = sections.reduce(
+                          (acc, section) => acc + convertPhotoIdsToFotoInfo((servico as any)[section.key]).length,
+                          0
+                        )
+                        const statusLabel = servico.status === 'completo'
+                          ? 'Concluído'
+                          : servico.status === 'em_progresso'
+                            ? 'Em progresso'
+                            : 'Rascunho'
+                        const statusClass = servico.status === 'completo'
+                          ? 'bg-green-100 text-green-700'
+                          : servico.status === 'em_progresso'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-amber-100 text-amber-700'
+
+                        return (
+                          <div key={servico.id} className="rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden">
+                            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-white">
+                              <div>
+                                <p className="text-sm font-bold text-slate-900">{servico.tipo_servico}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {servico.responsavel || 'Sem responsável'}
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusClass}`}>
+                                  {statusLabel}
+                                </span>
+                                <span className="text-[11px] text-slate-500">
+                                  {servico.sync_status === 'synced' ? 'Sincronizado' : servico.sync_status || 'offline'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="px-4 py-3 text-sm text-slate-700">
+                              <div className="flex items-center justify-between gap-4">
+                                <span>{sections.length} seção(ões)</span>
+                                <span className="font-semibold text-slate-900">{totalFotosServico} foto(s)</span>
+                              </div>
+                              {servico.error_message ? (
+                                <p className="mt-2 text-xs text-red-600">{servico.error_message}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Galerias de Fotos - Dinâmico por tipo de serviço */}
                 {/* Resumo de seções */}
@@ -2228,7 +2510,12 @@ export default function ReportsPage() {
                     <button
                       onClick={() => {
                         handleCloseBook()
-                        router.push(`/obra/${selectedObraForBook.id}`)
+                        if (selectedObraForBook.source_table === 'servicos') {
+                          const serviceId = selectedObraForBook.service_id || selectedObraForBook.id.replace(/^servico:/, '')
+                          router.push(`/servico/${serviceId}`)
+                        } else {
+                          router.push(`/obra/${selectedObraForBook.id}`)
+                        }
                       }}
                       className="group relative px-8 py-4 bg-gradient-to-r from-primary to-primary-dark hover:from-primary-dark hover:to-primary text-white rounded-xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 flex items-center gap-3"
                     >
