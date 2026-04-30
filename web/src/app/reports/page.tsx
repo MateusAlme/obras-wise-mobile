@@ -2080,6 +2080,37 @@ export default function ReportsPage() {
                       return `P${inicio ?? '?'} - P${fim ?? '?'}`
                     }
 
+                    const parseNumericOrder = (value: unknown): number | null => {
+                      const parsed = typeof value === 'number'
+                        ? value
+                        : parseInt(String(value ?? '').trim(), 10)
+                      return Number.isFinite(parsed) ? parsed : null
+                    }
+
+                    function sortByNumero<T extends { numero?: unknown; isAditivo?: boolean }>(items: T[] | undefined): T[] {
+                      if (!Array.isArray(items) || items.length === 0) return []
+
+                      return items
+                        .map((item, index) => ({ item, index }))
+                        .sort((a, b) => {
+                          const numeroA = parseNumericOrder(a.item?.numero)
+                          const numeroB = parseNumericOrder(b.item?.numero)
+
+                          if (numeroA !== null && numeroB !== null && numeroA !== numeroB) {
+                            return numeroA - numeroB
+                          }
+                          if (numeroA !== null && numeroB === null) return -1
+                          if (numeroA === null && numeroB !== null) return 1
+
+                          const aditivoA = !!a.item?.isAditivo
+                          const aditivoB = !!b.item?.isAditivo
+                          if (aditivoA !== aditivoB) return aditivoA ? 1 : -1
+
+                          return a.index - b.index
+                        })
+                        .map(({ item }) => item)
+                    }
+
                     const renderPhotoThumb = (url: string, label: string, idx: number, color: string) => (
                       <div key={idx} className="relative group overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-all">
                         <div className="aspect-square bg-slate-100">
@@ -2101,8 +2132,9 @@ export default function ReportsPage() {
                     )
 
                     // ── POSTES (Linha Viva / Cava / Book de Aterramento / Fundação Especial) ──
-                    const postesDataRender: any[] = (selectedObraForBook as any).postes_data
-                    if (Array.isArray(postesDataRender) && postesDataRender.length > 0) {
+                    const postesDataRenderRaw: any[] = (selectedObraForBook as any).postes_data
+                    const postesDataRender = sortByNumero(postesDataRenderRaw)
+                    if (postesDataRender.length > 0) {
                       const isBookAterr = selectedObraForBook.tipo_servico === 'Book de Aterramento'
                       const subKeysPostes = isBookAterr
                         ? [
@@ -2165,8 +2197,9 @@ export default function ReportsPage() {
 
                       // ── POSTES AGRUPADOS ──────────────────────────────────────
                       if (section.key === 'fotos_checklist_postes') {
-                        const postesData: any[] = (selectedObraForBook as any).checklist_postes_data
-                        if (postesData && Array.isArray(postesData) && postesData.length > 0) {
+                        const postesDataRaw: any[] = (selectedObraForBook as any).checklist_postes_data
+                        const postesData = sortByNumero(postesDataRaw)
+                        if (postesData.length > 0) {
                           const subKeys = [
                             { key: 'posteInteiro', label: 'Poste Inteiro' },
                             { key: 'descricao', label: 'Descrição do Poste' },
@@ -2191,7 +2224,8 @@ export default function ReportsPage() {
                               </div>
                               <div className="px-4 pb-4 space-y-2">
                                 {postesData.map((poste, pIdx) => {
-                                  const label = poste.isAditivo ? `AD-P${poste.numero}` : `P${poste.numero}`
+                                  const numero = poste.numero || (pIdx + 1)
+                                  const label = poste.isAditivo ? `AD-P${numero}` : `P${numero}`
                                   const statusLabel = statusLabels[poste.status] || poste.status
                                   const statusColor = statusColors[poste.status] || 'bg-slate-100 text-slate-600'
                                   const hasAny = subKeys.some(s => (poste[s.key] || []).length > 0)
@@ -2260,6 +2294,14 @@ export default function ReportsPage() {
                               <div className="px-4 pb-4 space-y-2">
                                 {grupos.map((grupo) => {
                                   const itens = secDataComFotos.filter((item) => getChecklistLinearType(item) === grupo.tipo)
+                                    .sort((a, b) => {
+                                      const numeroA = parseNumericOrder(a?.numero)
+                                      const numeroB = parseNumericOrder(b?.numero)
+                                      if (numeroA !== null && numeroB !== null && numeroA !== numeroB) return numeroA - numeroB
+                                      if (numeroA !== null && numeroB === null) return -1
+                                      if (numeroA === null && numeroB !== null) return 1
+                                      return 0
+                                    })
                                   if (itens.length === 0) return null
 
                                   return (
@@ -2336,8 +2378,9 @@ export default function ReportsPage() {
 
                       // ── HASTES E TERMÔMETROS AGRUPADOS ───────────────────────
                       if (section.key === 'fotos_checklist_hastes_aplicadas') {
-                        const hastesData: any[] = (selectedObraForBook as any).checklist_hastes_termometros_data
-                        if (hastesData && Array.isArray(hastesData) && hastesData.length > 0) {
+                        const hastesDataRaw: any[] = (selectedObraForBook as any).checklist_hastes_termometros_data
+                        const hastesData = sortByNumero(hastesDataRaw)
+                        if (hastesData.length > 0) {
                           const totalFotos = hastesData.reduce((acc, p) => acc + (p.fotoHaste?.length || 0) + (p.fotoTermometro?.length || 0), 0)
                           return (
                             <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
@@ -2351,7 +2394,8 @@ export default function ReportsPage() {
                               </div>
                               <div className="px-4 pb-4 space-y-2">
                                 {hastesData.map((ponto, pIdx) => {
-                                  const label = ponto.isAditivo ? `AD-P${ponto.numero}` : `P${ponto.numero}`
+                                  const numero = ponto.numero || (pIdx + 1)
+                                  const label = ponto.isAditivo ? `AD-P${numero}` : `P${numero}`
                                   const hasteUrls = (ponto.fotoHaste || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                   const termoUrls = (ponto.fotoTermometro || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                   if (hasteUrls.length === 0 && termoUrls.length === 0) return null

@@ -85,6 +85,37 @@ function getChecklistTrechoLabel(item: any): string | null {
   return `Trecho P${inicio ?? '?'} - P${fim ?? '?'}`
 }
 
+function parseNumericOrder(value: unknown): number | null {
+  const parsed = typeof value === 'number'
+    ? value
+    : parseInt(String(value ?? '').trim(), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function sortByNumero<T extends { numero?: unknown; isAditivo?: boolean }>(items: T[] | undefined): T[] {
+  if (!Array.isArray(items) || items.length === 0) return []
+
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const numeroA = parseNumericOrder(a.item?.numero)
+      const numeroB = parseNumericOrder(b.item?.numero)
+
+      if (numeroA !== null && numeroB !== null && numeroA !== numeroB) {
+        return numeroA - numeroB
+      }
+      if (numeroA !== null && numeroB === null) return -1
+      if (numeroA === null && numeroB !== null) return 1
+
+      const aditivoA = !!a.item?.isAditivo
+      const aditivoB = !!b.item?.isAditivo
+      if (aditivoA !== aditivoB) return aditivoA ? 1 : -1
+
+      return a.index - b.index
+    })
+    .map(({ item }) => item)
+}
+
 /**
  * Mescla fotos do array flat (fotos_checklist_postes) com a estrutura de postes (checklist_postes_data)
  * Extrai o tipo de foto e associa ao poste correto baseado na sequência temporal
@@ -939,8 +970,9 @@ async function addObraContentToPdf(
           { key: 'fotos_medicao', label: 'Fotos Medição' },
         ]
 
-    for (let posteIndex = 0; posteIndex < obra.postes_data.length; posteIndex++) {
-      const poste = obra.postes_data[posteIndex]
+    const sortedPostesData = sortByNumero(obra.postes_data)
+    for (let posteIndex = 0; posteIndex < sortedPostesData.length; posteIndex++) {
+      const poste = sortedPostesData[posteIndex]
       const prefixo = poste?.isAditivo ? 'AD-P' : 'P'
       const label = poste?.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`
 
@@ -1011,9 +1043,10 @@ async function addObraContentToPdf(
     ? mergePostesPhotosWithStructure(obra.checklist_postes_data, obra.fotos_checklist_postes)
     : obra.checklist_postes_data;
 
-  if (hasRealPhotos(mergedPostes) && mergedPostes) {
-    for (let posteIndex = 0; posteIndex < mergedPostes.length; posteIndex++) {
-      const poste = mergedPostes[posteIndex];
+  const sortedMergedPostes = sortByNumero(mergedPostes)
+  if (hasRealPhotos(sortedMergedPostes) && sortedMergedPostes.length > 0) {
+    for (let posteIndex = 0; posteIndex < sortedMergedPostes.length; posteIndex++) {
+      const poste = sortedMergedPostes[posteIndex];
       const prefixo = poste.isAditivo ? 'AD-P' : 'P';
       const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
       const status = poste.status || '';
@@ -1095,9 +1128,10 @@ async function addObraContentToPdf(
   await addPhotosSection(obra.fotos_checklist_abertura_fechamento_pulo, 'Checklist - 12. Abertura e Fechamento de Pulo')
 
   // 13. Hastes Aplicadas e Medição do Termômetro
-  if (hasRealPhotos(obra.checklist_hastes_termometros_data) && obra.checklist_hastes_termometros_data) {
-    for (let pontoIndex = 0; pontoIndex < obra.checklist_hastes_termometros_data.length; pontoIndex++) {
-      const ponto = obra.checklist_hastes_termometros_data[pontoIndex]
+  const sortedHastesTermometros = sortByNumero(obra.checklist_hastes_termometros_data)
+  if (hasRealPhotos(sortedHastesTermometros) && sortedHastesTermometros.length > 0) {
+    for (let pontoIndex = 0; pontoIndex < sortedHastesTermometros.length; pontoIndex++) {
+      const ponto = sortedHastesTermometros[pontoIndex]
       const prefixo = ponto.isAditivo ? 'AD-P' : 'P'
       const label = ponto.numero ? `${prefixo}${ponto.numero}` : `Ponto ${pontoIndex + 1}`
 

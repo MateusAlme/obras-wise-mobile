@@ -436,6 +436,38 @@ function clearChecklistPostesPhotos(postesData: any[] | undefined): any[] | unde
   }))
 }
 
+function parseNumericOrder(value: unknown): number | null {
+  const parsed = typeof value === 'number'
+    ? value
+    : parseInt(String(value ?? '').trim(), 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function sortByNumeroWithSourceIndex<T extends { numero?: unknown; isAditivo?: boolean }>(
+  items: T[] | undefined
+): Array<T & { __sourceIndex: number }> {
+  if (!Array.isArray(items) || items.length === 0) return []
+
+  return items
+    .map((item, index) => ({ ...item, __sourceIndex: index }))
+    .sort((a, b) => {
+      const numeroA = parseNumericOrder(a.numero)
+      const numeroB = parseNumericOrder(b.numero)
+
+      if (numeroA !== null && numeroB !== null && numeroA !== numeroB) {
+        return numeroA - numeroB
+      }
+      if (numeroA !== null && numeroB === null) return -1
+      if (numeroA === null && numeroB !== null) return 1
+
+      const aditivoA = !!a.isAditivo
+      const aditivoB = !!b.isAditivo
+      if (aditivoA !== aditivoB) return aditivoA ? 1 : -1
+
+      return a.__sourceIndex - b.__sourceIndex
+    })
+}
+
 function getChecklistPostesForDisplay(
   postesData: any[] | undefined,
   flatPhotos: FotoInfo[] | undefined
@@ -1482,6 +1514,103 @@ export default function ObraDetailPage() {
     setObra({ ...obra, checklist_postes_data: updatedPostes })
   }
 
+  async function handleRemovePoste(posteIndex: number) {
+    if (!obra) return
+    const postes = Array.isArray(obra.checklist_postes_data) ? [...obra.checklist_postes_data] : []
+    if (!Number.isInteger(posteIndex) || posteIndex < 0 || posteIndex >= postes.length) return
+
+    const posteAtual = postes[posteIndex] || {}
+    const totalFotos = CHECKLIST_POSTE_FIELDS.reduce((sum, field) => {
+      const fotos = Array.isArray(posteAtual?.[field]) ? posteAtual[field] : []
+      return sum + fotos.length
+    }, 0)
+
+    const label = posteAtual?.numero ? `P${posteAtual.numero}` : `#${posteIndex + 1}`
+    const confirmText = totalFotos > 0
+      ? `O ${label} possui ${totalFotos} foto(s). Deseja remover este poste mesmo assim?`
+      : `Deseja remover o ${label}?`
+
+    if (!window.confirm(confirmText)) return
+
+    const updatedPostes = postes.filter((_, index) => index !== posteIndex)
+    const { error } = await supabase
+      .from('obras')
+      .update({ checklist_postes_data: updatedPostes })
+      .eq('id', obra.id)
+    if (error) {
+      console.error('Erro ao remover poste:', error)
+      alert('Erro ao remover poste')
+      return
+    }
+
+    setObra({ ...obra, checklist_postes_data: updatedPostes })
+  }
+
+  async function handleAddHasteTermometroPoint() {
+    if (!obra) return
+    const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
+      ? [...obra.checklist_hastes_termometros_data]
+      : []
+
+    const nextNumero = pontos.reduce((max: number, p: any) => {
+      const n = parseInt(p?.numero || '0', 10)
+      return Number.isFinite(n) ? Math.max(max, n) : max
+    }, 0) + 1
+
+    const newPoint = {
+      id: `ponto_${nextNumero}`,
+      numero: String(nextNumero),
+      isAditivo: false,
+      fotoHaste: [],
+      fotoTermometro: [],
+    }
+
+    const updatedPontos = [...pontos, newPoint]
+    const { error } = await supabase
+      .from('obras')
+      .update({ checklist_hastes_termometros_data: updatedPontos })
+      .eq('id', obra.id)
+    if (error) {
+      console.error('Erro ao adicionar ponto:', error)
+      alert('Erro ao adicionar ponto')
+      return
+    }
+
+    setObra({ ...obra, checklist_hastes_termometros_data: updatedPontos })
+  }
+
+  async function handleRemoveHasteTermometroPoint(pontoIndex: number) {
+    if (!obra) return
+    const pontos = Array.isArray(obra.checklist_hastes_termometros_data)
+      ? [...obra.checklist_hastes_termometros_data]
+      : []
+    if (!Number.isInteger(pontoIndex) || pontoIndex < 0 || pontoIndex >= pontos.length) return
+
+    const pontoAtual = pontos[pontoIndex] || {}
+    const totalFotos = (Array.isArray(pontoAtual?.fotoHaste) ? pontoAtual.fotoHaste.length : 0)
+      + (Array.isArray(pontoAtual?.fotoTermometro) ? pontoAtual.fotoTermometro.length : 0)
+    const label = pontoAtual?.numero ? `P${pontoAtual.numero}` : `#${pontoIndex + 1}`
+
+    const confirmText = totalFotos > 0
+      ? `O ${label} possui ${totalFotos} foto(s). Deseja remover este ponto mesmo assim?`
+      : `Deseja remover o ${label}?`
+
+    if (!window.confirm(confirmText)) return
+
+    const updatedPontos = pontos.filter((_, index) => index !== pontoIndex)
+    const { error } = await supabase
+      .from('obras')
+      .update({ checklist_hastes_termometros_data: updatedPontos })
+      .eq('id', obra.id)
+    if (error) {
+      console.error('Erro ao remover ponto:', error)
+      alert('Erro ao remover ponto')
+      return
+    }
+
+    setObra({ ...obra, checklist_hastes_termometros_data: updatedPontos })
+  }
+
   async function handleAddSeccionamentoItem(tipo: 'emenda' | 'poda' | 'seccionamento') {
     if (!obra) return
     const items = Array.isArray(obra.checklist_seccionamentos_data) ? [...obra.checklist_seccionamentos_data] : []
@@ -2235,8 +2364,9 @@ export default function ObraDetailPage() {
                     obra.checklist_postes_data,
                     obra.fotos_checklist_postes
                   )
+                  const sortedPostes = sortByNumeroWithSourceIndex(mergedPostes)
 
-                  const hasPostesData = mergedPostes && mergedPostes.length > 0
+                  const hasPostesData = sortedPostes.length > 0
 
                   return (
                     <div className="mb-6">
@@ -2252,25 +2382,35 @@ export default function ObraDetailPage() {
                           Adicionar Poste
                         </button>
                       </div>
-                      {hasPostesData ? mergedPostes.map((poste: any, posteIndex: number) => {
+                      {hasPostesData ? sortedPostes.map((poste: any, posteIndex: number) => {
+                        const sourceIndex = poste.__sourceIndex
                         const prefixo = poste.isAditivo ? 'AD-P' : 'P';
                         const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
                         const status = poste.status || 'N/A';
                         return (
-                          <div key={posteIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
-                                {label}
-                              </span>
-                              <span className="text-sm text-gray-600">Status: {status}</span>
+                          <div key={sourceIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
+                                  {label}
+                                </span>
+                                <span className="text-sm text-gray-600">Status: {status}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePoste(sourceIndex)}
+                                className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
+                              >
+                                Remover
+                              </button>
                             </div>
-                            <PhotoGallery photos={poste.posteInteiro || []} title="Poste Inteiro" sectionKey={`poste_${posteIndex}_inteiro`} {...galleryProps} />
-                            <PhotoGallery photos={poste.descricao || []} title="Descrição do Poste" sectionKey={`poste_${posteIndex}_descricao`} {...galleryProps} />
-                            <PhotoGallery photos={poste.engaste || []} title="Engaste" sectionKey={`poste_${posteIndex}_engaste`} {...galleryProps} />
-                            <PhotoGallery photos={poste.conexao1 || []} title="Conexão 1" sectionKey={`poste_${posteIndex}_conexao1`} {...galleryProps} />
-                            <PhotoGallery photos={poste.conexao2 || []} title="Conexão 2" sectionKey={`poste_${posteIndex}_conexao2`} {...galleryProps} />
-                            <PhotoGallery photos={poste.maiorEsforco || []} title="Maior Esforço" sectionKey={`poste_${posteIndex}_maior`} {...galleryProps} />
-                            <PhotoGallery photos={poste.menorEsforco || []} title="Menor Esforço" sectionKey={`poste_${posteIndex}_menor`} {...galleryProps} />
+                            <PhotoGallery photos={poste.posteInteiro || []} title="Poste Inteiro" sectionKey={`poste_${sourceIndex}_inteiro`} {...galleryProps} />
+                            <PhotoGallery photos={poste.descricao || []} title="Descrição do Poste" sectionKey={`poste_${sourceIndex}_descricao`} {...galleryProps} />
+                            <PhotoGallery photos={poste.engaste || []} title="Engaste" sectionKey={`poste_${sourceIndex}_engaste`} {...galleryProps} />
+                            <PhotoGallery photos={poste.conexao1 || []} title="Conexão 1" sectionKey={`poste_${sourceIndex}_conexao1`} {...galleryProps} />
+                            <PhotoGallery photos={poste.conexao2 || []} title="Conexão 2" sectionKey={`poste_${sourceIndex}_conexao2`} {...galleryProps} />
+                            <PhotoGallery photos={poste.maiorEsforco || []} title="Maior Esforço" sectionKey={`poste_${sourceIndex}_maior`} {...galleryProps} />
+                            <PhotoGallery photos={poste.menorEsforco || []} title="Menor Esforço" sectionKey={`poste_${sourceIndex}_menor`} {...galleryProps} />
                           </div>
                         );
                       }) : (
@@ -2432,10 +2572,45 @@ export default function ObraDetailPage() {
 
                 {/* 11. Hastes Aplicadas e Medição do Termômetro */}
                 <div className="mb-6">
-                  <h4 className="text-lg font-semibold text-gray-800 mb-3">📸 13. Hastes Aplicadas e Medição do Termômetro</h4>
-                  {(obra.checklist_hastes_termometros_data?.length ?? 0) > 0 ? (
-                    <>
-                      {obra.checklist_hastes_termometros_data?.map((ponto: any, pontoIndex: number) => {
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-lg font-semibold text-gray-800">📸 13. Hastes Aplicadas e Medição do Termômetro</h4>
+                    <button
+                      type="button"
+                      onClick={handleAddHasteTermometroPoint}
+                      className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Adicionar Ponto
+                    </button>
+                  </div>
+                  {(() => {
+                    const sortedPontos = sortByNumeroWithSourceIndex(obra.checklist_hastes_termometros_data)
+                    if (sortedPontos.length === 0) {
+                      return (
+                        <>
+                          {/* Fallback: campos flat antigos - manter botão disponível mesmo vazio */}
+                          <PhotoGallery
+                            photos={(obra as any).fotos_checklist_hastes_aplicadas || []}
+                            title="Hastes Aplicadas"
+                            sectionKey="fotos_checklist_hastes_aplicadas"
+                            {...galleryProps}
+                          />
+                          <PhotoGallery
+                            photos={(obra as any).fotos_checklist_medicao_termometro || []}
+                            title="Medição do Termômetro"
+                            sectionKey="fotos_checklist_medicao_termometro"
+                            {...galleryProps}
+                          />
+                        </>
+                      )
+                    }
+
+                    return (
+                      <>
+                        {sortedPontos.map((ponto: any, pontoIndex: number) => {
+                        const sourceIndex = ponto.__sourceIndex
                         const prefixo = ponto.isAditivo ? 'AD-P' : 'P';
                         const label = ponto.numero ? `${prefixo}${ponto.numero}` : `Ponto ${pontoIndex + 1}`;
 
@@ -2445,41 +2620,35 @@ export default function ObraDetailPage() {
                         const totalFotos = hasteFotos.length + termoFotos.length;
 
                         return (
-                          <div key={pontoIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${ponto.isAditivo ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'}`}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`px-3 py-1 rounded-full text-sm font-bold ${ponto.isAditivo ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
-                                {label}
-                              </span>
-                              <span className="text-sm text-gray-500">
-                                ({totalFotos} {totalFotos === 1 ? 'foto' : 'fotos'})
-                              </span>
+                          <div key={sourceIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${ponto.isAditivo ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'}`}>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`px-3 py-1 rounded-full text-sm font-bold ${ponto.isAditivo ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                                  {label}
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  ({totalFotos} {totalFotos === 1 ? 'foto' : 'fotos'})
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveHasteTermometroPoint(sourceIndex)}
+                                className="px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
+                              >
+                                Remover
+                              </button>
                             </div>
-                            <PhotoGallery photos={hasteFotos} title="Haste Aplicada" sectionKey={`haste_${pontoIndex}`} {...galleryProps} />
-                            <PhotoGallery photos={termoFotos} title="Medição do Termômetro" sectionKey={`termo_${pontoIndex}`} {...galleryProps} />
+                            <PhotoGallery photos={hasteFotos} title="Haste Aplicada" sectionKey={`haste_${sourceIndex}`} {...galleryProps} />
+                            <PhotoGallery photos={termoFotos} title="Medição do Termômetro" sectionKey={`termo_${sourceIndex}`} {...galleryProps} />
                             {totalFotos === 0 && (
                               <p className="text-gray-500 text-sm italic">Nenhuma foto adicionada ainda.</p>
                             )}
                           </div>
                         );
-                      })}
-                    </>
-                  ) : (
-                    <>
-                      {/* Fallback: campos flat antigos - manter botão disponível mesmo vazio */}
-                      <PhotoGallery
-                        photos={(obra as any).fotos_checklist_hastes_aplicadas || []}
-                        title="Hastes Aplicadas"
-                        sectionKey="fotos_checklist_hastes_aplicadas"
-                        {...galleryProps}
-                      />
-                      <PhotoGallery
-                        photos={(obra as any).fotos_checklist_medicao_termometro || []}
-                        title="Medição do Termômetro"
-                        sectionKey="fotos_checklist_medicao_termometro"
-                        {...galleryProps}
-                      />
-                    </>
-                  )}
+                        })}
+                      </>
+                    )
+                  })()}
                 </div>
 
                 {/* 12. Panorâmica Final */}
