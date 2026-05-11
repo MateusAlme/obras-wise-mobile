@@ -2,9 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from './supabase';
 import { Alert } from 'react-native';
-import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata } from './photo-backup';
+import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata, pruneArchivedPhotoMetadata } from './photo-backup';
 import { processObraPhotos, UploadProgress } from './photo-queue';
 import { captureError } from './sentry';
+import { logger } from '../utils/logger';
 import { createEmergencyBackup, shouldCreateEmergencyBackup } from './emergency-backup';
 
 const PENDING_OBRAS_KEY = '@obras_pending_sync';
@@ -22,6 +23,7 @@ export interface PendingObra {
   responsavel: string;
   equipe: string;
   tipo_servico: string;
+  legacy_servico_id?: string | null; // Isola rascunhos por card de servico legado
   status?: 'em_aberto' | 'rascunho' | 'finalizada'; // Status da obra
   finalizada_em?: string | null; // Data de finalização
   origem?: 'online' | 'offline'; // Origem da obra
@@ -335,7 +337,7 @@ const sanitizeObrasPayload = <T extends Record<string, any>>(payload: T): T => {
  */
 export const checkInternetConnection = async (): Promise<boolean> => {
   const state = await NetInfo.fetch();
-  return state.isConnected === true && state.isInternetReachable === true;
+  return state.isConnected === true && state.isInternetReachable !== false;
 };
 
 // ============================
@@ -356,19 +358,22 @@ export const saveObraLocal = async (
     // ✅ CORREÇÃO: Deduplicar somente rascunhos da MESMA obra/equipe/tipo
     // Isso evita sobrescrever books diferentes que compartilham o mesmo número.
     let finalExistingId = existingId;
-    const existingDraft = !existingId
+    const hasExplicitObraId = typeof (obra as any).id === 'string' && String((obra as any).id).trim().length > 0;
+    const incomingLegacyServicoId = String((obra as any).legacy_servico_id || '').trim();
+    const canAutoDeduplicateDraft = !existingId && !hasExplicitObraId && incomingLegacyServicoId.length > 0;
+    const existingDraft = canAutoDeduplicateDraft
       ? localObras.find(o =>
           o.obra === obra.obra &&
           o.equipe === obra.equipe &&
           o.tipo_servico === obra.tipo_servico &&
+          String((o as any).legacy_servico_id || '').trim() === incomingLegacyServicoId &&
           o.status === 'rascunho' &&
           obra.status === 'rascunho' &&
           !o.synced
         )
       : null;
 
-    if (existingDraft && !existingId) {
-      console.log(`⚠️ [saveObraLocal] Rascunho existente para ${obra.obra} (${obra.tipo_servico}) encontrado (ID: ${existingDraft.id}). Atualizando rascunho em vez de duplicar.`);
+    if (existingDraft && canAutoDeduplicateDraft) {
       finalExistingId = existingDraft.id; // Forçar atualização do rascunho
     }
 
@@ -383,7 +388,7 @@ export const saveObraLocal = async (
     const existingObra = obraIndex !== -1 ? localObras[obraIndex] : null;
     const serverId = (obra as any).serverId || existingObra?.serverId || null;
 
-    console.log(`💾 saveObraLocal - obraId: ${obraId}, serverId existente: ${existingObra?.serverId}, serverId no param: ${(obra as any).serverId}, final: ${serverId}`);
+    logger.sync(`💾 saveObraLocal - obraId: ${obraId}, serverId existente: ${existingObra?.serverId}, serverId no param: ${(obra as any).serverId}, final: ${serverId}`);
 
     const savedObra: LocalObra = {
       ...obra,
@@ -401,11 +406,11 @@ export const saveObraLocal = async (
     if (obraIndex !== -1) {
       // Atualizar obra existente
       localObras[obraIndex] = savedObra;
-      console.log(`📝 Obra local atualizada: ${obraId} (serverId: ${serverId || 'none'})`);
+      logger.sync(`📝 Obra local atualizada: ${obraId} (serverId: ${serverId || 'none'})`);
     } else {
       // Adicionar nova obra
       localObras.push(savedObra);
-      console.log(`✅ Nova obra local criada: ${obraId} (serverId: ${serverId || 'none'})`);
+      logger.sync(`✅ Nova obra local criada: ${obraId} (serverId: ${serverId || 'none'})`);
     }
 
     await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
@@ -415,7 +420,7 @@ export const saveObraLocal = async (
 
     return obraId;
   } catch (error) {
-    console.error('❌ Erro ao salvar obra local:', error);
+    logger.error('❌ Erro ao salvar obra local:', error);
     throw error;
   }
 };
@@ -448,7 +453,7 @@ export const getLocalObras = async (): Promise<LocalObra[]> => {
       }
 
       changed = true;
-      console.warn(
+      logger.warn(
         `⚠️ [getLocalObras] Obra ${obra.obra} estava marcada como sincronizada, mas ainda tem fotos pendentes. Ajustando status para parcial.`
       );
 
@@ -466,7 +471,7 @@ export const getLocalObras = async (): Promise<LocalObra[]> => {
 
     return normalized;
   } catch (error) {
-    console.error('Erro ao obter obras locais:', error);
+    logger.error('Erro ao obter obras locais:', error);
     return [];
   }
 };
@@ -479,7 +484,7 @@ export const getLocalObraById = async (id: string): Promise<LocalObra | null> =>
     const localObras = await getLocalObras();
     return localObras.find(o => o.id === id) || null;
   } catch (error) {
-    console.error('Erro ao obter obra local por ID:', error);
+    logger.error('Erro ao obter obra local por ID:', error);
     return null;
   }
 };
@@ -490,7 +495,7 @@ export const getLocalObraById = async (id: string): Promise<LocalObra | null> =>
  */
 export const restoreObraPhotos = async (obraId: string): Promise<boolean> => {
   try {
-    console.log(`🔧 Iniciando recuperação de fotos para obra: ${obraId}`);
+    logger.sync(`🔧 Iniciando recuperação de fotos para obra: ${obraId}`);
 
     // 1. Buscar todas as fotos desta obra no photo-backup
     const allPhotos = await getAllPhotoMetadata();
@@ -505,16 +510,16 @@ export const restoreObraPhotos = async (obraId: string): Promise<boolean> => {
       ? [obraId, obraLocal.serverId, obraLocal.id].filter(Boolean)
       : [obraId];
 
-    console.log(`🔍 Buscando fotos para IDs: ${possibleIds.join(', ')}`);
+    logger.sync(`🔍 Buscando fotos para IDs: ${possibleIds.join(', ')}`);
     const obraPhotos = allPhotos.filter(p => possibleIds.includes(p.obraId));
 
     if (obraPhotos.length === 0) {
-      console.warn(`⚠️ Nenhuma foto encontrada no backup para obra ${obraId}`);
-      console.warn(`   IDs pesquisados: ${possibleIds.join(', ')}`);
+      logger.warn(`⚠️ Nenhuma foto encontrada no backup para obra ${obraId}`);
+      logger.warn(`   IDs pesquisados: ${possibleIds.join(', ')}`);
       return false;
     }
 
-    console.log(`📸 Encontradas ${obraPhotos.length} fotos no backup`);
+    logger.sync(`📸 Encontradas ${obraPhotos.length} fotos no backup`);
 
     // 2. Agrupar fotos por tipo
     const photosByType: Record<string, string[]> = {};
@@ -529,14 +534,14 @@ export const restoreObraPhotos = async (obraId: string): Promise<boolean> => {
 
     // Log de fotos encontradas por tipo
     Object.entries(photosByType).forEach(([type, ids]) => {
-      console.log(`  - ${type}: ${ids.length} foto(s)`);
+      logger.sync(`  - ${type}: ${ids.length} foto(s)`);
     });
 
     // 3. Atualizar obra no AsyncStorage (reutilizar localObras já carregado)
     const obraIndex = localObras.findIndex(o => o.id === obraId);
 
     if (obraIndex === -1) {
-      console.error(`❌ Obra ${obraId} não encontrada no AsyncStorage`);
+      logger.error(`❌ Obra ${obraId} não encontrada no AsyncStorage`);
       return false;
     }
 
@@ -550,12 +555,12 @@ export const restoreObraPhotos = async (obraId: string): Promise<boolean> => {
     localObras[obraIndex] = updatedObra;
     await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
 
-    console.log(`✅ Fotos restauradas com sucesso para obra ${obraId}`);
-    console.log(`   Total: ${obraPhotos.length} fotos reconectadas`);
+    logger.sync(`✅ Fotos restauradas com sucesso para obra ${obraId}`);
+    logger.sync(`   Total: ${obraPhotos.length} fotos reconectadas`);
 
     return true;
   } catch (error) {
-    console.error('❌ Erro ao restaurar fotos da obra:', error);
+    logger.error('❌ Erro ao restaurar fotos da obra:', error);
     return false;
   }
 };
@@ -566,7 +571,7 @@ export const restoreObraPhotos = async (obraId: string): Promise<boolean> => {
  */
 export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boolean> => {
   try {
-    console.log(`🔄 Forçando atualização da obra ${obraId} do Supabase...`);
+    logger.sync(`🔄 Forçando atualização da obra ${obraId} do Supabase...`);
 
     // Primeiro, buscar obra local para obter o número da obra
     // ✅ CORREÇÃO: Buscar por ID local OU serverId (para obras já sincronizadas)
@@ -574,7 +579,7 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
     const obraLocal = localObras.find(o => o.id === obraId || o.serverId === obraId);
 
     if (!obraLocal) {
-      console.error(`❌ Obra ${obraId} não encontrada no AsyncStorage local (buscou por ID e serverId)`);
+      logger.error(`❌ Obra ${obraId} não encontrada no AsyncStorage local (buscou por ID e serverId)`);
       return false;
     }
 
@@ -589,7 +594,7 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
     let fetchError: any = null;
 
     if (serverId) {
-      console.log(`📋 Buscando obra no Supabase por ID: ${serverId}`);
+      logger.sync(`📋 Buscando obra no Supabase por ID: ${serverId}`);
       const response = await supabase
         .from('obras')
         .select('*')
@@ -598,7 +603,7 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
       syncedObra = response.data;
       fetchError = response.error;
     } else {
-      console.log(`📋 Buscando obra por número/equipe/tipo/data: ${numeroObra} | ${equipe} | ${tipoServico} | ${createdAt}`);
+      logger.sync(`📋 Buscando obra por número/equipe/tipo/data: ${numeroObra} | ${equipe} | ${tipoServico} | ${createdAt}`);
       let query = supabase
         .from('obras')
         .select('*')
@@ -618,7 +623,7 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
     }
 
     if ((fetchError || !syncedObra) && !obraId.startsWith('temp_') && !obraId.startsWith('local_')) {
-      console.warn(`⚠️ Busca principal falhou, tentando fallback por ID: ${obraId}`);
+      logger.warn(`⚠️ Busca principal falhou, tentando fallback por ID: ${obraId}`);
       const retry = await supabase
         .from('obras')
         .select('*')
@@ -634,21 +639,21 @@ export const forceUpdateObraFromSupabase = async (obraId: string): Promise<boole
     }
 
     if (fetchError) {
-      console.error(`❌ Erro ao buscar obra no Supabase: ${fetchError.message}`);
+      logger.error(`❌ Erro ao buscar obra no Supabase: ${fetchError.message}`);
       return false;
     }
 
     if (!syncedObra) {
-      console.error(`❌ Obra não encontrada no Supabase (obra=${numeroObra}, equipe=${equipe}, tipo=${tipoServico})`);
+      logger.error(`❌ Obra não encontrada no Supabase (obra=${numeroObra}, equipe=${equipe}, tipo=${tipoServico})`);
       return false;
     }
 
-    console.log(`📊 Obra encontrada: ${syncedObra.obra} (ID: ${syncedObra.id})`);
-    console.log(`   - fotos_antes: ${Array.isArray(syncedObra.fotos_antes) ? syncedObra.fotos_antes.length : 0} item(s)`);
+    logger.sync(`📊 Obra encontrada: ${syncedObra.obra} (ID: ${syncedObra.id})`);
+    logger.sync(`   - fotos_antes: ${Array.isArray(syncedObra.fotos_antes) ? syncedObra.fotos_antes.length : 0} item(s)`);
 
     return await updateObraInAsyncStorage(syncedObra, obraId, localObras);
   } catch (error) {
-    console.error('❌ Erro ao forçar atualização:', error);
+    logger.error('❌ Erro ao forçar atualização:', error);
     return false;
   }
 };
@@ -679,11 +684,11 @@ const updateObraInAsyncStorage = async (
       status: syncedObra.status,            // ✅ CRÍTICO: Preservar status (finalizada, etc)
     } as LocalObra;
 
-    console.log(`📊 Atualizando obra no AsyncStorage:`);
-    console.log(`   - ID: ${updatedObra.id}`);
-    console.log(`   - Status: ${updatedObra.status}`);
-    console.log(`   - Origem: ${updatedObra.origem}`);
-    console.log(`   - Synced: ${updatedObra.synced}`);
+    logger.sync(`📊 Atualizando obra no AsyncStorage:`);
+    logger.sync(`   - ID: ${updatedObra.id}`);
+    logger.sync(`   - Status: ${updatedObra.status}`);
+    logger.sync(`   - Origem: ${updatedObra.origem}`);
+    logger.sync(`   - Synced: ${updatedObra.synced}`);
 
     if (index !== -1) {
       localObras[index] = updatedObra;
@@ -693,11 +698,11 @@ const updateObraInAsyncStorage = async (
     }
 
     await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-    console.log(`✅ Obra atualizada com sucesso no AsyncStorage`);
+    logger.sync(`✅ Obra atualizada com sucesso no AsyncStorage`);
 
     return true;
   } catch (error) {
-    console.error('❌ Erro ao forçar atualização:', error);
+    logger.error('❌ Erro ao forçar atualização:', error);
     return false;
   }
 };
@@ -710,9 +715,9 @@ export const removeLocalObra = async (id: string): Promise<void> => {
     const localObras = await getLocalObras();
     const filtered = localObras.filter(o => o.id !== id);
     await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(filtered));
-    console.log(`🗑️ Obra local removida: ${id}`);
+    logger.sync(`🗑️ Obra local removida: ${id}`);
   } catch (error) {
-    console.error('Erro ao remover obra local:', error);
+    logger.error('Erro ao remover obra local:', error);
     throw error;
   }
 };
@@ -727,7 +732,7 @@ export const syncLocalObra = async (
   try {
     const obra = await getLocalObraById(obraId);
     if (!obra) {
-      console.warn(`⚠️ Obra local não encontrada: ${obraId}`);
+      logger.warn(`⚠️ Obra local não encontrada: ${obraId}`);
       return false;
     }
 
@@ -736,15 +741,15 @@ export const syncLocalObra = async (
 
     // Se já está sincronizada, sem modificações e sem fotos pendentes, pular
     if (obra.synced && !obra.locallyModified && !hasPendingSnapshot) {
-      console.log(`✅ Obra já sincronizada: ${obraId}`);
+      logger.sync(`✅ Obra já sincronizada: ${obraId}`);
       return true;
     }
 
     if (hasPendingSnapshot) {
-      console.log(`🔄 Obra ${obraId} possui fotos pendentes e será re-sincronizada.`);
+      logger.sync(`🔄 Obra ${obraId} possui fotos pendentes e será re-sincronizada.`);
     }
 
-    console.log(`🔄 Sincronizando obra local: ${obraId}`);
+    logger.sync(`🔄 Sincronizando obra local: ${obraId}`);
 
     // Usar a função existente de sync
     const pendingObra: PendingObra = {
@@ -759,7 +764,7 @@ export const syncLocalObra = async (
       // ✅ CRÍTICO: Após sync, buscar obra do Supabase para obter URLs das fotos
       // Usa o newId retornado (pode ser diferente do obraId original se foi temp_)
       const finalId = result.newId || obraId;
-      console.log(`📥 Buscando dados atualizados da obra sincronizada: ${finalId}`);
+      logger.sync(`📥 Buscando dados atualizados da obra sincronizada: ${finalId}`);
 
       const { data: syncedObra, error: fetchError } = await supabase
         .from('obras')
@@ -768,13 +773,13 @@ export const syncLocalObra = async (
         .single();
 
       if (fetchError) {
-        console.error(`❌ Erro ao buscar obra do Supabase: ${fetchError.message}`);
+        logger.error(`❌ Erro ao buscar obra do Supabase: ${fetchError.message}`);
       }
 
       if (syncedObra) {
-        console.log(`📊 Obra encontrada no Supabase: ${syncedObra.obra}`);
-        console.log(`   - fotos_antes: ${Array.isArray(syncedObra.fotos_antes) ? syncedObra.fotos_antes.length : 0} item(s)`);
-        console.log(`   - Tipo do primeiro item fotos_antes: ${Array.isArray(syncedObra.fotos_antes) && syncedObra.fotos_antes.length > 0 ? typeof syncedObra.fotos_antes[0] : 'N/A'}`);
+        logger.sync(`📊 Obra encontrada no Supabase: ${syncedObra.obra}`);
+        logger.sync(`   - fotos_antes: ${Array.isArray(syncedObra.fotos_antes) ? syncedObra.fotos_antes.length : 0} item(s)`);
+        logger.sync(`   - Tipo do primeiro item fotos_antes: ${Array.isArray(syncedObra.fotos_antes) && syncedObra.fotos_antes.length > 0 ? typeof syncedObra.fotos_antes[0] : 'N/A'}`);
       }
 
       // ✅ CORREÇÃO: Verificar se há fotos pendentes antes de marcar como synced
@@ -786,8 +791,8 @@ export const syncLocalObra = async (
 
       const hasPendingPhotos = obraPendingPhotos.length > 0 || obraZombiePhotos.length > 0;
       if (hasPendingPhotos) {
-        console.warn(`⚠️ Obra ${obraId} tem ${obraPendingPhotos.length} foto(s) pendente(s) e ${obraZombiePhotos.length} foto(s) zombie`);
-        console.warn(`⚠️ Obra NÃO será marcada como totalmente sincronizada - permitindo re-sync`);
+        logger.warn(`⚠️ Obra ${obraId} tem ${obraPendingPhotos.length} foto(s) pendente(s) e ${obraZombiePhotos.length} foto(s) zombie`);
+        logger.warn(`⚠️ Obra NÃO será marcada como totalmente sincronizada - permitindo re-sync`);
       }
 
       const localObras = await getLocalObras();
@@ -797,7 +802,7 @@ export const syncLocalObra = async (
         if (syncedObra && !fetchError) {
           // ✅ CRÍTICO: Manter o ID local mas adicionar serverId para futuras sincronizações
           // NÃO remover a entrada - apenas atualizar com os dados do servidor
-          console.log(`🔄 Atualizando obra local ${obraId} com serverId: ${finalId}`);
+          logger.sync(`🔄 Atualizando obra local ${obraId} com serverId: ${finalId}`);
 
           localObras[index] = {
             ...localObras[index], // Manter dados locais
@@ -814,14 +819,14 @@ export const syncLocalObra = async (
           } as LocalObra;
 
           if (hasPendingPhotos) {
-            console.log(`⚠️ Obra parcialmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
-            console.log(`   Fotos pendentes: ${obraPendingPhotos.length}, Fotos zombie: ${obraZombiePhotos.length}`);
+            logger.sync(`⚠️ Obra parcialmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
+            logger.sync(`   Fotos pendentes: ${obraPendingPhotos.length}, Fotos zombie: ${obraZombiePhotos.length}`);
           } else {
-            console.log(`✅ Obra totalmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
+            logger.sync(`✅ Obra totalmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
           }
         } else {
           // Fallback: apenas marcar como sincronizada (mantém IDs)
-          console.warn(`⚠️ Não foi possível buscar dados atualizados, marcando apenas como sincronizada`);
+          logger.warn(`⚠️ Não foi possível buscar dados atualizados, marcando apenas como sincronizada`);
           localObras[index].synced = !hasPendingPhotos;
           localObras[index].locallyModified = hasPendingPhotos;
           localObras[index].sync_status = hasPendingPhotos ? 'partial' : undefined;
@@ -832,13 +837,13 @@ export const syncLocalObra = async (
         }
 
         await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-        console.log(`✅ Obra ${hasPendingPhotos ? 'parcialmente' : 'totalmente'} sincronizada: ${obraId} (serverId: ${finalId})`);
+        logger.sync(`✅ Obra ${hasPendingPhotos ? 'parcialmente' : 'totalmente'} sincronizada: ${obraId} (serverId: ${finalId})`);
       }
     }
 
     return result.success;
   } catch (error) {
-    console.error('❌ Erro ao sincronizar obra local:', error);
+    logger.error('❌ Erro ao sincronizar obra local:', error);
     return false;
   }
 };
@@ -857,14 +862,14 @@ export const syncAllLocalObras = async (): Promise<{ success: number; failed: nu
     const isOnline = await checkInternetConnection();
 
     if (!isOnline) {
-      console.log('📴 Sem conexão - sync cancelado');
+      logger.sync('📴 Sem conexão - sync cancelado');
       return { success: 0, failed: 0 };
     }
 
     const localObras = await getLocalObras();
     const obrasToSync = localObras.filter(o => !o.synced || o.locallyModified);
 
-    console.log(`🔄 Sincronizando ${obrasToSync.length} obra(s) local(is)...`);
+    logger.sync(`🔄 Sincronizando ${obrasToSync.length} obra(s) local(is)...`);
 
     let success = 0;
     let failed = 0;
@@ -878,7 +883,7 @@ export const syncAllLocalObras = async (): Promise<{ success: number; failed: nu
       }
     }
 
-    console.log(`✅ Sync completo: ${success} sucesso, ${failed} falhas`);
+    logger.sync(`✅ Sync completo: ${success} sucesso, ${failed} falhas`);
     return { success, failed };
   } finally {
     syncInProgress = false;
@@ -958,7 +963,6 @@ export const saveObraOffline = async (
 ): Promise<string> => {
   try {
     // DEBUG: Verificar postes_data recebido
-    console.log('🪧 DEBUG saveObraOffline - obra.postes_data:', JSON.stringify((obra as any).postes_data));
 
     const pendingObras = await getPendingObras();
     const obraId =
@@ -1038,18 +1042,22 @@ export const saveObraOffline = async (
       fotos_vazamento_instalacao: photoIds.vazamento_instalacao ?? [],
     };
 
-    // ✅ CORREÇÃO: Deduplicar somente rascunhos pendentes da mesma obra/equipe/tipo
-    const existingDraftIndex = pendingObras.findIndex(o =>
-      o.obra === obra.obra &&
-      o.equipe === obra.equipe &&
-      o.tipo_servico === obra.tipo_servico &&
-      o.status === 'rascunho' &&
-      obra.status === 'rascunho'
-    );
-
-    if (existingDraftIndex !== -1 && !existingObraId) {
-      // Já existe um rascunho pendente compatível - atualizar em vez de criar novo
-      console.log(`⚠️ [saveObraOffline] Rascunho existente para ${obra.obra} (${obra.tipo_servico}) encontrado (ID: ${pendingObras[existingDraftIndex].id}). Atualizando rascunho.`);
+    // Deduplicar automaticamente na fila pendente apenas com contexto de servico.
+    const incomingLegacyServicoId = String((obra as any).legacy_servico_id || '').trim();
+    const canAutoDeduplicatePendingDraft = !existingObraId && incomingLegacyServicoId.length > 0;
+    const existingDraftIndex = canAutoDeduplicatePendingDraft
+      ? pendingObras.findIndex(o =>
+          o.obra === obra.obra &&
+          o.equipe === obra.equipe &&
+          o.tipo_servico === obra.tipo_servico &&
+          String((o as any).legacy_servico_id || '').trim() === incomingLegacyServicoId &&
+          o.status === 'rascunho' &&
+          obra.status === 'rascunho'
+        )
+      : -1;
+    if (existingDraftIndex !== -1 && canAutoDeduplicatePendingDraft) {
+      // Ja existe um rascunho pendente compativel - atualizar em vez de criar novo
+      logger.sync(`[saveObraOffline] Rascunho existente para ${obra.obra} (${obra.tipo_servico}) encontrado (ID: ${pendingObras[existingDraftIndex].id}). Atualizando rascunho.`);
       pendingObras[existingDraftIndex] = {
         ...pendingObras[existingDraftIndex],
         ...newObra,
@@ -1060,7 +1068,7 @@ export const saveObraOffline = async (
       // Atualizando obra existente pelo ID
       const existingIndex = pendingObras.findIndex(o => o.id === existingObraId);
       if (existingIndex !== -1) {
-        console.log(`📝 [saveObraOffline] Atualizando obra existente: ${existingObraId}`);
+        logger.sync(`📝 [saveObraOffline] Atualizando obra existente: ${existingObraId}`);
         pendingObras[existingIndex] = {
           ...pendingObras[existingIndex],
           ...newObra,
@@ -1088,7 +1096,7 @@ export const saveObraOffline = async (
 
     return finalId;
   } catch (error) {
-    console.error('Erro ao salvar obra offline:', error);
+    logger.error('Erro ao salvar obra offline:', error);
     throw error;
   }
 };
@@ -1103,7 +1111,7 @@ export const updateObraOffline = async (
   updatedPhotoIds: Partial<PhotoGroupIds>
 ): Promise<void> => {
   try {
-    console.log('📝 Atualizando obra offline:', obraId);
+    logger.sync('📝 Atualizando obra offline:', obraId);
 
     // Buscar obras pendentes
     const pendingObras = await getPendingObras();
@@ -1188,7 +1196,7 @@ export const updateObraOffline = async (
 
       pendingObras.push(editedObra);
       await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(pendingObras));
-      console.log('✅ Obra editada adicionada à fila offline:', obraId);
+      logger.sync('✅ Obra editada adicionada à fila offline:', obraId);
       return;
     }
 
@@ -1270,9 +1278,9 @@ export const updateObraOffline = async (
 
     pendingObras[obraIndex] = updatedObra;
     await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(pendingObras));
-    console.log('✅ Obra offline atualizada:', obraId);
+    logger.sync('✅ Obra offline atualizada:', obraId);
   } catch (error) {
-    console.error('❌ Erro ao atualizar obra offline:', error);
+    logger.error('❌ Erro ao atualizar obra offline:', error);
     throw error;
   }
 };
@@ -1285,7 +1293,7 @@ export const getPendingObras = async (): Promise<PendingObra[]> => {
     const data = await AsyncStorage.getItem(PENDING_OBRAS_KEY);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Erro ao obter obras pendentes:', error);
+    logger.error('Erro ao obter obras pendentes:', error);
     return [];
   }
 };
@@ -1300,8 +1308,141 @@ export const removePendingObra = async (id: string): Promise<void> => {
     await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(filtered));
     await updateSyncStatus();
   } catch (error) {
-    console.error('Erro ao remover obra pendente:', error);
+    logger.error('Erro ao remover obra pendente:', error);
     throw error;
+  }
+};
+
+/**
+ * Marca uma obra como finalizada (local + remoto quando possivel).
+ * Usado pelos cards legados em obra-books.
+ */
+export const markObraFinalizada = async (obraId: string): Promise<boolean> => {
+  try {
+    const now = new Date().toISOString();
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    let changedLocal = false;
+    let changedPending = false;
+    let remoteUpdated = false;
+    let remoteTargetId: string | null = uuidRegex.test(obraId) ? obraId : null;
+
+    // 1) Atualiza obras locais
+    const localObrasRaw = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
+    if (localObrasRaw) {
+      const localObras: any[] = JSON.parse(localObrasRaw);
+      const updatedLocal = localObras.map((obra) => {
+        const matches = obra?.id === obraId || obra?.serverId === obraId;
+        if (!matches) return obra;
+
+        changedLocal = true;
+        const possibleRemoteId =
+          (typeof obra?.serverId === 'string' && uuidRegex.test(obra.serverId)) ? obra.serverId :
+          (typeof obra?.id === 'string' && uuidRegex.test(obra.id)) ? obra.id :
+          null;
+        if (!remoteTargetId && possibleRemoteId) {
+          remoteTargetId = possibleRemoteId;
+        }
+
+        return {
+          ...obra,
+          status: 'finalizada',
+          finalizada_em: now,
+          data_fechamento: now,
+          synced: false,
+          locallyModified: true,
+          sync_status: 'pending',
+          error_message: null,
+          last_modified: now,
+        };
+      });
+
+      if (changedLocal) {
+        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(updatedLocal));
+      }
+    }
+
+    // 2) Atualiza pending obras
+    const pendingRaw = await AsyncStorage.getItem(PENDING_OBRAS_KEY);
+    if (pendingRaw) {
+      const pendingObras: any[] = JSON.parse(pendingRaw);
+      const updatedPending = pendingObras.map((obra) => {
+        const matches = obra?.id === obraId || obra?.serverId === obraId;
+        if (!matches) return obra;
+
+        changedPending = true;
+        const possibleRemoteId =
+          (typeof obra?.serverId === 'string' && uuidRegex.test(obra.serverId)) ? obra.serverId :
+          (typeof obra?.id === 'string' && uuidRegex.test(obra.id)) ? obra.id :
+          null;
+        if (!remoteTargetId && possibleRemoteId) {
+          remoteTargetId = possibleRemoteId;
+        }
+
+        return {
+          ...obra,
+          status: 'finalizada',
+          finalizada_em: now,
+          data_fechamento: now,
+          sync_status: 'pending',
+          error_message: null,
+          last_modified: now,
+        };
+      });
+
+      if (changedPending) {
+        await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(updatedPending));
+      }
+    }
+
+    // 3) Atualiza remoto quando online e com UUID valido
+    if (remoteTargetId) {
+      const isOnline = await checkInternetConnection();
+      if (isOnline) {
+        const { error } = await supabase
+          .from('obras')
+          .update({
+            status: 'finalizada',
+            finalizada_em: now,
+            data_fechamento: now,
+            updated_at: now,
+          })
+          .eq('id', remoteTargetId);
+
+        if (!error) {
+          remoteUpdated = true;
+
+          // Marca cache local como sincronizado para evitar voltar status antigo no merge.
+          const localObrasRaw2 = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
+          if (localObrasRaw2) {
+            const localObras2: any[] = JSON.parse(localObrasRaw2);
+            const normalized = localObras2.map((obra) => {
+              const matches = obra?.id === obraId || obra?.serverId === obraId || obra?.id === remoteTargetId || obra?.serverId === remoteTargetId;
+              if (!matches) return obra;
+              return {
+                ...obra,
+                status: 'finalizada',
+                finalizada_em: now,
+                data_fechamento: now,
+                synced: true,
+                locallyModified: false,
+                sync_status: undefined,
+                error_message: null,
+              };
+            });
+            await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(normalized));
+          }
+        } else {
+          logger.warn('[markObraFinalizada] Falha ao atualizar obra no Supabase:', error);
+        }
+      }
+    }
+
+    await updateSyncStatus();
+    return changedLocal || changedPending || remoteUpdated;
+  } catch (error) {
+    logger.error('Erro ao marcar obra como finalizada:', error);
+    return false;
   }
 };
 
@@ -1337,7 +1478,7 @@ export const updatePendingObraStatus = async (
       await updateSyncStatus();
     }
   } catch (error) {
-    console.error('Erro ao atualizar status da obra pendente:', error);
+    logger.error('Erro ao atualizar status da obra pendente:', error);
     throw error;
   }
 };
@@ -1352,11 +1493,11 @@ const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoMetadata
 
   // Log para debug se não encontrou todas as fotos
   if (photoIds.length > 0 && found.length !== photoIds.length) {
-    console.warn(`⚠️ [getPhotoMetadatasByIds] Buscando ${photoIds.length} IDs, encontrou ${found.length}`);
+    logger.warn(`⚠️ [getPhotoMetadatasByIds] Buscando ${photoIds.length} IDs, encontrou ${found.length}`);
     const foundIds = found.map(p => p.id);
     const notFound = photoIds.filter(id => !foundIds.includes(id));
     if (notFound.length > 0) {
-      console.warn(`   IDs não encontrados: ${JSON.stringify(notFound)}`);
+      logger.warn(`   IDs não encontrados: ${JSON.stringify(notFound)}`);
     }
   }
 
@@ -1397,7 +1538,7 @@ const getPhotoMetadatasWithFallback = async (
       }
     }
     if (byObraAndType.length > 0) {
-      console.log(`🔄 [Fallback obraId+tipo] Encontrou ${byObraAndType.length} foto(s) para ${type}`);
+      logger.sync(`🔄 [Fallback obraId+tipo] Encontrou ${byObraAndType.length} foto(s) para ${type}`);
     }
   }
 
@@ -1420,7 +1561,7 @@ const getPhotoMetadatasWithFallback = async (
         for (const photo of byPossibleObraId) {
           if (!foundMap.has(photo.id)) {
             foundMap.set(photo.id, photo);
-            console.log(`🔄 [Fallback obraId antigo] Encontrou foto ${photo.id} com obraId ${possibleObraId}`);
+            logger.sync(`🔄 [Fallback obraId antigo] Encontrou foto ${photo.id} com obraId ${possibleObraId}`);
           }
         }
       }
@@ -1434,7 +1575,7 @@ const getPhotoMetadatasWithFallback = async (
         const photo = allMetadata.find(p => p.id === photoId);
         if (photo) {
           foundMap.set(photoId, photo);
-          console.log(`🔄 [Fallback ID direto] Encontrou foto ${photoId} (uploaded: ${photo.uploaded})`);
+          logger.sync(`🔄 [Fallback ID direto] Encontrou foto ${photoId} (uploaded: ${photo.uploaded})`);
         }
       }
     }
@@ -1447,10 +1588,10 @@ const getPhotoMetadatasWithFallback = async (
  * Converte metadados de fotos para o formato do banco de dados
  */
 const convertPhotosToData = (metadata: PhotoMetadata[]) => {
-  console.log(`🔍 [convertPhotosToData] Recebeu ${metadata.length} foto(s)`);
+  logger.sync(`🔍 [convertPhotosToData] Recebeu ${metadata.length} foto(s)`);
 
   metadata.forEach((p, idx) => {
-    console.log(`📸 Foto ${idx + 1}:`, {
+    logger.sync(`📸 Foto ${idx + 1}:`, {
       id: p.id,
       type: p.type,
       uploaded: p.uploaded,
@@ -1460,10 +1601,10 @@ const convertPhotosToData = (metadata: PhotoMetadata[]) => {
   });
 
   const filtered = metadata.filter(p => p.uploaded && p.uploadUrl);
-  console.log(`✅ Após filtro: ${filtered.length} de ${metadata.length} foto(s) serão salvas no banco`);
+  logger.sync(`✅ Após filtro: ${filtered.length} de ${metadata.length} foto(s) serão salvas no banco`);
 
   if (filtered.length < metadata.length) {
-    console.warn(`⚠️ ATENÇÃO: ${metadata.length - filtered.length} foto(s) foram DESCARTADAS (uploaded=false ou uploadUrl vazio)`);
+    logger.warn(`⚠️ ATENÇÃO: ${metadata.length - filtered.length} foto(s) foram DESCARTADAS (uploaded=false ou uploadUrl vazio)`);
   }
 
   return filtered.map(p => ({
@@ -1527,7 +1668,7 @@ const convertPhotoIdsToUrls = async (photoIds: any[]): Promise<any[]> => {
     if (metadata?.uploadUrl) {
       result.push(toPhotoPayload(metadata.uploadUrl, item, metadata));
     } else {
-      console.warn(`[WARN] [convertPhotoIdsToUrls] Foto ${photoId} não tem URL, será ignorada`);
+      logger.warn(`[WARN] [convertPhotoIdsToUrls] Foto ${photoId} não tem URL, será ignorada`);
     }
   }
 
@@ -1657,7 +1798,7 @@ export const syncObra = async (
     // Validar número da obra antes de sincronizar (deve ter 8 ou 10 dígitos numéricos)
     const obraNumero = obra.obra?.trim() || '';
     if (!/^\d+$/.test(obraNumero) || (obraNumero.length !== 8 && obraNumero.length !== 10)) {
-      console.error(`❌ [syncObra] Número inválido: "${obraNumero}" (${obraNumero.length} dígitos). Deve ter 8 ou 10 dígitos. Sync bloqueado.`);
+      logger.error(`❌ [syncObra] Número inválido: "${obraNumero}" (${obraNumero.length} dígitos). Deve ter 8 ou 10 dígitos. Sync bloqueado.`);
       return { success: false };
     }
 
@@ -1668,34 +1809,43 @@ export const syncObra = async (
     // O user_id será NULL no banco (definido como opcional)
 
     // Processar upload das fotos através da fila
-    console.log(`🚀 [syncObra] Iniciando upload de fotos para obra ${obra.obra}`);
+    logger.sync(`🚀 [syncObra] Iniciando upload de fotos para obra ${obra.obra}`);
     const referencedPhotoIds = collectObraReferencedPhotoIds(obra);
-    console.log(`📌 [syncObra] IDs de fotos referenciados na obra: ${referencedPhotoIds.length}`);
+    logger.sync(`📌 [syncObra] IDs de fotos referenciados na obra: ${referencedPhotoIds.length}`);
     const uploadResult = await processObraPhotos(
       obra.id,
       onProgress,
       referencedPhotoIds.length > 0 ? referencedPhotoIds : undefined
     );
-    console.log(`📊 [syncObra] Upload concluído: ${uploadResult.success} sucesso, ${uploadResult.failed} falhas`);
+    logger.sync(`📊 [syncObra] Upload concluído: ${uploadResult.success} sucesso, ${uploadResult.failed} falhas`);
 
     // SYNC PARCIAL: Permitir salvar obra mesmo se algumas fotos falharem
     // Log de aviso se houver falhas, mas não bloqueia o sync
     if (uploadResult.failed > 0) {
       const totalPhotos = uploadResult.success + uploadResult.failed;
-      const lostPhotos = uploadResult.results.filter(r => !r.success && r.error?.includes('não encontrado')).length;
+      const lostPhotos = uploadResult.results.filter((r) => {
+        if (r.success) return false;
+        const msg = (r.error || '').toLowerCase();
+        return (
+          msg.includes('não encontrado') ||
+          msg.includes('nao encontrado') ||
+          msg.includes('photo-backup') ||
+          msg.includes('arquivo fisico')
+        );
+      }).length;
       const networkFailures = uploadResult.failed - lostPhotos;
 
       if (lostPhotos > 0) {
-        console.warn(
+        logger.warn(
           `⚠️ ${lostPhotos} foto(s) foram perdidas (arquivos removidos do dispositivo antes da sincronização)`
         );
       }
       if (networkFailures > 0) {
-        console.warn(
+        logger.warn(
           `⚠️ ${networkFailures} foto(s) falharam no upload (problema de rede ou servidor)`
         );
       }
-      console.warn(
+      logger.warn(
         `✅ Obra será sincronizada com ${uploadResult.success} de ${totalPhotos} foto(s).`
       );
       // Não lança erro - continua com as fotos que subiram com sucesso
@@ -1703,152 +1853,178 @@ export const syncObra = async (
 
     // ✅ CRÍTICO: Converter estruturas JSONB do checklist APÓS upload das fotos
     // Isso garante que as URLs públicas já estejam disponíveis no metadata
-    console.log(`🔄 [syncObra] Convertendo estruturas JSONB com URLs das fotos...`);
+    logger.sync(`🔄 [syncObra] Convertendo estruturas JSONB com URLs das fotos...`);
     const checklistPostesDataConverted = await convertChecklistPostesData((obra as any).checklist_postes_data);
     const checklistSeccionamentosDataConverted = await convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data);
     const checklistAterramentosDataConverted = await convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data);
     const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
     const postesDataConverted = await convertPostesData((obra as any).postes_data);
 
-    // Obter URLs das fotos uploadadas - PARALELIZADO ⚡
-    console.log(`📥 [syncObra] Obtendo metadados das fotos uploadadas (em paralelo)...`);
-    console.log(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
-    console.log(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
-    console.log(`   - fotos_depois: ${obra.fotos_depois?.length || 0} IDs`);
+    // Obter URLs das fotos uploadadas — LEITURA ÚNICA + MAP (57x mais rápido) ⚡
+    logger.sync(`📥 [syncObra] Obtendo metadados das fotos uploadadas (leitura única)...`);
+    logger.sync(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
+    logger.sync(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
+    logger.sync(`   - fotos_depois: ${obra.fotos_depois?.length || 0} IDs`);
 
-    const [
-      fotosAntesMetadata,
-      fotosDuranteMetadata,
-      fotosDepoisMetadata,
-      fotosAberturaMetadata,
-      fotosFechamentoMetadata,
-      fotosDitaisAberturaMetadata,
-      fotosDitaisImpedirMetadata,
-      fotosDitaisTestarMetadata,
-      fotosDitaisAterrarMetadata,
-      fotosDitaisSinalizarMetadata,
-      fotosAterramentoValaAbertaMetadata,
-      fotosAterramentoHastesMetadata,
-      fotosAterramentoValaFechadaMetadata,
-      fotosAterramentoMedicaoMetadata,
-      fotosTransformadorLaudoMetadata,
-      fotosTransformadorComponenteInstaladoMetadata,
-      fotosTransformadorTombamentoInstaladoMetadata,
-      fotosTransformadorTapeMetadata,
-      fotosTransformadorPlacaInstaladoMetadata,
-      fotosTransformadorInstaladoMetadata,
-      fotosTransformadorAntesRetirarMetadata,
-      fotosTransformadorLaudoRetiradoMetadata,
-      fotosTransformadorTombamentoRetiradoMetadata,
-      fotosTransformadorPlacaRetiradoMetadata,
-      fotosTransformadorConexoesPrimariasInstaladoMetadata,
-      fotosTransformadorConexoesSecundariasInstaladoMetadata,
-      fotosTransformadorConexoesPrimariasRetiradoMetadata,
-      fotosTransformadorConexoesSecundariasRetiradoMetadata,
-      fotosMedidorPadraoMetadata,
-      fotosMedidorLeituraMetadata,
-      fotosMedidorSeloBornMetadata,
-      fotosMedidorSeloCaixaMetadata,
-      fotosMedidorIdentificadorFaseMetadata,
-      fotosChecklistCroquiMetadata,
-      fotosChecklistPanoramicaInicialMetadata,
-      fotosChecklistChedeMetadata,
-      fotosChecklistAterramentoCercaMetadata,
-      fotosChecklistPadraoGeralMetadata,
-      fotosChecklistPadraoInternoMetadata,
-      fotosChecklistFryingMetadata,
-      fotosChecklistAberturaFechamentoPuloMetadata,
-      fotosChecklistPanoramicaFinalMetadata,
-      fotosChecklistPostesMetadata,
-      fotosChecklistSeccionamentosMetadata,
-      docCadastroMedidorMetadata,
-      docLaudoTransformadorMetadata,
-      docLaudoReguladorMetadata,
-      docLaudoReligadorMetadata,
-      docAprMetadata,
-      docFvbtMetadata,
-      docTermoDesistenciaLptMetadata,
-      docAutorizacaoPassagemMetadata,
-      docMateriaisPrevistoMetadata,
-      docMateriaisRealizadoMetadata,
-      fotosAltimetriaLadoFonteMetadata,
-      fotosAltimetriaMedicaoFonteMetadata,
-      fotosAltimetriaLadoCargaMetadata,
-      fotosAltimetriaMedicaoCargaMetadata,
-      fotosVazamentoEvidenciaMetadata,
-      fotosVazamentoEquipamentosLimpezaMetadata,
-      fotosVazamentoTombamentoRetiradoMetadata,
-      fotosVazamentoPlacaRetiradoMetadata,
-      fotosVazamentoTombamentoInstaladoMetadata,
-      fotosVazamentoPlacaInstaladoMetadata,
-      fotosVazamentoInstalacaoMetadata,
-    ] = await Promise.all([
-      getPhotoMetadatasByIds(obra.fotos_antes || []),
-      getPhotoMetadatasByIds(obra.fotos_durante || []),
-      getPhotoMetadatasByIds(obra.fotos_depois || []),
-      getPhotoMetadatasByIds(obra.fotos_abertura || []),
-      getPhotoMetadatasByIds(obra.fotos_fechamento || []),
-      getPhotoMetadatasByIds(obra.fotos_ditais_abertura || []),
-      getPhotoMetadatasByIds(obra.fotos_ditais_impedir || []),
-      getPhotoMetadatasByIds(obra.fotos_ditais_testar || []),
-      getPhotoMetadatasByIds(obra.fotos_ditais_aterrar || []),
-      getPhotoMetadatasByIds(obra.fotos_ditais_sinalizar || []),
-      getPhotoMetadatasByIds(obra.fotos_aterramento_vala_aberta || []),
-      getPhotoMetadatasByIds(obra.fotos_aterramento_hastes || []),
-      getPhotoMetadatasByIds(obra.fotos_aterramento_vala_fechada || []),
-      getPhotoMetadatasByIds(obra.fotos_aterramento_medicao || []),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_laudo || [], obra.id, 'transformador_laudo'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_componente_instalado || [], obra.id, 'transformador_componente_instalado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_instalado || [], obra.id, 'transformador_tombamento_instalado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_tape || [], obra.id, 'transformador_tape'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_instalado || [], obra.id, 'transformador_placa_instalado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_instalado || [], obra.id, 'transformador_instalado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_antes_retirar || [], obra.id, 'transformador_antes_retirar'),
-      getPhotoMetadatasWithFallback((obra as any).fotos_transformador_laudo_retirado || [], obra.id, 'transformador_laudo_retirado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_tombamento_retirado || [], obra.id, 'transformador_tombamento_retirado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_placa_retirado || [], obra.id, 'transformador_placa_retirado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_instalado || [], obra.id, 'transformador_conexoes_primarias_instalado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_instalado || [], obra.id, 'transformador_conexoes_secundarias_instalado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_primarias_retirado || [], obra.id, 'transformador_conexoes_primarias_retirado'),
-      getPhotoMetadatasWithFallback(obra.fotos_transformador_conexoes_secundarias_retirado || [], obra.id, 'transformador_conexoes_secundarias_retirado'),
-      getPhotoMetadatasByIds(obra.fotos_medidor_padrao || []),
-      getPhotoMetadatasByIds(obra.fotos_medidor_leitura || []),
-      getPhotoMetadatasByIds(obra.fotos_medidor_selo_born || []),
-      getPhotoMetadatasByIds(obra.fotos_medidor_selo_caixa || []),
-      getPhotoMetadatasByIds(obra.fotos_medidor_identificador_fase || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_croqui || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_inicial || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_chede || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_aterramento_cerca || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_padrao_geral || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_padrao_interno || []),
-      getPhotoMetadatasByIds((obra as any).fotos_checklist_frying || []),
-      getPhotoMetadatasByIds((obra as any).fotos_checklist_abertura_fechamento_pulo || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_panoramica_final || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_postes || []),
-      getPhotoMetadatasByIds(obra.fotos_checklist_seccionamentos || []),
-      getPhotoMetadatasWithFallback(obra.doc_cadastro_medidor || [], obra.id, 'doc_cadastro_medidor'),
-      getPhotoMetadatasWithFallback(obra.doc_laudo_transformador || [], obra.id, 'doc_laudo_transformador'),
-      getPhotoMetadatasWithFallback(obra.doc_laudo_regulador || [], obra.id, 'doc_laudo_regulador'),
-      getPhotoMetadatasWithFallback(obra.doc_laudo_religador || [], obra.id, 'doc_laudo_religador'),
-      getPhotoMetadatasWithFallback(obra.doc_apr || [], obra.id, 'doc_apr'),
-      getPhotoMetadatasWithFallback(obra.doc_fvbt || [], obra.id, 'doc_fvbt'),
-      getPhotoMetadatasWithFallback(obra.doc_termo_desistencia_lpt || [], obra.id, 'doc_termo_desistencia_lpt'),
-      getPhotoMetadatasWithFallback(obra.doc_autorizacao_passagem || [], obra.id, 'doc_autorizacao_passagem'),
-      getPhotoMetadatasWithFallback(obra.doc_materiais_previsto || [], obra.id, 'doc_materiais_previsto'),
-      getPhotoMetadatasWithFallback(obra.doc_materiais_realizado || [], obra.id, 'doc_materiais_realizado'),
-      getPhotoMetadatasByIds(obra.fotos_altimetria_lado_fonte || []),
-      getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_fonte || []),
-      getPhotoMetadatasByIds(obra.fotos_altimetria_lado_carga || []),
-      getPhotoMetadatasByIds(obra.fotos_altimetria_medicao_carga || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_evidencia || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_equipamentos_limpeza || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_tombamento_retirado || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_placa_retirado || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_tombamento_instalado || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_placa_instalado || []),
-      getPhotoMetadatasByIds(obra.fotos_vazamento_instalacao || []),
-    ]);
+    const _allSyncMeta = await getAllPhotoMetadata();
+    const _metaById = new Map<string, PhotoMetadata>(_allSyncMeta.map(m => [m.id, m]));
+    const _metaByObraType = new Map<string, PhotoMetadata[]>();
+    for (const m of _allSyncMeta) {
+      const key = `${m.obraId}:${m.type}`;
+      const arr = _metaByObraType.get(key);
+      if (arr) arr.push(m); else _metaByObraType.set(key, [m]);
+    }
+
+    // Cria um PhotoMetadata sintético para entradas que já são objetos com URL
+    // (fotos já enviadas ao Supabase e relidas do banco como {url, lat, lon, ...})
+    const _synthFromUrlObj = (entry: any): PhotoMetadata =>
+      ({
+        uploaded: true,
+        uploadUrl: entry.url as string,
+        latitude: entry.latitude ?? null,
+        longitude: entry.longitude ?? null,
+        utmX: entry.utm_x ?? null,
+        utmY: entry.utm_y ?? null,
+        utmZone: entry.utm_zone ?? null,
+      } as PhotoMetadata);
+
+    const _lookupByIds = (ids: any[]): PhotoMetadata[] => {
+      const found: PhotoMetadata[] = [];
+      const missing: string[] = [];
+      for (const id of ids) {
+        if (typeof id === 'object' && id !== null && typeof id.url === 'string') {
+          found.push(_synthFromUrlObj(id));
+          continue;
+        }
+        if (typeof id !== 'string') continue;
+        const m = _metaById.get(id);
+        if (m) found.push(m); else missing.push(id);
+      }
+      if (missing.length > 0) {
+        logger.warn(`⚠️ [lookupByIds] Buscando ${ids.length} IDs, não encontrou: ${JSON.stringify(missing)}`);
+      }
+      return found;
+    };
+
+    const _lookupWithFallback = (photoIds: any[], obraId: string, type: string): PhotoMetadata[] => {
+      if (photoIds.length === 0) return [];
+      // Objetos já com URL passam direto; strings vão pelo caminho de lookup
+      const urlResolved: PhotoMetadata[] = [];
+      const stringIds: string[] = [];
+      for (const id of photoIds) {
+        if (typeof id === 'object' && id !== null && typeof id.url === 'string') {
+          urlResolved.push(_synthFromUrlObj(id));
+        } else if (typeof id === 'string') {
+          stringIds.push(id);
+        }
+      }
+      const resultMap = new Map<string, PhotoMetadata>();
+      for (const id of stringIds) {
+        const m = _metaById.get(id);
+        if (m && m.uploaded && m.uploadUrl) resultMap.set(id, m);
+      }
+      if (resultMap.size < stringIds.length) {
+        for (const m of (_metaByObraType.get(`${obraId}:${type}`) || [])) {
+          if (m.uploaded && m.uploadUrl && !resultMap.has(m.id)) {
+            resultMap.set(m.id, m);
+            logger.sync(`🔄 [Fallback obraId+tipo] Encontrou ${m.id} para ${type}`);
+          }
+        }
+      }
+      if (resultMap.size < stringIds.length) {
+        const possibleObraIds = new Set<string>();
+        for (const id of stringIds) {
+          const match = id.match(/^(.+?)_(antes|durante|depois|abertura|fechamento|ditais_|aterramento_|transformador_|medidor_|checklist_|altimetria_|vazamento_|doc_)/);
+          if (match && match[1] && match[1] !== obraId) possibleObraIds.add(match[1]);
+        }
+        for (const possObraId of possibleObraIds) {
+          for (const m of (_metaByObraType.get(`${possObraId}:${type}`) || [])) {
+            if (m.uploaded && m.uploadUrl && !resultMap.has(m.id)) {
+              resultMap.set(m.id, m);
+              logger.sync(`🔄 [Fallback obraId antigo] Encontrou foto ${m.id} com obraId ${possObraId}`);
+            }
+          }
+        }
+      }
+      if (resultMap.size < stringIds.length) {
+        for (const id of stringIds) {
+          if (!resultMap.has(id)) {
+            const m = _metaById.get(id);
+            if (m) {
+              resultMap.set(id, m);
+              logger.sync(`🔄 [Fallback ID direto] Encontrou foto ${id} (uploaded: ${m.uploaded})`);
+            }
+          }
+        }
+      }
+      return [...urlResolved, ...Array.from(resultMap.values())];
+    };
+
+    const fotosAntesMetadata = _lookupByIds(obra.fotos_antes || []);
+    const fotosDuranteMetadata = _lookupByIds(obra.fotos_durante || []);
+    const fotosDepoisMetadata = _lookupByIds(obra.fotos_depois || []);
+    const fotosAberturaMetadata = _lookupByIds(obra.fotos_abertura || []);
+    const fotosFechamentoMetadata = _lookupByIds(obra.fotos_fechamento || []);
+    const fotosDitaisAberturaMetadata = _lookupByIds(obra.fotos_ditais_abertura || []);
+    const fotosDitaisImpedirMetadata = _lookupByIds(obra.fotos_ditais_impedir || []);
+    const fotosDitaisTestarMetadata = _lookupByIds(obra.fotos_ditais_testar || []);
+    const fotosDitaisAterrarMetadata = _lookupByIds(obra.fotos_ditais_aterrar || []);
+    const fotosDitaisSinalizarMetadata = _lookupByIds(obra.fotos_ditais_sinalizar || []);
+    const fotosAterramentoValaAbertaMetadata = _lookupByIds(obra.fotos_aterramento_vala_aberta || []);
+    const fotosAterramentoHastesMetadata = _lookupByIds(obra.fotos_aterramento_hastes || []);
+    const fotosAterramentoValaFechadaMetadata = _lookupByIds(obra.fotos_aterramento_vala_fechada || []);
+    const fotosAterramentoMedicaoMetadata = _lookupByIds(obra.fotos_aterramento_medicao || []);
+    const fotosTransformadorLaudoMetadata = _lookupWithFallback(obra.fotos_transformador_laudo || [], obra.id, 'transformador_laudo');
+    const fotosTransformadorComponenteInstaladoMetadata = _lookupWithFallback(obra.fotos_transformador_componente_instalado || [], obra.id, 'transformador_componente_instalado');
+    const fotosTransformadorTombamentoInstaladoMetadata = _lookupWithFallback(obra.fotos_transformador_tombamento_instalado || [], obra.id, 'transformador_tombamento_instalado');
+    const fotosTransformadorTapeMetadata = _lookupWithFallback(obra.fotos_transformador_tape || [], obra.id, 'transformador_tape');
+    const fotosTransformadorPlacaInstaladoMetadata = _lookupWithFallback(obra.fotos_transformador_placa_instalado || [], obra.id, 'transformador_placa_instalado');
+    const fotosTransformadorInstaladoMetadata = _lookupWithFallback(obra.fotos_transformador_instalado || [], obra.id, 'transformador_instalado');
+    const fotosTransformadorAntesRetirarMetadata = _lookupWithFallback(obra.fotos_transformador_antes_retirar || [], obra.id, 'transformador_antes_retirar');
+    const fotosTransformadorLaudoRetiradoMetadata = _lookupWithFallback((obra as any).fotos_transformador_laudo_retirado || [], obra.id, 'transformador_laudo_retirado');
+    const fotosTransformadorTombamentoRetiradoMetadata = _lookupWithFallback(obra.fotos_transformador_tombamento_retirado || [], obra.id, 'transformador_tombamento_retirado');
+    const fotosTransformadorPlacaRetiradoMetadata = _lookupWithFallback(obra.fotos_transformador_placa_retirado || [], obra.id, 'transformador_placa_retirado');
+    const fotosTransformadorConexoesPrimariasInstaladoMetadata = _lookupWithFallback(obra.fotos_transformador_conexoes_primarias_instalado || [], obra.id, 'transformador_conexoes_primarias_instalado');
+    const fotosTransformadorConexoesSecundariasInstaladoMetadata = _lookupWithFallback(obra.fotos_transformador_conexoes_secundarias_instalado || [], obra.id, 'transformador_conexoes_secundarias_instalado');
+    const fotosTransformadorConexoesPrimariasRetiradoMetadata = _lookupWithFallback(obra.fotos_transformador_conexoes_primarias_retirado || [], obra.id, 'transformador_conexoes_primarias_retirado');
+    const fotosTransformadorConexoesSecundariasRetiradoMetadata = _lookupWithFallback(obra.fotos_transformador_conexoes_secundarias_retirado || [], obra.id, 'transformador_conexoes_secundarias_retirado');
+    const fotosMedidorPadraoMetadata = _lookupByIds(obra.fotos_medidor_padrao || []);
+    const fotosMedidorLeituraMetadata = _lookupByIds(obra.fotos_medidor_leitura || []);
+    const fotosMedidorSeloBornMetadata = _lookupByIds(obra.fotos_medidor_selo_born || []);
+    const fotosMedidorSeloCaixaMetadata = _lookupByIds(obra.fotos_medidor_selo_caixa || []);
+    const fotosMedidorIdentificadorFaseMetadata = _lookupByIds(obra.fotos_medidor_identificador_fase || []);
+    const fotosChecklistCroquiMetadata = _lookupByIds(obra.fotos_checklist_croqui || []);
+    const fotosChecklistPanoramicaInicialMetadata = _lookupByIds(obra.fotos_checklist_panoramica_inicial || []);
+    const fotosChecklistChedeMetadata = _lookupByIds(obra.fotos_checklist_chede || []);
+    const fotosChecklistAterramentoCercaMetadata = _lookupByIds(obra.fotos_checklist_aterramento_cerca || []);
+    const fotosChecklistPadraoGeralMetadata = _lookupByIds(obra.fotos_checklist_padrao_geral || []);
+    const fotosChecklistPadraoInternoMetadata = _lookupByIds(obra.fotos_checklist_padrao_interno || []);
+    const fotosChecklistFryingMetadata = _lookupByIds((obra as any).fotos_checklist_frying || []);
+    const fotosChecklistAberturaFechamentoPuloMetadata = _lookupByIds((obra as any).fotos_checklist_abertura_fechamento_pulo || []);
+    const fotosChecklistPanoramicaFinalMetadata = _lookupByIds(obra.fotos_checklist_panoramica_final || []);
+    const fotosChecklistPostesMetadata = _lookupByIds(obra.fotos_checklist_postes || []);
+    const fotosChecklistSeccionamentosMetadata = _lookupByIds(obra.fotos_checklist_seccionamentos || []);
+    const docCadastroMedidorMetadata = _lookupWithFallback(obra.doc_cadastro_medidor || [], obra.id, 'doc_cadastro_medidor');
+    const docLaudoTransformadorMetadata = _lookupWithFallback(obra.doc_laudo_transformador || [], obra.id, 'doc_laudo_transformador');
+    const docLaudoReguladorMetadata = _lookupWithFallback(obra.doc_laudo_regulador || [], obra.id, 'doc_laudo_regulador');
+    const docLaudoReligadorMetadata = _lookupWithFallback(obra.doc_laudo_religador || [], obra.id, 'doc_laudo_religador');
+    const docAprMetadata = _lookupWithFallback(obra.doc_apr || [], obra.id, 'doc_apr');
+    const docFvbtMetadata = _lookupWithFallback(obra.doc_fvbt || [], obra.id, 'doc_fvbt');
+    const docTermoDesistenciaLptMetadata = _lookupWithFallback(obra.doc_termo_desistencia_lpt || [], obra.id, 'doc_termo_desistencia_lpt');
+    const docAutorizacaoPassagemMetadata = _lookupWithFallback(obra.doc_autorizacao_passagem || [], obra.id, 'doc_autorizacao_passagem');
+    const docMateriaisPrevistoMetadata = _lookupWithFallback(obra.doc_materiais_previsto || [], obra.id, 'doc_materiais_previsto');
+    const docMateriaisRealizadoMetadata = _lookupWithFallback(obra.doc_materiais_realizado || [], obra.id, 'doc_materiais_realizado');
+    const fotosAltimetriaLadoFonteMetadata = _lookupByIds(obra.fotos_altimetria_lado_fonte || []);
+    const fotosAltimetriaMedicaoFonteMetadata = _lookupByIds(obra.fotos_altimetria_medicao_fonte || []);
+    const fotosAltimetriaLadoCargaMetadata = _lookupByIds(obra.fotos_altimetria_lado_carga || []);
+    const fotosAltimetriaMedicaoCargaMetadata = _lookupByIds(obra.fotos_altimetria_medicao_carga || []);
+    const fotosVazamentoEvidenciaMetadata = _lookupByIds(obra.fotos_vazamento_evidencia || []);
+    const fotosVazamentoEquipamentosLimpezaMetadata = _lookupByIds(obra.fotos_vazamento_equipamentos_limpeza || []);
+    const fotosVazamentoTombamentoRetiradoMetadata = _lookupByIds(obra.fotos_vazamento_tombamento_retirado || []);
+    const fotosVazamentoPlacaRetiradoMetadata = _lookupByIds(obra.fotos_vazamento_placa_retirado || []);
+    const fotosVazamentoTombamentoInstaladoMetadata = _lookupByIds(obra.fotos_vazamento_tombamento_instalado || []);
+    const fotosVazamentoPlacaInstaladoMetadata = _lookupByIds(obra.fotos_vazamento_placa_instalado || []);
+    const fotosVazamentoInstalacaoMetadata = _lookupByIds(obra.fotos_vazamento_instalacao || []);
 
     // Converter todos os metadados para o formato do banco
     const fotosAntesData = convertPhotosToData(fotosAntesMetadata);
@@ -1917,6 +2093,129 @@ export const syncObra = async (
     const fotosVazamentoPlacaInstaladoData = convertPhotosToData(fotosVazamentoPlacaInstaladoMetadata);
     const fotosVazamentoInstalacaoData = convertPhotosToData(fotosVazamentoInstalacaoMetadata);
 
+    const getPhotoIdentity = (photo: any): string => {
+      if (typeof photo === 'string') return photo;
+      if (!photo || typeof photo !== 'object') return JSON.stringify(photo);
+      return String(photo.url || photo.uploadUrl || photo.id || photo.path || JSON.stringify(photo));
+    };
+
+    const mergePhotoArrays = (newData?: any[] | null, existingData?: any[] | null): any[] => {
+      const existing = Array.isArray(existingData) ? existingData : [];
+      const incoming = Array.isArray(newData) ? newData : [];
+      if (incoming.length === 0) return existing;
+      if (existing.length === 0) return incoming;
+
+      const merged = [...existing];
+      const byKey = new Map<string, number>();
+      merged.forEach((photo, index) => byKey.set(getPhotoIdentity(photo), index));
+
+      for (const photo of incoming) {
+        const key = getPhotoIdentity(photo);
+        const existingIndex = byKey.get(key);
+        if (existingIndex === undefined) {
+          byKey.set(key, merged.length);
+          merged.push(photo);
+          continue;
+        }
+
+        const current = merged[existingIndex];
+        const currentHasUrl = !!(current && typeof current === 'object' && current.url);
+        const incomingHasUrl = !!(photo && typeof photo === 'object' && photo.url);
+        if (!currentHasUrl && incomingHasUrl) {
+          merged[existingIndex] = photo;
+        }
+      }
+
+      return merged;
+    };
+
+    const mergePostesData = (newData?: any[] | null, existingData?: any[] | null): any[] | null => {
+      const incoming = Array.isArray(newData) ? newData : [];
+      const existing = Array.isArray(existingData) ? existingData : [];
+      if (incoming.length === 0) return existing.length > 0 ? existing : null;
+      if (existing.length === 0) return incoming;
+
+      const photoFields = ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_medicao'];
+      const merged = existing.map((poste) => ({ ...poste }));
+      const getPosteKey = (poste: any, index: number) => String(poste?.numero ?? poste?.id ?? index);
+      const indexByKey = new Map<string, number>();
+      merged.forEach((poste, index) => indexByKey.set(getPosteKey(poste, index), index));
+
+      incoming.forEach((poste, index) => {
+        const key = getPosteKey(poste, index);
+        const existingIndex = indexByKey.get(key);
+        if (existingIndex === undefined) {
+          indexByKey.set(key, merged.length);
+          merged.push({ ...poste });
+          return;
+        }
+
+        const current = merged[existingIndex];
+        const next = { ...current, ...poste };
+        for (const field of photoFields) {
+          next[field] = mergePhotoArrays(poste?.[field], current?.[field]);
+        }
+        merged[existingIndex] = next;
+      });
+
+      return merged;
+    };
+
+    const countBookPhotos = (book: any): number => {
+      if (!book || typeof book !== 'object') return 0;
+      let count = 0;
+      for (const [key, value] of Object.entries(book)) {
+        if ((key.startsWith('fotos_') || key.startsWith('doc_')) && Array.isArray(value)) {
+          count += value.length;
+        }
+      }
+      if (Array.isArray(book.postes_data)) {
+        for (const poste of book.postes_data) {
+          count += (poste?.fotos_antes?.length || 0)
+            + (poste?.fotos_durante?.length || 0)
+            + (poste?.fotos_depois?.length || 0)
+            + (poste?.fotos_medicao?.length || 0);
+        }
+      }
+      return count;
+    };
+
+    const mergeObraPayloadWithExisting = (payload: any, existing: any): any => {
+      const photoArrayFields = [
+        'fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_abertura', 'fotos_fechamento',
+        'fotos_ditais_abertura', 'fotos_ditais_impedir', 'fotos_ditais_testar', 'fotos_ditais_aterrar', 'fotos_ditais_sinalizar',
+        'fotos_aterramento_vala_aberta', 'fotos_aterramento_hastes', 'fotos_aterramento_vala_fechada', 'fotos_aterramento_medicao',
+        'fotos_transformador_laudo', 'fotos_transformador_componente_instalado', 'fotos_transformador_tombamento_instalado',
+        'fotos_transformador_tape', 'fotos_transformador_placa_instalado', 'fotos_transformador_instalado',
+        'fotos_transformador_antes_retirar', 'fotos_transformador_laudo_retirado', 'fotos_transformador_tombamento_retirado',
+        'fotos_transformador_placa_retirado', 'fotos_transformador_conexoes_primarias_instalado',
+        'fotos_transformador_conexoes_secundarias_instalado', 'fotos_transformador_conexoes_primarias_retirado',
+        'fotos_transformador_conexoes_secundarias_retirado', 'fotos_medidor_padrao', 'fotos_medidor_leitura',
+        'fotos_medidor_selo_born', 'fotos_medidor_selo_caixa', 'fotos_medidor_identificador_fase',
+        'fotos_checklist_croqui', 'fotos_checklist_panoramica_inicial', 'fotos_checklist_chede',
+        'fotos_checklist_aterramento_cerca', 'fotos_checklist_padrao_geral', 'fotos_checklist_padrao_interno',
+        'fotos_checklist_frying', 'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_panoramica_final',
+        'fotos_checklist_postes', 'fotos_checklist_seccionamentos', 'doc_cadastro_medidor', 'doc_laudo_transformador',
+        'doc_laudo_regulador', 'doc_laudo_religador', 'doc_apr', 'doc_fvbt', 'doc_termo_desistencia_lpt',
+        'doc_autorizacao_passagem', 'doc_materiais_previsto', 'doc_materiais_realizado',
+        'fotos_altimetria_lado_fonte', 'fotos_altimetria_medicao_fonte', 'fotos_altimetria_lado_carga',
+        'fotos_altimetria_medicao_carga', 'fotos_vazamento_evidencia', 'fotos_vazamento_equipamentos_limpeza',
+        'fotos_vazamento_tombamento_retirado', 'fotos_vazamento_placa_retirado', 'fotos_vazamento_tombamento_instalado',
+        'fotos_vazamento_placa_instalado', 'fotos_vazamento_instalacao',
+      ];
+
+      const merged = { ...payload };
+      for (const field of photoArrayFields) {
+        merged[field] = mergePhotoArrays(payload?.[field], existing?.[field]);
+      }
+      merged.postes_data = mergePostesData(payload?.postes_data, existing?.postes_data);
+      merged.checklist_postes_data = payload?.checklist_postes_data || existing?.checklist_postes_data || null;
+      merged.checklist_seccionamentos_data = payload?.checklist_seccionamentos_data || existing?.checklist_seccionamentos_data || null;
+      merged.checklist_aterramentos_cerca_data = payload?.checklist_aterramentos_cerca_data || existing?.checklist_aterramentos_cerca_data || null;
+      merged.checklist_hastes_termometros_data = payload?.checklist_hastes_termometros_data || existing?.checklist_hastes_termometros_data || null;
+      return merged;
+    };
+
     // Se a obra pendente representa a edição de uma obra já existente no servidor,
     // devemos atualizar (UPDATE) em vez de inserir (INSERT). Detectamos isso quando:
     // 1. `obra.isEdited` é true e há um `originalId`
@@ -1930,16 +2229,16 @@ export const syncObra = async (
     const shouldUpdate = (obra.isEdited && idToUpdate) || ((obra as any).serverId && idToUpdate);
     const shouldUpdateByEdit = !!(obra.isEdited && idToUpdate);
 
-    console.log(`🔍 [syncObra] Decisão de sync:`);
-    console.log(`   - obra.id: ${obra.id}`);
-    console.log(`   - obra.serverId: ${(obra as any).serverId || 'undefined'}`);
-    console.log(`   - obra.isEdited: ${obra.isEdited}`);
-    console.log(`   - idToUpdate: ${idToUpdate}`);
-    console.log(`   - shouldUpdate: ${shouldUpdate}`);
-    console.log(`   - shouldUpdateByEdit: ${shouldUpdateByEdit}`);
+    logger.sync(`🔍 [syncObra] Decisão de sync:`);
+    logger.sync(`   - obra.id: ${obra.id}`);
+    logger.sync(`   - obra.serverId: ${(obra as any).serverId || 'undefined'}`);
+    logger.sync(`   - obra.isEdited: ${obra.isEdited}`);
+    logger.sync(`   - idToUpdate: ${idToUpdate}`);
+    logger.sync(`   - shouldUpdate: ${shouldUpdate}`);
+    logger.sync(`   - shouldUpdateByEdit: ${shouldUpdateByEdit}`);
 
     if (shouldUpdate && idToUpdate) {
-      console.log(`🔁 [syncObra] Atualizando obra existente no servidor: ${idToUpdate}`);
+      logger.sync(`🔁 [syncObra] Atualizando obra existente no servidor: ${idToUpdate}`);
 
       // Buscar obra existente no servidor
       const { data: existingObra, error: fetchError } = await supabase
@@ -1949,7 +2248,7 @@ export const syncObra = async (
         .single();
 
       if (fetchError) {
-        console.error(`❌ [syncObra] Não foi possível buscar obra ${idToUpdate} para atualização:`, fetchError);
+        logger.error(`❌ [syncObra] Não foi possível buscar obra ${idToUpdate} para atualização:`, fetchError);
 
         if (shouldUpdateByEdit) {
           // Em edição explícita, manter comportamento conservador para evitar duplicatas.
@@ -1957,7 +2256,7 @@ export const syncObra = async (
         }
 
         // Se veio apenas de serverId (possivelmente stale), continua para INSERT.
-        console.warn(`⚠️ [syncObra] serverId ${idToUpdate} inválido/stale. Continuando com INSERT para não sobrescrever book incorreto.`);
+        logger.warn(`⚠️ [syncObra] serverId ${idToUpdate} inválido/stale. Continuando com INSERT para não sobrescrever book incorreto.`);
       }
 
       if (existingObra) {
@@ -1966,20 +2265,12 @@ export const syncObra = async (
         const incomingTipoServico = (obra.tipo_servico || '').trim();
         const existingTipoServico = ((existingObra as any).tipo_servico || '').trim();
         if (incomingTipoServico && existingTipoServico && incomingTipoServico !== existingTipoServico) {
-          console.warn(
+          logger.warn(
             `⚠️ [syncObra] Tipo de serviço diferente no ID ${idToUpdate} (servidor="${existingTipoServico}" vs local="${incomingTipoServico}"). Será feito INSERT de novo book.`
           );
         } else {
-        // ✅ CORRIGIDO: Substituir fotos se houver novas, caso contrário manter existentes
-        // Isso evita duplicação ao sincronizar múltiplas vezes
-        const replaceOrKeep = (newData: any[], existingData: any[]) => {
-          // Se há novas fotos, usa elas (substituição completa)
-          if (newData && newData.length > 0) {
-            return newData;
-          }
-          // Caso contrário, mantém as existentes
-          return existingData || [];
-        };
+        // Mescla fotos do retry/offline sem apagar o que já chegou antes.
+        const replaceOrKeep = (newData: any[], existingData: any[]) => mergePhotoArrays(newData, existingData);
 
         const updatePayload: any = {
           data: obra.data ?? existingObra.data,
@@ -2055,7 +2346,7 @@ export const syncObra = async (
           fotos_vazamento_placa_instalado: replaceOrKeep(fotosVazamentoPlacaInstaladoData, existingObra.fotos_vazamento_placa_instalado),
           fotos_vazamento_instalacao: replaceOrKeep(fotosVazamentoInstalacaoData, existingObra.fotos_vazamento_instalacao),
           // Cava em Rocha - Dados dos postes
-          postes_data: postesDataConverted ?? existingObra.postes_data ?? null,
+          postes_data: mergePostesData(postesDataConverted, existingObra.postes_data),
           observacoes: (obra as any).observacoes || existingObra.observacoes || null,
           creator_role: (obra as any).creator_role || existingObra.creator_role || null,
           created_by_admin: (obra as any).created_by_admin || existingObra.created_by_admin || null,
@@ -2076,14 +2367,14 @@ export const syncObra = async (
           throw updateError;
         }
 
-        console.log(`✅ Obra ${idToUpdate} atualizada no servidor via sync.`);
+        logger.sync(`✅ Obra ${idToUpdate} atualizada no servidor via sync.`);
 
         // Remover da fila
         try {
           const { remapServicosObraId } = await import('./servico-sync');
           await remapServicosObraId(obra.id, idToUpdate);
         } catch (servicoRemapError) {
-          console.error('Erro ao remapear serviços da obra (não crítico):', servicoRemapError);
+          logger.error('Erro ao remapear serviços da obra (não crítico):', servicoRemapError);
         }
 
         await removePendingObra(obra.id);
@@ -2093,46 +2384,39 @@ export const syncObra = async (
 
       // Se não encontrou obra válida para update, segue fluxo de INSERT.
       if (!fetchError) {
-        console.warn(`⚠️ [syncObra] Obra ${idToUpdate} não encontrada para update. Continuando com INSERT.`);
+        logger.warn(`⚠️ [syncObra] Obra ${idToUpdate} não encontrada para update. Continuando com INSERT.`);
       }
     }
 
-    // ✅ CORREÇÃO: Verificar duplicata apenas do MESMO BOOK (obra+equipe+tipo+created_at)
-    // Não sobrescrever books diferentes com o mesmo número de obra.
-    console.log(`🔍 [syncObra] Verificando duplicata do mesmo book: obra=${obra.obra}, equipe=${obra.equipe}, tipo=${obra.tipo_servico}, created_at=${obra.created_at}`);
+    // O mesmo book operacional é obra+equipe+tipo. created_at muda em retries/criações offline
+    // e não pode ser usado como chave, senão duplica no servidor.
+    logger.sync(`🔍 [syncObra] Verificando book existente: obra=${obra.obra}, equipe=${obra.equipe}, tipo=${obra.tipo_servico}`);
 
-    let existingSameBook: { id: string } | null = null;
-    let checkError: any = null;
+    let existingSameBook: any | null = null;
+    const checkResponse = await supabase
+      .from('obras')
+      .select('*')
+      .eq('obra', obra.obra)
+      .eq('equipe', obra.equipe)
+      .eq('tipo_servico', obra.tipo_servico)
+      .order('created_at', { ascending: false })
+      .limit(10);
 
-    if (obra.created_at) {
-      const checkResponse = await supabase
-        .from('obras')
-        .select('id')
-        .eq('obra', obra.obra)
-        .eq('equipe', obra.equipe)
-        .eq('tipo_servico', obra.tipo_servico)
-        .eq('created_at', obra.created_at)
-        .limit(1)
-        .maybeSingle();
-
-      existingSameBook = checkResponse.data;
-      checkError = checkResponse.error;
-    } else {
-      console.log('ℹ️ [syncObra] created_at ausente; pulando verificação de duplicata por segurança.');
+    const checkError: any = checkResponse.error;
+    if (!checkError && Array.isArray(checkResponse.data) && checkResponse.data.length > 0) {
+      existingSameBook = [...checkResponse.data].sort((a, b) => countBookPhotos(b) - countBookPhotos(a))[0];
     }
 
     if (checkError) {
-      console.error(`⚠️ [syncObra] Erro ao verificar duplicata:`, checkError);
+      logger.error(`⚠️ [syncObra] Erro ao verificar duplicata:`, checkError);
       // Continua com INSERT se não conseguiu verificar
     }
 
     if (existingSameBook) {
       // ✅ ENCONTROU O MESMO BOOK: fazer UPDATE para evitar duplicação do mesmo registro.
-      console.log(`⚠️ [syncObra] Mesmo book já existe no servidor (ID: ${existingSameBook.id}). Fazendo UPDATE.`);
+      logger.sync(`⚠️ [syncObra] Book já existe no servidor (ID: ${existingSameBook.id}). Fazendo UPDATE com merge de fotos.`);
 
-      const { error: updateError } = await supabase
-        .from('obras')
-        .update(sanitizeObrasPayload({
+      const duplicateUpdatePayload = mergeObraPayloadWithExisting({
           data: obra.data,
           responsavel: obra.responsavel,
           tipo_servico: obra.tipo_servico,
@@ -2212,27 +2496,33 @@ export const syncObra = async (
           checklist_seccionamentos_data: checklistSeccionamentosDataConverted || null,
           checklist_aterramentos_cerca_data: checklistAterramentosDataConverted || null,
           checklist_hastes_termometros_data: checklistHastesTermometrosDataConverted || null,
-        }))
+        },
+        existingSameBook
+      );
+
+      const { error: updateError } = await supabase
+        .from('obras')
+        .update(sanitizeObrasPayload(duplicateUpdatePayload))
         .eq('id', existingSameBook.id);
 
       if (updateError) {
         throw updateError;
       }
 
-      console.log(`✅ [syncObra] Book atualizado via detecção de duplicata exata: ${existingSameBook.id}`);
+      logger.sync(`✅ [syncObra] Book atualizado via detecção de duplicata exata: ${existingSameBook.id}`);
 
       // Atualizar fotos com o ID correto do servidor
       try {
         await updatePhotosObraId(obra.id, existingSameBook.id);
       } catch (photoError) {
-        console.error('Erro ao atualizar obraId das fotos (não crítico):', photoError);
+        logger.error('Erro ao atualizar obraId das fotos (não crítico):', photoError);
       }
 
       try {
         const { remapServicosObraId } = await import('./servico-sync');
         await remapServicosObraId(obra.id, existingSameBook.id);
       } catch (servicoRemapError) {
-        console.error('Erro ao atualizar obraId dos serviços (não crítico):', servicoRemapError);
+        logger.error('Erro ao atualizar obraId dos serviços (não crítico):', servicoRemapError);
       }
 
       // Atualizar serverId na obra local para evitar futuras duplicações
@@ -2242,10 +2532,10 @@ export const syncObra = async (
         if (localObraIndex !== -1) {
           localObras[localObraIndex].serverId = existingSameBook.id;
           await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
-          console.log(`✅ [syncObra] serverId atualizado na obra local: ${existingSameBook.id}`);
+          logger.sync(`✅ [syncObra] serverId atualizado na obra local: ${existingSameBook.id}`);
         }
       } catch (localUpdateError) {
-        console.error('Erro ao atualizar serverId local (não crítico):', localUpdateError);
+        logger.error('Erro ao atualizar serverId local (não crítico):', localUpdateError);
       }
 
       await removePendingObra(obra.id);
@@ -2356,9 +2646,9 @@ export const syncObra = async (
       finalObraId = insertedObra.id; // ✅ Novo ID do Supabase
       try {
         const updatedCount = await updatePhotosObraId(obra.id, insertedObra.id);
-        console.log(`✅ ${updatedCount} foto(s) atualizadas com novo obraId: ${insertedObra.id}`);
+        logger.sync(`✅ ${updatedCount} foto(s) atualizadas com novo obraId: ${insertedObra.id}`);
       } catch (photoUpdateError) {
-        console.error('Erro ao atualizar obraId das fotos (não crítico):', photoUpdateError);
+        logger.error('Erro ao atualizar obraId das fotos (não crítico):', photoUpdateError);
         // Não propaga erro - sincronização foi bem sucedida
       }
 
@@ -2366,10 +2656,10 @@ export const syncObra = async (
         const { remapServicosObraId } = await import('./servico-sync');
         const remapped = await remapServicosObraId(obra.id, insertedObra.id);
         if (remapped > 0) {
-          console.log(`✅ ${remapped} serviço(s) remapeado(s) para obra ${insertedObra.id}`);
+          logger.sync(`✅ ${remapped} serviço(s) remapeado(s) para obra ${insertedObra.id}`);
         }
       } catch (servicoRemapError) {
-        console.error('Erro ao atualizar obraId dos serviços (não crítico):', servicoRemapError);
+        logger.error('Erro ao atualizar obraId dos serviços (não crítico):', servicoRemapError);
       }
     }
 
@@ -2383,12 +2673,12 @@ export const syncObra = async (
 
     if (isNetworkError) {
       // Falha de rede temporária: manter como 'pending' para tentar novamente quando voltar online
-      console.warn(`⚠️ [syncObra] Falha de rede ao sincronizar obra ${obra.obra} - mantendo como pendente para retry`);
+      logger.warn(`⚠️ [syncObra] Falha de rede ao sincronizar obra ${obra.obra} - mantendo como pendente para retry`);
       await updatePendingObraStatus(obra.id, 'pending', undefined, obra.sync_attempts);
       return { success: false };
     }
 
-    console.error('Erro ao sincronizar obra:', error);
+    logger.error('Erro ao sincronizar obra:', error);
     const friendlyMessage = translateErrorMessage(errorMessage);
 
     // Incrementar contador de tentativas falhadas
@@ -2398,13 +2688,13 @@ export const syncObra = async (
     // 🚨 BACKUP DE EMERGÊNCIA: Criar backup se falhou 3+ vezes
     if (shouldCreateEmergencyBackup(syncAttempts)) {
       try {
-        console.log(`🚨 Criando backup de emergência após ${syncAttempts} tentativas falhadas...`);
+        logger.sync(`🚨 Criando backup de emergência após ${syncAttempts} tentativas falhadas...`);
 
         const backup = await createEmergencyBackup(obra.id, obra, 'sync_failed');
 
-        console.log(`✅ Backup de emergência criado: ${backup.id}`);
-        console.log(`   📁 Pasta: ${backup.folderPath}`);
-        console.log(`   📸 Fotos: ${backup.totalPhotos}`);
+        logger.sync(`✅ Backup de emergência criado: ${backup.id}`);
+        logger.sync(`   📁 Pasta: ${backup.folderPath}`);
+        logger.sync(`   📸 Fotos: ${backup.totalPhotos}`);
 
         // Avisar usuário (não bloquear por isso)
         Alert.alert(
@@ -2416,7 +2706,7 @@ export const syncObra = async (
         );
 
       } catch (backupError) {
-        console.error('❌ Erro ao criar backup de emergência:', backupError);
+        logger.error('❌ Erro ao criar backup de emergência:', backupError);
 
         // Capturar erro no Sentry
         captureError(backupError as Error, {
@@ -2460,7 +2750,7 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
     const isOnline = await checkInternetConnection();
 
     if (!isOnline) {
-      console.log('📵 [syncAllPendingObras] Sem conexão, abortando');
+      logger.sync('📵 [syncAllPendingObras] Sem conexão, abortando');
       return { success: 0, failed: 0 };
     }
 
@@ -2470,7 +2760,7 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
     // 1. Sincronizar obras de @obras_pending_sync
     const pendingObras = await getPendingObras();
     const obrasToSync = pendingObras.filter(o => o.sync_status === 'pending' || o.sync_status === 'failed');
-    console.log(`📊 [syncAllPendingObras] Obras em pending_sync: ${obrasToSync.length}`);
+    logger.sync(`📊 [syncAllPendingObras] Obras em pending_sync: ${obrasToSync.length}`);
 
     for (const obra of obrasToSync) {
       const result = await syncObra(obra);
@@ -2510,7 +2800,7 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
       return false;
     });
 
-    console.log(`📊 [syncAllPendingObras] Obras locais não sincronizadas: ${localObrasToSync.length}`);
+    logger.sync(`📊 [syncAllPendingObras] Obras locais não sincronizadas: ${localObrasToSync.length}`);
 
     for (const localObra of localObrasToSync) {
       try {
@@ -2522,12 +2812,12 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
         const result = await syncObra(localObra);
         if (result.success) {
           success++;
-          console.log(`✅ [syncAllPendingObras] Obra local sincronizada: ${localObra.obra}`);
+          logger.sync(`✅ [syncAllPendingObras] Obra local sincronizada: ${localObra.obra}`);
         } else {
           failed++;
         }
       } catch (error) {
-        console.error(`❌ [syncAllPendingObras] Erro ao sincronizar obra local ${localObra.id}:`, error);
+        logger.error(`❌ [syncAllPendingObras] Erro ao sincronizar obra local ${localObra.id}:`, error);
 
         // 🔍 Capturar erro no Sentry
         captureError(error as Error, {
@@ -2546,16 +2836,16 @@ export const syncAllPendingObras = async (): Promise<{ success: number; failed: 
     // 🧹 LIMPEZA AUTOMÁTICA: Limpar cache após sincronização bem-sucedida
     if (success > 0) {
       try {
-        console.log('🧹 Iniciando limpeza automática de cache após sincronização...');
+        logger.sync('🧹 Iniciando limpeza automática de cache após sincronização...');
         const { cleanupUploadedPhotos } = await import('./photo-backup');
         const deletedCount = await cleanupUploadedPhotos();
-        console.log(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
+        logger.sync(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
       } catch (error) {
-        console.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
+        logger.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
       }
     }
 
-    console.log(`📊 [syncAllPendingObras] Resultado: ${success} sucesso, ${failed} falhas`);
+    logger.sync(`📊 [syncAllPendingObras] Resultado: ${success} sucesso, ${failed} falhas`);
     return { success, failed };
   } finally {
     syncInProgress = false;
@@ -2609,7 +2899,7 @@ export const syncAllPendingObrasWithProgress = async (
     const isOnline = await checkInternetConnection();
 
     if (!isOnline) {
-      console.log('📵 [syncAllPendingObrasWithProgress] Sem conexão, abortando');
+      logger.sync('📵 [syncAllPendingObrasWithProgress] Sem conexão, abortando');
       return { success: 0, failed: 0, errors: [] };
     }
 
@@ -2640,13 +2930,13 @@ export const syncAllPendingObrasWithProgress = async (
     ];
 
     const totalObras = allObrasToSync.length;
-    console.log(`📊 [syncAllPendingObrasWithProgress] Total de obras para sincronizar: ${totalObras}`);
+    logger.sync(`📊 [syncAllPendingObrasWithProgress] Total de obras para sincronizar: ${totalObras}`);
 
     // 2. Loop através de cada obra
     for (let i = 0; i < allObrasToSync.length; i++) {
       // Verificar se foi cancelado
       if (cancellationToken?.cancelled) {
-        console.log('⏸️ [syncAllPendingObrasWithProgress] Sincronização cancelada pelo usuário');
+        logger.sync('⏸️ [syncAllPendingObrasWithProgress] Sincronização cancelada pelo usuário');
         break;
       }
 
@@ -2654,7 +2944,7 @@ export const syncAllPendingObrasWithProgress = async (
       const isLocalObra = obrasToSyncLocal.some(o => o.id === obra.id);
 
       try {
-        console.log(`🔄 [syncAllPendingObrasWithProgress] Sincronizando obra ${i + 1}/${totalObras}: ${obra.obra}`);
+        logger.sync(`🔄 [syncAllPendingObrasWithProgress] Sincronizando obra ${i + 1}/${totalObras}: ${obra.obra}`);
 
         // Sincronizar obra com callback de progresso de fotos
         const progressHandler = (photoProgress: UploadProgress) => {
@@ -2677,14 +2967,14 @@ export const syncAllPendingObrasWithProgress = async (
 
         if (result.success) {
           success++;
-          console.log(`✅ [syncAllPendingObrasWithProgress] Obra ${obra.obra} sincronizada com sucesso`);
+          logger.sync(`✅ [syncAllPendingObrasWithProgress] Obra ${obra.obra} sincronizada com sucesso`);
         } else {
           failed++;
           errors.push({
             obraName: obra.obra,
             error: obra.error_message || 'Erro desconhecido ao sincronizar',
           });
-          console.error(`❌ [syncAllPendingObrasWithProgress] Falha ao sincronizar obra ${obra.obra}`);
+          logger.error(`❌ [syncAllPendingObrasWithProgress] Falha ao sincronizar obra ${obra.obra}`);
         }
       } catch (error) {
         failed++;
@@ -2693,19 +2983,19 @@ export const syncAllPendingObrasWithProgress = async (
           obraName: obra.obra,
           error: translateErrorMessage(errorMessage),
         });
-        console.error(`❌ [syncAllPendingObrasWithProgress] Exceção ao sincronizar obra ${obra.obra}:`, error);
+        logger.error(`❌ [syncAllPendingObrasWithProgress] Exceção ao sincronizar obra ${obra.obra}:`, error);
       }
     }
 
     // 🧹 Limpeza automática de cache após sincronização bem-sucedida
     if (success > 0) {
       try {
-        console.log('🧹 Iniciando limpeza automática de cache após sincronização...');
+        logger.sync('🧹 Iniciando limpeza automática de cache após sincronização...');
         const { cleanupUploadedPhotos } = await import('./photo-backup');
         const deletedCount = await cleanupUploadedPhotos();
-        console.log(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
+        logger.sync(`✅ Cache limpo automaticamente: ${deletedCount} foto(s) removida(s)`);
       } catch (error) {
-        console.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
+        logger.warn('⚠️ Erro ao limpar cache automaticamente (não crítico):', error);
       }
     }
 
@@ -2720,7 +3010,7 @@ export const syncAllPendingObrasWithProgress = async (
       });
     }
 
-    console.log(`📊 [syncAllPendingObrasWithProgress] Resultado: ${success} sucesso, ${failed} falhas`);
+    logger.sync(`📊 [syncAllPendingObrasWithProgress] Resultado: ${success} sucesso, ${failed} falhas`);
     return { success, failed, errors };
   } finally {
     syncInProgress = false;
@@ -2742,7 +3032,7 @@ export const getSyncStatus = async (): Promise<SyncStatus> => {
       failedCount: 0,
     };
   } catch (error) {
-    console.error('Erro ao obter status de sincronização:', error);
+    logger.error('Erro ao obter status de sincronização:', error);
     return {
       lastSyncAt: null,
       pendingCount: 0,
@@ -2764,7 +3054,7 @@ export const updateSyncStatus = async (): Promise<void> => {
     };
     await AsyncStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(status));
   } catch (error) {
-    console.error('Erro ao atualizar status de sincronização:', error);
+    logger.error('Erro ao atualizar status de sincronização:', error);
   }
 };
 
@@ -2773,7 +3063,7 @@ export const updateSyncStatus = async (): Promise<void> => {
  */
 export const startAutoSync = (onSyncComplete?: (result: { success: number; failed: number }) => void) => {
   return NetInfo.addEventListener(state => {
-    if (state.isConnected && state.isInternetReachable) {
+    if (state.isConnected === true && state.isInternetReachable !== false) {
       // Debounce global: cancela timers anteriores e reagenda (previne múltiplos
       // listeners de screens diferentes disparando syncs simultâneos)
       if (autoSyncDebounceTimer !== null) {
@@ -2781,13 +3071,15 @@ export const startAutoSync = (onSyncComplete?: (result: { success: number; faile
       }
       autoSyncDebounceTimer = setTimeout(async () => {
         autoSyncDebounceTimer = null;
+        // Poda diária da chave archived (fire-and-forget, nunca bloqueia o sync)
+        pruneArchivedPhotoMetadata().catch(() => {});
         const result = await syncAllPendingObras();
         // Após obras, sincronizar serviços pendentes (tabela servicos)
         try {
           const { syncAllPendingServicos } = await import('./servico-sync');
           await syncAllPendingServicos();
         } catch (servicoSyncErr) {
-          console.warn('[startAutoSync] Erro ao sincronizar serviços:', servicoSyncErr);
+          logger.warn('[startAutoSync] Erro ao sincronizar serviços:', servicoSyncErr);
         }
         if (result.success > 0 || result.failed > 0) {
           onSyncComplete?.(result);
@@ -2803,11 +3095,11 @@ export const startAutoSync = (onSyncComplete?: (result: { success: number; faile
  */
 export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: string[] }> => {
   try {
-    console.log('🔧 Iniciando recuperação de fotos perdidas...');
+    logger.sync('🔧 Iniciando recuperação de fotos perdidas...');
 
     // 1. Buscar todas as fotos do backup
     const allPhotos = await getAllPhotoMetadata();
-    console.log(`📸 Total de fotos no backup: ${allPhotos.length}`);
+    logger.sync(`📸 Total de fotos no backup: ${allPhotos.length}`);
 
     // 2. Agrupar fotos por obraId
     const photosByObra = new Map<string, PhotoMetadata[]>();
@@ -2818,11 +3110,11 @@ export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: s
       photosByObra.get(photo.obraId)!.push(photo);
     });
 
-    console.log(`🏗️ Obras com fotos no backup: ${photosByObra.size}`);
+    logger.sync(`🏗️ Obras com fotos no backup: ${photosByObra.size}`);
 
     // 3. Buscar todas as obras locais
     const localObras = await getLocalObras();
-    console.log(`📋 Obras locais: ${localObras.length}`);
+    logger.sync(`📋 Obras locais: ${localObras.length}`);
 
     let recoveredCount = 0;
     const recoveredObras: string[] = [];
@@ -2856,7 +3148,7 @@ export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: s
         if ((!currentValue || currentValue.length === 0) && photoIds.length > 0) {
           hasLostPhotos = true;
           updates[typeKey] = photoIds;
-          console.log(`  ✅ Recuperando ${photoIds.length} foto(s) de ${typeKey} para obra ${obra.obra || obra.id}`);
+          logger.sync(`  ✅ Recuperando ${photoIds.length} foto(s) de ${typeKey} para obra ${obra.obra || obra.id}`);
         }
       });
 
@@ -2866,15 +3158,15 @@ export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: s
         await saveObraLocal(updatedObra, obra.id);
         recoveredCount++;
         recoveredObras.push(obra.obra || obra.id);
-        console.log(`✅ Obra ${obra.obra || obra.id} recuperada com sucesso!`);
+        logger.sync(`✅ Obra ${obra.obra || obra.id} recuperada com sucesso!`);
       }
     }
 
-    console.log(`🎉 Recuperação concluída: ${recoveredCount} obra(s) recuperada(s)`);
+    logger.sync(`🎉 Recuperação concluída: ${recoveredCount} obra(s) recuperada(s)`);
     return { recovered: recoveredCount, obras: recoveredObras };
 
   } catch (error) {
-    console.error('❌ Erro ao recuperar fotos perdidas:', error);
+    logger.error('❌ Erro ao recuperar fotos perdidas:', error);
     throw error;
   }
 };
@@ -2887,11 +3179,11 @@ export const recoverLostPhotos = async (): Promise<{ recovered: number; obras: s
  */
 export const removeDuplicateObras = async (): Promise<{ removed: number; kept: number }> => {
   try {
-    console.log('🧹 Iniciando limpeza de obras duplicadas...');
+    logger.sync('🧹 Iniciando limpeza de obras duplicadas...');
 
     // Buscar todas as obras locais
     const localObras = await getLocalObras();
-    console.log(`📊 Total de obras no AsyncStorage: ${localObras.length}`);
+    logger.sync(`📊 Total de obras no AsyncStorage: ${localObras.length}`);
 
     // Agrupar por chave de book (não apenas número da obra),
     // para permitir vários books na mesma obra.
@@ -2924,7 +3216,7 @@ export const removeDuplicateObras = async (): Promise<{ removed: number; kept: n
         obrasToKeep.push(obras[0]);
       } else {
         // Há duplicatas - escolher qual manter
-        console.log(`⚠️ Encontradas ${obras.length} duplicatas do mesmo book (${bookKey})`);
+        logger.sync(`⚠️ Encontradas ${obras.length} duplicatas do mesmo book (${bookKey})`);
 
         // Ordenar por prioridade:
         // 1. Obras com serverId (sincronizadas) primeiro
@@ -2945,21 +3237,21 @@ export const removeDuplicateObras = async (): Promise<{ removed: number; kept: n
         obrasToKeep.push(toKeep);
         removedCount += obras.length - 1;
 
-        console.log(`   ✅ Mantendo: ID=${toKeep.id}${toKeep.serverId ? `, serverId=${toKeep.serverId}` : ''}`);
-        console.log(`   ❌ Removendo ${obras.length - 1} duplicata(s)`);
+        logger.sync(`   ✅ Mantendo: ID=${toKeep.id}${toKeep.serverId ? `, serverId=${toKeep.serverId}` : ''}`);
+        logger.sync(`   ❌ Removendo ${obras.length - 1} duplicata(s)`);
       }
     }
 
     // Salvar lista limpa
     await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasToKeep));
 
-    console.log(`✅ Limpeza concluída:`);
-    console.log(`   - Obras mantidas: ${obrasToKeep.length}`);
-    console.log(`   - Obras removidas: ${removedCount}`);
+    logger.sync(`✅ Limpeza concluída:`);
+    logger.sync(`   - Obras mantidas: ${obrasToKeep.length}`);
+    logger.sync(`   - Obras removidas: ${removedCount}`);
 
     return { removed: removedCount, kept: obrasToKeep.length };
   } catch (error) {
-    console.error('❌ Erro ao remover obras duplicadas:', error);
+    logger.error('❌ Erro ao remover obras duplicadas:', error);
     throw error;
   }
 };
@@ -2969,10 +3261,10 @@ export const removeDuplicateObras = async (): Promise<{ removed: number; kept: n
  */
 export const removeDuplicatePendingObras = async (): Promise<{ removed: number; kept: number }> => {
   try {
-    console.log('🧹 Limpando pending obras duplicadas...');
+    logger.sync('🧹 Limpando pending obras duplicadas...');
 
     const pendingObras = await getPendingObras();
-    console.log(`📊 Total de pending obras: ${pendingObras.length}`);
+    logger.sync(`📊 Total de pending obras: ${pendingObras.length}`);
 
     // Agrupar por chave de book para não juntar books diferentes da mesma obra.
     const getPendingBookKey = (obra: PendingObra): string => {
@@ -3000,7 +3292,7 @@ export const removeDuplicatePendingObras = async (): Promise<{ removed: number; 
       if (obras.length === 1) {
         obrasToKeep.push(obras[0]);
       } else {
-        console.log(`⚠️ Encontradas ${obras.length} pending duplicatas do mesmo book (${bookKey})`);
+        logger.sync(`⚠️ Encontradas ${obras.length} pending duplicatas do mesmo book (${bookKey})`);
 
         // Ordenar por data de criação (mais recente primeiro)
         const sorted = obras.sort((a, b) => {
@@ -3012,20 +3304,20 @@ export const removeDuplicatePendingObras = async (): Promise<{ removed: number; 
         obrasToKeep.push(sorted[0]);
         removedCount += obras.length - 1;
 
-        console.log(`   ✅ Mantendo: ID=${sorted[0].id}`);
-        console.log(`   ❌ Removendo ${obras.length - 1} duplicata(s)`);
+        logger.sync(`   ✅ Mantendo: ID=${sorted[0].id}`);
+        logger.sync(`   ❌ Removendo ${obras.length - 1} duplicata(s)`);
       }
     }
 
     await AsyncStorage.setItem(PENDING_OBRAS_KEY, JSON.stringify(obrasToKeep));
 
-    console.log(`✅ Pending obras limpas:`);
-    console.log(`   - Mantidas: ${obrasToKeep.length}`);
-    console.log(`   - Removidas: ${removedCount}`);
+    logger.sync(`✅ Pending obras limpas:`);
+    logger.sync(`   - Mantidas: ${obrasToKeep.length}`);
+    logger.sync(`   - Removidas: ${removedCount}`);
 
     return { removed: removedCount, kept: obrasToKeep.length };
   } catch (error) {
-    console.error('❌ Erro ao limpar pending obras:', error);
+    logger.error('❌ Erro ao limpar pending obras:', error);
     throw error;
   }
 };
@@ -3039,17 +3331,17 @@ export const cleanupAllDuplicates = async (): Promise<{
   totalRemoved: number;
 }> => {
   try {
-    console.log('🧹🧹 Limpeza completa de duplicatas...');
+    logger.sync('🧹🧹 Limpeza completa de duplicatas...');
 
     const localResult = await removeDuplicateObras();
     const pendingResult = await removeDuplicatePendingObras();
 
     const totalRemoved = localResult.removed + pendingResult.removed;
 
-    console.log(`✅ Limpeza completa concluída:`);
-    console.log(`   - Local: ${localResult.removed} removida(s), ${localResult.kept} mantida(s)`);
-    console.log(`   - Pending: ${pendingResult.removed} removida(s), ${pendingResult.kept} mantida(s)`);
-    console.log(`   - Total removido: ${totalRemoved}`);
+    logger.sync(`✅ Limpeza completa concluída:`);
+    logger.sync(`   - Local: ${localResult.removed} removida(s), ${localResult.kept} mantida(s)`);
+    logger.sync(`   - Pending: ${pendingResult.removed} removida(s), ${pendingResult.kept} mantida(s)`);
+    logger.sync(`   - Total removido: ${totalRemoved}`);
 
     return {
       localRemoved: localResult.removed,
@@ -3057,7 +3349,7 @@ export const cleanupAllDuplicates = async (): Promise<{
       totalRemoved
     };
   } catch (error) {
-    console.error('❌ Erro na limpeza completa:', error);
+    logger.error('❌ Erro na limpeza completa:', error);
     throw error;
   }
 };

@@ -1,20 +1,25 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import NetInfo from '@react-native-community/netinfo';
 import {
   PhotoMetadata,
   getAllPhotoMetadata,
   getPendingPhotos,
   markPhotoAsUploaded,
+  markPhotoAsLost,
   incrementPhotoRetries,
   deletePhotoBackup,
-  photoExists
+  photoExists,
+  updatePhotoPaths
 } from './photo-backup';
 import * as FileSystem from 'expo-file-system/legacy';
 import { captureError } from './sentry';
+import { logger } from '../utils/logger';
 
 const UPLOAD_QUEUE_KEY = '@photo_upload_queue';
 const MAX_RETRIES = 3; // Reduzido de 5 para 3
 const RETRY_DELAYS = [1000, 3000, 5000]; // Reduzido: 1s, 3s, 5s (total 9s)
 const UPLOAD_TIMEOUT_MS = 90_000; // 90 segundos por foto antes de timeout
+const STALE_UPLOADING_MS = 150_000; // "uploading" sem atualizacao por 2m30s volta para pending
 const SUPABASE_STORAGE_URL = 'https://hiuagpzaelcocyxutgdt.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhpdWFncHphZWxjb2N5eHV0Z2R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE3NDE1ODAsImV4cCI6MjA3NzMxNzU4MH0.sEp1yx9p_RGPWUIQ1bzE2aYx1YdPiKHFZJ-GnG4a-N8';
 
@@ -23,6 +28,7 @@ interface UploadToSupabaseResult {
   url?: string;
   error?: string;
   skipRetry?: boolean;
+  deferRetry?: boolean;
 }
 
 export interface UploadQueueItem {
@@ -50,6 +56,142 @@ export interface UploadProgress {
   currentPhotoId?: string;
 }
 
+const NETWORK_ERROR_PATTERNS = [
+  'unable to resolve host',
+  'no address associated with hostname',
+  'network request failed',
+  'failed to fetch',
+  'failed to connect',
+  'network is unreachable',
+  'software caused connection abort',
+  'connection timed out',
+  'timeout',
+];
+
+const isExpectedNetworkError = (message?: string): boolean => {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return NETWORK_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern));
+};
+
+const isMissingLocalFileError = (message?: string): boolean => {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('photo-backup') ||
+    (normalized.includes('arquivo') && normalized.includes('encontrad')) ||
+    normalized.includes('enoent') ||
+    normalized.includes('no such file or directory') ||
+    normalized.includes('open failed') ||
+    normalized.includes('directory for') // Android: "Directory for '...' doesn't exist"
+  );
+};
+
+const isZombiePhoto = (photoMetadata: PhotoMetadata): boolean => {
+  const hasRemoteUrl = !!(photoMetadata.uploadUrl || photoMetadata.supabaseUrl);
+  return photoMetadata.uploaded && !hasRemoteUrl;
+};
+
+const hasRemoteUrl = (photoMetadata: PhotoMetadata): boolean =>
+  !!(photoMetadata.uploadUrl || photoMetadata.supabaseUrl);
+
+const PHOTO_BACKUP_DIR = `${FileSystem.documentDirectory}obra_photos_backup/`;
+
+const normalizeFileUri = (uri?: string): string | null => {
+  if (!uri || typeof uri !== 'string') return null;
+  const trimmed = uri.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('file://')) return trimmed;
+  return `file://${trimmed}`;
+};
+
+const getFileNameFromUri = (uri?: string): string | null => {
+  const normalized = normalizeFileUri(uri);
+  if (!normalized) return null;
+  const clean = normalized.split('?')[0].replace(/\/+$/, '');
+  const parts = clean.split('/');
+  return parts.length > 0 ? parts[parts.length - 1] : null;
+};
+
+const getCandidateUris = async (photoMetadata: PhotoMetadata): Promise<string[]> => {
+  const candidates: string[] = [];
+  const pushCandidate = (uri?: string) => {
+    const normalized = normalizeFileUri(uri);
+    if (normalized && !candidates.includes(normalized)) {
+      candidates.push(normalized);
+    }
+  };
+
+  pushCandidate(photoMetadata.compressedPath);
+  pushCandidate(photoMetadata.backupPath);
+  pushCandidate(photoMetadata.originalUri);
+
+  const compressedName = getFileNameFromUri(photoMetadata.compressedPath);
+  const backupName = getFileNameFromUri(photoMetadata.backupPath);
+  if (compressedName) pushCandidate(`${PHOTO_BACKUP_DIR}${compressedName}`);
+  if (backupName) pushCandidate(`${PHOTO_BACKUP_DIR}${backupName}`);
+
+  const exts = ['jpg', 'jpeg', 'png', 'heic', 'webp', 'pdf'];
+  for (const ext of exts) {
+    pushCandidate(`${PHOTO_BACKUP_DIR}${photoMetadata.id}_compressed.${ext}`);
+    pushCandidate(`${PHOTO_BACKUP_DIR}${photoMetadata.id}.${ext}`);
+  }
+
+  try {
+    const fileNames = await FileSystem.readDirectoryAsync(PHOTO_BACKUP_DIR);
+    const compressedMatch = fileNames.find(name => name.startsWith(`${photoMetadata.id}_compressed.`));
+    const backupMatch = fileNames.find(name => name.startsWith(`${photoMetadata.id}.`));
+
+    if (compressedMatch) pushCandidate(`${PHOTO_BACKUP_DIR}${compressedMatch}`);
+    if (backupMatch) pushCandidate(`${PHOTO_BACKUP_DIR}${backupMatch}`);
+  } catch {
+    // diretorio pode nao existir; ignora
+  }
+
+  return candidates;
+};
+
+const resolveLocalPhotoForUpload = async (
+  photoMetadata: PhotoMetadata
+): Promise<{ uri: string; existsInfo: FileSystem.FileInfo }> => {
+  const candidates = await getCandidateUris(photoMetadata);
+
+  for (const candidate of candidates) {
+    try {
+      const info = await FileSystem.getInfoAsync(candidate);
+      if (info.exists) {
+        return {
+          uri: candidate,
+          existsInfo: info,
+        };
+      }
+    } catch {
+      // tenta proximo candidato
+    }
+  }
+
+  throw new Error('Arquivo físico não encontrado (comprimido e backup)');
+};
+
+const healPhotoMetadataPaths = async (photoMetadata: PhotoMetadata, resolvedUri: string): Promise<void> => {
+  const updates: Partial<Pick<PhotoMetadata, 'compressedPath' | 'backupPath' | 'originalUri'>> = {};
+  const isCompressed = resolvedUri.includes('_compressed.');
+
+  if (isCompressed && photoMetadata.compressedPath !== resolvedUri) {
+    updates.compressedPath = resolvedUri;
+  }
+  if (!isCompressed && photoMetadata.backupPath !== resolvedUri) {
+    updates.backupPath = resolvedUri;
+  }
+  if (photoMetadata.originalUri !== resolvedUri) {
+    updates.originalUri = resolvedUri;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await updatePhotoPaths(photoMetadata.id, updates);
+  }
+};
+
 /**
  * Adiciona uma foto à fila de upload
  */
@@ -71,7 +213,7 @@ export const addToUploadQueue = async (photoId: string, obraId: string): Promise
     queue.push(newItem);
     await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(queue));
   } catch (error) {
-    console.error('Erro ao adicionar foto à fila:', error);
+    logger.error('Erro ao adicionar foto à fila:', error);
     throw error;
   }
 };
@@ -84,9 +226,59 @@ export const getUploadQueue = async (): Promise<UploadQueueItem[]> => {
     const data = await AsyncStorage.getItem(UPLOAD_QUEUE_KEY);
     return data ? JSON.parse(data) : [];
   } catch (error) {
-    console.error('Erro ao obter fila de upload:', error);
+    logger.error('Erro ao obter fila de upload:', error);
     return [];
   }
+};
+
+const normalizeQueueState = async (queue: UploadQueueItem[]): Promise<UploadQueueItem[]> => {
+  if (queue.length === 0) return queue;
+
+  const now = Date.now();
+  const allMetadata = await getAllPhotoMetadata();
+  const metadataById = new Map(allMetadata.map((item) => [item.id, item]));
+  let changed = false;
+  const normalized: UploadQueueItem[] = [];
+
+  for (const item of queue) {
+    const metadata = metadataById.get(item.photoId);
+
+    // Item sem metadata local nao pode ser reenviado; remover evita contador preso na UI.
+    if (!metadata) {
+      changed = true;
+      continue;
+    }
+
+    // Foto ja enviada com URL remota nao deve continuar na fila.
+    if (metadata.uploaded && hasRemoteUrl(metadata)) {
+      changed = true;
+      continue;
+    }
+
+    if (item.status === 'uploading') {
+      const lastAttemptTs = item.lastAttemptAt ? Date.parse(item.lastAttemptAt) : NaN;
+      const isStale = Number.isNaN(lastAttemptTs) || now - lastAttemptTs > STALE_UPLOADING_MS;
+
+      if (isStale) {
+        normalized.push({
+          ...item,
+          status: 'pending',
+          error: 'Upload interrompido anteriormente; reenfileirado automaticamente.',
+          lastAttemptAt: new Date().toISOString(),
+        });
+        changed = true;
+        continue;
+      }
+    }
+
+    normalized.push(item);
+  }
+
+  if (changed) {
+    await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(normalized));
+  }
+
+  return normalized;
 };
 
 /**
@@ -113,7 +305,7 @@ const updateQueueItemStatus = async (
       await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(queue));
     }
   } catch (error) {
-    console.error('Erro ao atualizar status na fila:', error);
+    logger.error('Erro ao atualizar status na fila:', error);
   }
 };
 
@@ -126,7 +318,7 @@ const removeFromQueue = async (photoId: string): Promise<void> => {
     const filtered = queue.filter(item => item.photoId !== photoId);
     await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(filtered));
   } catch (error) {
-    console.error('Erro ao remover da fila:', error);
+    logger.error('Erro ao remover da fila:', error);
   }
 };
 
@@ -143,12 +335,27 @@ const uploadPhotoToSupabase = async (
     // Verificar se foto existe
     const exists = await photoExists(photoMetadata.id);
     if (!exists) {
-      console.error(`❌ Foto ${photoMetadata.id} não existe no photo-backup`);
-      return { success: false, error: 'Foto não encontrada no photo-backup', skipRetry: true };
+      logger.warn(`[uploadPhotoToSupabase] Foto ${photoMetadata.id} nao encontrada no photo-backup`);
+      return { success: false, error: 'Foto nao encontrada no photo-backup', skipRetry: true };
     }
 
-    // ✅ Usar foto comprimida para upload, com fallback para backup original
-    let photoUri = photoMetadata.compressedPath;
+    // ✅ Resolver o melhor caminho local disponivel antes do upload
+    let resolvedPhoto: { uri: string; existsInfo: FileSystem.FileInfo };
+    try {
+      resolvedPhoto = await resolveLocalPhotoForUpload(photoMetadata);
+    } catch (resolveError: any) {
+      const resolveMessage =
+        resolveError?.message || 'Arquivo fisico nao encontrado (comprimido e backup)';
+      logger.warn(
+        `[uploadPhotoToSupabase] Foto ${photoMetadata.id} sem arquivo local para upload: ${resolveMessage}`
+      );
+      return { success: false, error: resolveMessage, skipRetry: true };
+    }
+    let photoUri = resolvedPhoto.uri;
+    let fileInfo = resolvedPhoto.existsInfo;
+
+    // Se os caminhos mudaram, atualizar metadata para as proximas sincronizacoes
+    await healPhotoMetadataPaths(photoMetadata, photoUri);
 
     // Determinar MIME type e extensão (suporta PDFs e imagens)
     const contentType = photoMetadata.mimeType || 'image/jpeg';
@@ -161,27 +368,18 @@ const uploadPhotoToSupabase = async (
     // Usar obraId como pasta para organizar as fotos
     const filePath = `${folderName}/${fileName}`;
 
-    // ✅ Verificar se arquivo comprimido existe
-    let fileInfo = await FileSystem.getInfoAsync(photoUri);
-    if (!fileInfo.exists) {
-      console.warn(`⚠️ Arquivo comprimido não encontrado: ${photoUri}`);
-      console.log(`   Tentando usar backup original: ${photoMetadata.backupPath}`);
-
-      // ✅ FALLBACK: Tentar usar o backup original (não comprimido)
-      photoUri = photoMetadata.backupPath;
-      fileInfo = await FileSystem.getInfoAsync(photoUri);
-
-      if (!fileInfo.exists) {
-        console.error(`❌ Arquivo físico não encontrado (backup também): ${photoUri}`);
-        console.error(`   Foto ID: ${photoMetadata.id}`);
-        console.error(`   Tipo: ${photoMetadata.type}`);
-        return { success: false, error: 'Arquivo físico não encontrado (comprimido e backup)', skipRetry: true };
-      }
-
-      console.log(`✅ Usando backup original: ${Math.round((fileInfo.size || 0) / 1024)}KB`);
+    if (photoUri !== photoMetadata.compressedPath) {
+      logger.warn(`⚠️ Caminho comprimido original indisponível para ${photoMetadata.id}; usando: ${photoUri}`);
     }
 
-    console.log(`📤 Enviando para Supabase via uploadAsync: ${filePath} (${Math.round((fileInfo.size || 0) / 1024)}KB, ${contentType})`);
+    if (!fileInfo.exists) {
+      logger.warn(
+        `[uploadPhotoToSupabase] Arquivo fisico ausente para ${photoMetadata.id}: ${photoUri}`
+      );
+      return { success: false, error: 'Arquivo fisico nao encontrado (comprimido e backup)', skipRetry: true };
+    }
+
+    logger.photos(`📤 Enviando para Supabase via uploadAsync: ${filePath} (${Math.round((fileInfo.size || 0) / 1024)}KB, ${contentType})`);
 
     // Upload nativo sem carregar arquivo na memória JS (evita pico de memória com base64)
     const uploadUrl = `${SUPABASE_STORAGE_URL}/storage/v1/object/obra-photos/${filePath}`;
@@ -209,20 +407,34 @@ const uploadPhotoToSupabase = async (
         const errorBody = JSON.parse(uploadResult.body || '{}');
         errorMessage = errorBody.error || errorBody.message || errorMessage;
       } catch {}
-      console.error(`❌ Erro no upload para ${filePath}: ${errorMessage}`);
+      logger.error(`❌ Erro no upload para ${filePath}: ${errorMessage}`);
       return { success: false, error: `Upload falhou: ${errorMessage}` };
     }
 
-    console.log(`✅ Upload bem-sucedido: ${filePath}`);
+    logger.photos(`✅ Upload bem-sucedido: ${filePath}`);
 
     const publicUrl = `${SUPABASE_STORAGE_URL}/storage/v1/object/public/obra-photos/${filePath}`;
     return { success: true, url: publicUrl };
 
   } catch (error: any) {
-    console.error('Erro ao fazer upload da foto:', error);
+    const errorMessage = error?.message || 'Erro desconhecido';
+
+    if (isExpectedNetworkError(errorMessage)) {
+      logger.warn(`📴 Upload adiado para quando voltar conexão (${photoMetadata.id}): ${errorMessage}`);
+      return { success: false, error: errorMessage, deferRetry: true };
+    }
+
+    if (isMissingLocalFileError(errorMessage)) {
+      logger.warn(
+        `[uploadPhotoToSupabase] Erro permanente de arquivo local para ${photoMetadata.id}: ${errorMessage}`
+      );
+      return { success: false, error: errorMessage, skipRetry: true };
+    }
+
+    logger.error('Erro ao fazer upload da foto:', errorMessage);
 
     // 🔍 Capturar erro no Sentry
-    captureError(error, {
+    captureError(new Error(errorMessage), {
       type: 'upload',
       photoId: photoMetadata.id,
       obraId: photoMetadata.obraId,
@@ -234,7 +446,7 @@ const uploadPhotoToSupabase = async (
       },
     });
 
-    return { success: false, error: error.message || 'Erro desconhecido' };
+    return { success: false, error: errorMessage };
   }
 };
 
@@ -245,6 +457,17 @@ const uploadPhotoWithRetry = async (
   photoMetadata: PhotoMetadata,
   onProgress?: (progress: UploadProgress) => void
 ): Promise<UploadResult> => {
+  if (photoMetadata.uploaded && hasRemoteUrl(photoMetadata)) {
+    const existingUrl = photoMetadata.uploadUrl || photoMetadata.supabaseUrl;
+    await updateQueueItemStatus(photoMetadata.id, 'success');
+    await removeFromQueue(photoMetadata.id);
+    return {
+      photoId: photoMetadata.id,
+      success: true,
+      url: existingUrl,
+    };
+  }
+
   let retries = 0;
 
   while (retries <= MAX_RETRIES) {
@@ -256,7 +479,14 @@ const uploadPhotoWithRetry = async (
 
     // Log detalhado do resultado
     if (!result.success) {
-      console.error(`❌ Upload falhou (tentativa ${retries + 1}/${MAX_RETRIES + 1}):`, result.error);
+      const errorMessage = result.error || 'Erro desconhecido';
+      if (result.deferRetry || isExpectedNetworkError(errorMessage)) {
+        logger.warn(`⚠️ Upload adiado (tentativa ${retries + 1}/${MAX_RETRIES + 1}): ${errorMessage}`);
+      } else if (result.skipRetry || isMissingLocalFileError(errorMessage)) {
+        logger.warn(`⚠️ Upload sem retry (${photoMetadata.id}): ${errorMessage}`);
+      } else {
+        logger.error(`❌ Upload falhou (tentativa ${retries + 1}/${MAX_RETRIES + 1}): ${errorMessage}`);
+      }
     }
 
     if (result.success && result.url) {
@@ -266,7 +496,7 @@ const uploadPhotoWithRetry = async (
       await removeFromQueue(photoMetadata.id);
 
       // Deletar backup local após upload confirmado (sem await para não bloquear progresso)
-      deletePhotoBackup(photoMetadata.id).catch(err => console.warn('⚠️ Falha ao deletar backup local:', err));
+      deletePhotoBackup(photoMetadata.id).catch(err => logger.warn('⚠️ Falha ao deletar backup local:', err));
 
       return {
         photoId: photoMetadata.id,
@@ -275,9 +505,25 @@ const uploadPhotoWithRetry = async (
       };
     }
 
+    // Falha temporária de rede (offline/DNS): não consome retries agora.
+    // Mantém pendente para próxima sincronização quando a internet estabilizar.
+    if (result.deferRetry) {
+      await updateQueueItemStatus(
+        photoMetadata.id,
+        'pending',
+        result.error || 'Sem conexão com internet'
+      );
+      return {
+        photoId: photoMetadata.id,
+        success: false,
+        error: result.error || 'Sem conexão com internet'
+      };
+    }
+
     // ⚠️ Se erro não deve fazer retry (arquivo não encontrado), parar imediatamente
     if ((result as any).skipRetry) {
-      console.warn(`⚠️ Pulando retry para foto ${photoMetadata.id}: ${result.error}`);
+      logger.warn(`⚠️ Pulando retry para foto ${photoMetadata.id}: ${result.error}`);
+      await markPhotoAsLost(photoMetadata.id, result.error);
       await updateQueueItemStatus(
         photoMetadata.id,
         'failed',
@@ -301,6 +547,20 @@ const uploadPhotoWithRetry = async (
     retries++;
     await incrementPhotoRetries(photoMetadata.id);
 
+    const totalRetries = (photoMetadata.retries || 0) + retries;
+    if (isZombiePhoto(photoMetadata) && totalRetries >= MAX_RETRIES) {
+      const lostReason = `Foto zombie sem URL remota apos ${totalRetries} tentativas`;
+      await markPhotoAsLost(photoMetadata.id, lostReason);
+      await updateQueueItemStatus(photoMetadata.id, 'failed', lostReason);
+      await removeFromQueue(photoMetadata.id);
+      return {
+        photoId: photoMetadata.id,
+        success: false,
+        error: lostReason,
+        permanent: true,
+      };
+    }
+
     if (retries > MAX_RETRIES) {
       // Esgotou tentativas
       await updateQueueItemStatus(
@@ -318,7 +578,7 @@ const uploadPhotoWithRetry = async (
 
     // Aguardar antes de tentar novamente (exponential backoff)
     const delay = RETRY_DELAYS[retries - 1] || 30000;
-    console.log(`Retry ${retries}/${MAX_RETRIES} para foto ${photoMetadata.id} em ${delay}ms`);
+    logger.photos(`Retry ${retries}/${MAX_RETRIES} para foto ${photoMetadata.id} em ${delay}ms`);
     await new Promise(resolve => setTimeout(resolve, delay));
   }
 
@@ -336,10 +596,28 @@ export const processUploadQueue = async (
   onProgress?: (progress: UploadProgress) => void
 ): Promise<{ success: number; failed: number; results: UploadResult[] }> => {
   try {
+    const queue = await getUploadQueue();
+    await normalizeQueueState(queue);
+
     const pendingPhotos = await getPendingPhotos();
 
     if (pendingPhotos.length === 0) {
       return { success: 0, failed: 0, results: [] };
+    }
+
+    const netState = await NetInfo.fetch();
+    const isOnline = netState.isConnected === true && netState.isInternetReachable !== false;
+    if (!isOnline) {
+      logger.photos('[processUploadQueue] Sem conexão - mantendo uploads pendentes');
+      return {
+        success: 0,
+        failed: pendingPhotos.length,
+        results: pendingPhotos.map((photo) => ({
+          photoId: photo.id,
+          success: false,
+          error: 'Sem conexão com internet',
+        })),
+      };
     }
 
     const results: UploadResult[] = [];
@@ -387,7 +665,7 @@ export const processUploadQueue = async (
     return { success: successCount, failed: failedCount, results };
 
   } catch (error) {
-    console.error('Erro ao processar fila de upload:', error);
+    logger.error('Erro ao processar fila de upload:', error);
     return { success: 0, failed: 0, results: [] };
   }
 };
@@ -402,6 +680,9 @@ export const processObraPhotos = async (
   photoIds?: string[]
 ): Promise<{ success: number; failed: number; results: UploadResult[] }> => {
   try {
+    const queue = await getUploadQueue();
+    await normalizeQueueState(queue);
+
     const allPending = await getPendingPhotos();
     const uniquePhotoIds = photoIds && photoIds.length > 0 ? Array.from(new Set(photoIds)) : null;
     const obraPhotos = uniquePhotoIds
@@ -412,7 +693,22 @@ export const processObraPhotos = async (
       return { success: 0, failed: 0, results: [] };
     }
 
-    console.log(`[processObraPhotos] Iniciando upload paralelo de ${obraPhotos.length} foto(s)`);
+    const netState = await NetInfo.fetch();
+    const isOnline = netState.isConnected === true && netState.isInternetReachable !== false;
+    if (!isOnline) {
+      logger.photos(`[processObraPhotos] Sem conexão - obra ${obraId} permanece pendente`);
+      return {
+        success: 0,
+        failed: obraPhotos.length,
+        results: obraPhotos.map((photo) => ({
+          photoId: photo.id,
+          success: false,
+          error: 'Sem conexão com internet',
+        })),
+      };
+    }
+
+    logger.photos(`[processObraPhotos] Iniciando upload paralelo de ${obraPhotos.length} foto(s)`);
 
     // Adicionar todas à fila primeiro
     for (const photo of obraPhotos) {
@@ -424,12 +720,11 @@ export const processObraPhotos = async (
     let failedCount = 0;
     let completedCount = 0;
 
-    // ✅ Processar uma foto por vez para reduzir pico de memória em aparelhos mais fracos.
-    const BATCH_SIZE = 1;
+    const BATCH_SIZE = 3;
     for (let i = 0; i < obraPhotos.length; i += BATCH_SIZE) {
       const batch = obraPhotos.slice(i, i + BATCH_SIZE);
 
-      console.log(`[processObraPhotos] Processando lote ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(obraPhotos.length/BATCH_SIZE)} (${batch.length} fotos)`);
+      logger.photos(`[processObraPhotos] Processando lote ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(obraPhotos.length/BATCH_SIZE)} (${batch.length} fotos)`);
 
       // Upload paralelo do lote
       const batchResults = await Promise.all(
@@ -460,12 +755,12 @@ export const processObraPhotos = async (
       }
     }
 
-    console.log(`[processObraPhotos] ✅ Concluído: ${successCount} sucesso, ${failedCount} falhas`);
+    logger.photos(`[processObraPhotos] ✅ Concluído: ${successCount} sucesso, ${failedCount} falhas`);
 
     return { success: successCount, failed: failedCount, results };
 
   } catch (error) {
-    console.error('Erro ao processar fotos da obra:', error);
+    logger.error('Erro ao processar fotos da obra:', error);
     return { success: 0, failed: 0, results: [] };
   }
 };
@@ -482,16 +777,17 @@ export const getQueueStats = async (): Promise<{
 }> => {
   try {
     const queue = await getUploadQueue();
+    const normalizedQueue = await normalizeQueueState(queue);
 
     return {
-      total: queue.length,
-      pending: queue.filter(i => i.status === 'pending').length,
-      uploading: queue.filter(i => i.status === 'uploading').length,
-      success: queue.filter(i => i.status === 'success').length,
-      failed: queue.filter(i => i.status === 'failed').length
+      total: normalizedQueue.length,
+      pending: normalizedQueue.filter(i => i.status === 'pending').length,
+      uploading: normalizedQueue.filter(i => i.status === 'uploading').length,
+      success: normalizedQueue.filter(i => i.status === 'success').length,
+      failed: normalizedQueue.filter(i => i.status === 'failed').length
     };
   } catch (error) {
-    console.error('Erro ao obter estatísticas da fila:', error);
+    logger.error('Erro ao obter estatísticas da fila:', error);
     return { total: 0, pending: 0, uploading: 0, success: 0, failed: 0 };
   }
 };
@@ -510,7 +806,7 @@ export const cleanupSuccessfulUploads = async (): Promise<number> => {
 
     return successful.length;
   } catch (error) {
-    console.error('Erro ao limpar uploads bem-sucedidos:', error);
+    logger.error('Erro ao limpar uploads bem-sucedidos:', error);
     return 0;
   }
 };
@@ -523,7 +819,8 @@ export const retryFailedUploads = async (
 ): Promise<{ success: number; failed: number }> => {
   try {
     const queue = await getUploadQueue();
-    const failed = queue.filter(i => i.status === 'failed');
+    const normalizedQueue = await normalizeQueueState(queue);
+    const failed = normalizedQueue.filter(i => i.status === 'failed');
 
     if (failed.length === 0) {
       return { success: 0, failed: 0 };
@@ -557,7 +854,7 @@ export const retryFailedUploads = async (
     return { success: successCount, failed: failedCount };
 
   } catch (error) {
-    console.error('Erro ao reprocessar uploads falhados:', error);
+    logger.error('Erro ao reprocessar uploads falhados:', error);
     return { success: 0, failed: 0 };
   }
 };

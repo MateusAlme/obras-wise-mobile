@@ -1,6 +1,7 @@
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import { Platform, Alert } from 'react-native';
+import { logger } from '../utils/logger';
 
 /**
  * Solicita permissão para salvar fotos na galeria
@@ -8,10 +9,17 @@ import { Platform, Alert } from 'react-native';
  */
 export async function requestGalleryPermission(): Promise<boolean> {
   try {
-    const { status } = await MediaLibrary.requestPermissionsAsync();
-    return status === 'granted';
+    // Verifica permissão existente antes de pedir — evita dialog repetido
+    const { status: existing } = await MediaLibrary.getPermissionsAsync();
+    if (existing === 'granted') return true;
+    // Só pede se ainda não foi decidido (não pede de novo se o usuário já negou)
+    if (existing === 'undetermined') {
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      return status === 'granted';
+    }
+    return false;
   } catch (error) {
-    console.error('Erro ao solicitar permissão da galeria:', error);
+    logger.error('Erro ao solicitar permissão da galeria:', error);
     return false;
   }
 }
@@ -30,29 +38,20 @@ export async function savePhotoToGallery(
     // Verificar permissão
     const hasPermission = await requestGalleryPermission();
     if (!hasPermission) {
-      console.warn('Permissão para salvar na galeria não concedida');
+      logger.warn('Permissão para salvar na galeria não concedida');
       return false;
     }
 
-    // Criar asset na galeria
-    const asset = await MediaLibrary.createAssetAsync(photoUri);
-
-    // Tentar criar/buscar álbum e adicionar a foto
-    try {
-      const album = await MediaLibrary.getAlbumAsync(albumName);
-      if (album) {
-        await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-      } else {
-        await MediaLibrary.createAlbumAsync(albumName, asset, false);
-      }
-    } catch (albumError) {
-      // Se falhar ao criar álbum, a foto ainda foi salva na galeria principal
-      console.warn('Foto salva na galeria, mas não foi possível criar álbum:', albumError);
-    }
+    // Salva na galeria principal (rolo da câmera) apenas.
+    // Não adicionamos a nenhum álbum específico porque:
+    //  - copy=true → duplica a foto (aparece no rolo E no álbum)
+    //  - copy=false → dispara o dialog "Permitir que o app modifique essa foto?" no Android 10+
+    // Uma cópia no rolo da câmera é suficiente como backup seguro.
+    await MediaLibrary.createAssetAsync(photoUri);
 
     return true;
   } catch (error) {
-    console.error('Erro ao salvar foto na galeria:', error);
+    logger.error('Erro ao salvar foto na galeria:', error);
     return false;
   }
 }
@@ -71,7 +70,7 @@ export async function saveRenderedPhotoToGallery(
     // Podemos salvá-la diretamente na galeria
     return await savePhotoToGallery(renderedUri, albumName);
   } catch (error) {
-    console.error('Erro ao salvar foto renderizada na galeria:', error);
+    logger.error('Erro ao salvar foto renderizada na galeria:', error);
     return false;
   }
 }

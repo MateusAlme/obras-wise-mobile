@@ -42,6 +42,10 @@ expo-env.d.ts
 # IDE
 .vscode/
 .idea/
+
+# Claude / agentes (contém symlinks que quebram o EAS Build)
+.agents/
+.claude/
 *.swp
 *.swo
 *~

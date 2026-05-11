@@ -2,7 +2,7 @@
   "expo": {
     "name": "Obras Teccel",
     "slug": "obras-wise-mobile",
-    "version": "1.2.3",
+    "version": "2.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,6 +15,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.obraswise.mobile",
+      "buildNumber": "8",
       "infoPlist": {
         "NSCameraUsageDescription": "Este app precisa acessar a câmera para tirar fotos das obras.",
         "NSPhotoLibraryUsageDescription": "Este app precisa acessar suas fotos para selecionar imagens.",
@@ -28,7 +29,7 @@
         "backgroundColor": "#FF0000"
       },
       "package": "com.obraswise.mobile",
-      "versionCode": 6,
+      "versionCode": 8,
       "minSdkVersion": 26,
       "targetSdkVersion": 34,
       "permissions": [

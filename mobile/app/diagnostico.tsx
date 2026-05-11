@@ -17,6 +17,7 @@ import {
 } from '../lib/memory-monitor';
 import { getPendingObras } from '../lib/offline-sync';
 import { getAllPhotoMetadata } from '../lib/photo-backup';
+import { recoverLostServicoPhotos } from '../lib/servico-sync';
 
 type DiagnosticsResult = Awaited<ReturnType<typeof getDeviceDiagnostics>>;
 
@@ -25,6 +26,7 @@ export default function Diagnostico() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [recoveringServicos, setRecoveringServicos] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [lastUpdated, setLastUpdated] = useState('');
   const [stats, setStats] = useState({
@@ -85,6 +87,35 @@ export default function Diagnostico() {
               Alert.alert('Erro', 'Nao foi possivel limpar o cache.');
             } finally {
               setClearing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRecoverServicos = async () => {
+    Alert.alert(
+      'Recuperar Servicos',
+      'Deseja varrer o cache local para recuperar fotos perdidas de servicos?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Recuperar',
+          onPress: async () => {
+            try {
+              setRecoveringServicos(true);
+              const result = await recoverLostServicoPhotos();
+              Alert.alert(
+                'Recuperacao concluida',
+                `Servicos: ${result.recoveredServicos}\nFotos: ${result.recoveredPhotos}\nAmbiguas: ${result.skippedAmbiguous}`
+              );
+              handleRefresh();
+            } catch (error) {
+              console.error('Erro ao recuperar servicos:', error);
+              Alert.alert('Erro', 'Nao foi possivel recuperar os servicos.');
+            } finally {
+              setRecoveringServicos(false);
             }
           },
         },
@@ -228,25 +259,49 @@ export default function Diagnostico() {
 
         <View style={styles.panel}>
           <Text style={styles.panelTitle}>Acoes de Manutencao</Text>
-          <TouchableOpacity
-            style={[styles.primaryButton, clearing && styles.buttonDisabled]}
-            onPress={handleClearCache}
-            disabled={clearing}
-          >
-            <Text style={styles.primaryButtonText}>
-              {clearing ? 'Limpando cache...' : 'Limpar Cache Antigo'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.maintenanceActions}>
+            <TouchableOpacity
+              style={[styles.maintenanceButton, styles.maintenanceButtonWarning, clearing && styles.buttonDisabled]}
+              onPress={handleClearCache}
+              disabled={clearing}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.maintenanceButtonTitle, styles.maintenanceButtonTitleWarning]}>
+                {clearing ? 'Limpando cache...' : 'Limpar Cache Antigo'}
+              </Text>
+              <Text style={[styles.maintenanceButtonSubtitle, styles.maintenanceButtonSubtitleWarning]}>
+                Remove arquivos antigos e mantém apenas os registros mais recentes.
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.secondaryButton, refreshing && styles.buttonDisabled]}
-            onPress={handleRefresh}
-            disabled={refreshing}
-          >
-            <Text style={styles.secondaryButtonText}>
-              {refreshing ? 'Atualizando...' : 'Atualizar Informacoes'}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.maintenanceButton, styles.maintenanceButtonPrimary, recoveringServicos && styles.buttonDisabled]}
+              onPress={handleRecoverServicos}
+              disabled={recoveringServicos}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.maintenanceButtonTitle, styles.maintenanceButtonTitlePrimary]}>
+                {recoveringServicos ? 'Recuperando servicos...' : 'Recuperar Servicos Perdidos'}
+              </Text>
+              <Text style={[styles.maintenanceButtonSubtitle, styles.maintenanceButtonSubtitlePrimary]}>
+                Revarre o cache local para restaurar vínculos de fotos e dados.
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.maintenanceButton, styles.maintenanceButtonNeutral, refreshing && styles.buttonDisabled]}
+              onPress={handleRefresh}
+              disabled={refreshing}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.maintenanceButtonTitle, styles.maintenanceButtonTitleNeutral]}>
+                {refreshing ? 'Atualizando...' : 'Atualizar Informacoes'}
+              </Text>
+              <Text style={[styles.maintenanceButtonSubtitle, styles.maintenanceButtonSubtitleNeutral]}>
+                Recarrega este painel com o estado atual do dispositivo.
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Text style={styles.footerText}>
@@ -429,6 +484,55 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#1e3a8a',
     lineHeight: 18,
+  },
+  maintenanceActions: {
+    gap: 10,
+  },
+  maintenanceButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+  },
+  maintenanceButtonPrimary: {
+    backgroundColor: '#2563eb',
+    borderColor: '#1d4ed8',
+  },
+  maintenanceButtonWarning: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fdba74',
+  },
+  maintenanceButtonNeutral: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#cbd5e1',
+  },
+  maintenanceButtonTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  maintenanceButtonTitlePrimary: {
+    color: '#ffffff',
+  },
+  maintenanceButtonTitleWarning: {
+    color: '#9a3412',
+  },
+  maintenanceButtonTitleNeutral: {
+    color: '#0f172a',
+  },
+  maintenanceButtonSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  maintenanceButtonSubtitlePrimary: {
+    color: '#dbeafe',
+  },
+  maintenanceButtonSubtitleWarning: {
+    color: '#9a3412',
+  },
+  maintenanceButtonSubtitleNeutral: {
+    color: '#475569',
   },
   primaryButton: {
     backgroundColor: '#2563eb',

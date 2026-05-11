@@ -102,7 +102,8 @@
       "Bash(git diff:*)",
       "Bash(npm run android:*)",
       "Bash(npx madge:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(del \"d:\\\\Projetos - Teccel Engenharia\\\\obras-wise-mobile\\\\mobile\\\\app\\\\cava-rocha.tsx\")"
     ],
     "deny": [],
     "ask": []

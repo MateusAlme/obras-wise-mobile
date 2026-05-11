@@ -210,6 +210,16 @@ export default function Obras() {
     });
   }, [pendingObrasState, equipeLogada, isCompressor, isAdmin]);
 
+  const hasOfflineSyncIssues = useMemo(() => {
+    return combinedObras.some((obra) => {
+      if (obra.origem !== 'offline') return false;
+      return obra.sync_status === 'partial' || obra.sync_status === 'failed' || obra.sync_status === 'syncing';
+    });
+  }, [combinedObras]);
+
+  const showManualSyncButton = pendingObrasDaEquipe.length > 0;
+  const manualSyncPendingCount = pendingObrasDaEquipe.length;
+
   useEffect(() => {
     loadCachedObras();
     loadPendingObras();
@@ -330,6 +340,24 @@ export default function Obras() {
         } as LocalObra;
 
         obrasLocais.push(savedObra);
+        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasLocais));
+      }
+
+      // Remover obras locais que foram apagadas no banco de dados
+      const serverIds = new Set(data.map((o: any) => o.id));
+      const beforeCount = obrasLocais.length;
+      obrasLocais = obrasLocais.filter((obra) => {
+        // Nunca remove obras sem serverId (não sincronizadas) ou com modificações locais pendentes
+        if (!obra.serverId || obra.locallyModified || obra.synced === false) return true;
+        // Só avalia obras dentro do escopo desta consulta
+        const noEscopeDestaConsulta = roleAtual === 'admin' || obra.equipe === equipe;
+        if (!noEscopeDestaConsulta) return true;
+        // Remove se não está mais no banco
+        const exists = serverIds.has(obra.serverId) || serverIds.has(obra.id);
+        if (!exists) console.log(`🗑️ Obra ${obra.obra || obra.id} apagada no banco — removendo localmente`);
+        return exists;
+      });
+      if (obrasLocais.length < beforeCount) {
         await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasLocais));
       }
 
@@ -458,7 +486,11 @@ export default function Obras() {
       const roleIsCompressor = role === 'compressor';
       const equipeAtual = (await AsyncStorage.getItem('@equipe_logada')) || equipeLogada;
       const pendentes = await getPendingObras();
-      const pendentesFiltrados = pendentes.filter((obra) => {
+      const pendentesSincronizaveis = pendentes.filter((obra) => {
+        const status = obra.sync_status ?? 'pending';
+        return status === 'pending' || status === 'failed';
+      });
+      const pendentesFiltrados = pendentesSincronizaveis.filter((obra) => {
         if (!roleIsAdmin) {
           if (!equipeAtual || obra.equipe !== equipeAtual) return false;
         }
@@ -907,50 +939,85 @@ export default function Obras() {
   };
 
   const handleManualSync = async () => {
-    if (pendingObrasState.length === 0) return;
+    const hasPhotoQueueWork = photoStats.pending > 0 || photoStats.failed > 0;
+    const hasAnySyncWork = pendingObrasDaEquipe.length > 0 || hasPhotoQueueWork || hasOfflineSyncIssues;
 
-    // Resetar token de cancelamento
-    cancellationTokenRef.current = { cancelled: false };
+    if (!hasAnySyncWork) {
+      Alert.alert('Sem pendencias', 'Nao ha itens para sincronizar.');
+      return;
+    }
 
-    // Inicializar estado de progresso
-    setSyncProgress({
-      currentObraIndex: 0,
-      totalObras: pendingObrasState.length,
-      currentObraName: '',
-      photoProgress: { completed: 0, total: 0 },
-      overallStatus: 'syncing',
-      results: { success: 0, failed: 0 },
-      errors: [],
-    });
+    if (!isOnline) {
+      Alert.alert('Sem conexao', 'Conecte-se a internet para sincronizar.');
+      return;
+    }
 
-    // Mostrar modal
-    setSyncModalVisible(true);
+    if (hasOfflineSyncIssues && !hasPhotoQueueWork && pendingObrasDaEquipe.length === 0) {
+      Alert.alert(
+        'Sincronizacao parcial',
+        'Existem fotos pendentes sem arquivo local. Tire novamente a foto no servico com erro.'
+      );
+      return;
+    }
 
-    // Iniciar sincronização com progresso
-    const result = await syncAllPendingObrasWithProgress(
-      (progress) => {
+    try {
+      if (pendingObrasState.length > 0) {
+        // Resetar token de cancelamento
+        cancellationTokenRef.current = { cancelled: false };
+
+        // Inicializar estado de progresso
+        setSyncProgress({
+          currentObraIndex: 0,
+          totalObras: pendingObrasState.length,
+          currentObraName: '',
+          photoProgress: { completed: 0, total: 0 },
+          overallStatus: 'syncing',
+          results: { success: 0, failed: 0 },
+          errors: [],
+        });
+
+        // Mostrar modal
+        setSyncModalVisible(true);
+
+        // Iniciar sincronização com progresso
+        const result = await syncAllPendingObrasWithProgress(
+          (progress) => {
+            setSyncProgress(prev => ({
+              ...prev!,
+              currentObraIndex: progress.currentObraIndex,
+              currentObraName: progress.currentObraName,
+              photoProgress: progress.photoProgress,
+              overallStatus: progress.status === 'completed' ? 'completed' : 'syncing',
+            }));
+          },
+          cancellationTokenRef.current
+        );
+
+        // Atualizar com resultados finais
         setSyncProgress(prev => ({
           ...prev!,
-          currentObraIndex: progress.currentObraIndex,
-          currentObraName: progress.currentObraName,
-          photoProgress: progress.photoProgress,
-          overallStatus: progress.status === 'completed' ? 'completed' : 'syncing',
+          overallStatus: cancellationTokenRef.current.cancelled ? 'cancelled' : 'completed',
+          results: { success: result.success, failed: result.failed },
+          errors: result.errors.map(e => ({ obraName: e.obraName, errorMessage: e.error })),
         }));
-      },
-      cancellationTokenRef.current
-    );
+      }
 
-    // Atualizar com resultados finais
-    setSyncProgress(prev => ({
-      ...prev!,
-      overallStatus: cancellationTokenRef.current.cancelled ? 'cancelled' : 'completed',
-      results: { success: result.success, failed: result.failed },
-      errors: result.errors.map(e => ({ obraName: e.obraName, errorMessage: e.error })),
-    }));
+      if (hasPhotoQueueWork || hasOfflineSyncIssues) {
+        if (photoStats.failed > 0) {
+          await retryFailedUploads();
+        } else {
+          await syncAllPendingObras();
+        }
+      }
 
-    // Recarregar dados
-    await loadPendingObras();
-    if (result.success > 0) await carregarObras();
+      // Recarregar dados
+      await loadPhotoStats();
+      await loadPendingObras();
+      await carregarObras();
+    } catch (error) {
+      console.error('Erro na sincronizacao manual:', error);
+      Alert.alert('Erro', 'Nao foi possivel concluir a sincronizacao.');
+    }
   };
 
   const handleSyncSingleObra = async (obra: ObraListItem) => {
@@ -1117,8 +1184,8 @@ export default function Obras() {
           </View>
           <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
             <Text style={styles.metricLabel}>Pendentes</Text>
-            <Text style={[styles.metricValue, pendingObrasDaEquipe.length > 0 && styles.metricValueAlert]}>
-              {pendingObrasDaEquipe.length}
+            <Text style={[styles.metricValue, manualSyncPendingCount > 0 && styles.metricValueAlert]}>
+              {manualSyncPendingCount}
             </Text>
           </View>
         </View>
@@ -1131,22 +1198,6 @@ export default function Obras() {
           <Text style={styles.novaObraButtonIcon}>+</Text>
           <Text style={styles.novaObraButtonLabel}>Nova Obra</Text>
         </TouchableOpacity>
-
-        {/* Botão Sincronizar Obras (só aparece quando há obras pendentes da equipe) */}
-        {pendingObrasDaEquipe.length > 0 && (
-          <TouchableOpacity
-            style={[
-              styles.syncManualButton,
-              !isOnline && styles.syncManualButtonDisabled
-            ]}
-            onPress={handleManualSync}
-            disabled={!isOnline}
-          >
-            <Text style={styles.syncManualButtonLabel}>
-              Sincronizar {pendingObrasDaEquipe.length} obra{pendingObrasDaEquipe.length > 1 ? 's' : ''}
-            </Text>
-          </TouchableOpacity>
-        )}
 
         <View style={styles.searchContainer}>
           <Text style={styles.searchPrefix}>Buscar</Text>
@@ -1212,17 +1263,17 @@ export default function Obras() {
               </TouchableOpacity>
             )}
           </View>
-        ) : combinedObras.length > 0 ? (
+        ) : (combinedObras.length > 0 && !hasOfflineSyncIssues) ? (
           <View style={styles.photoSyncBannerAll}>
             <Text style={styles.photoSyncBannerAllText}>Todas as fotos sincronizadas</Text>
           </View>
         ) : null}
 
-        {pendingObrasDaEquipe.length > 0 && (
+        {showManualSyncButton && (
           <View style={styles.syncBanner}>
             <View style={styles.syncBannerInfo}>
               <Text style={styles.syncBannerTitle}>
-                {pendingObrasDaEquipe.length} obra(s) {isAdmin ? 'aguardando sincronizacao' : 'da sua equipe aguardando sincronizacao'}
+                {manualSyncPendingCount} item(ns) aguardando sincronizacao
               </Text>
               <Text style={styles.syncBannerSubtitle}>
                 {isOnline ? 'Envie agora para liberar espaco.' : 'Conecte-se para finalizar o envio.'}
@@ -1240,7 +1291,7 @@ export default function Obras() {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.syncBannerButtonText}>
-                  Sincronizar ({pendingObrasDaEquipe.length})
+                  Sincronizar ({manualSyncPendingCount})
                 </Text>
               )}
             </TouchableOpacity>

@@ -23,6 +23,7 @@ import {
   checkInternetConnection,
 } from '../../lib/offline-sync';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isCompressorProfile, isObraVisibleForProfile } from '../../lib/profile-rules';
 
 type ObraStatus = 'em_aberto' | 'finalizada' | 'rascunho';
 type ObraFilter = 'todas' | 'em_aberto' | 'finalizada';
@@ -42,6 +43,10 @@ type Obra = {
   origem?: 'online' | 'offline';
   serverId?: string;
 };
+
+const isUuid = (value?: string | null): boolean =>
+  !!value &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 export default function CompIndex() {
   const router = useRouter();
@@ -67,12 +72,8 @@ export default function CompIndex() {
     checkConnection();
 
     const unsubscribe = startAutoSync(async (result) => {
-      if (result.success > 0) {
-        Alert.alert('Sincronizacao concluida', `${result.success} obra(s) sincronizada(s).`);
+      if (result.success > 0 || result.failed > 0) {
         await loadObras();
-      }
-      if (result.failed > 0) {
-        Alert.alert('Atencao', `${result.failed} obra(s) nao puderam ser sincronizadas.`);
       }
     });
 
@@ -114,8 +115,11 @@ export default function CompIndex() {
 
   const checkCompAccess = async () => {
     try {
-      const role = await AsyncStorage.getItem('@user_role');
-      if (role !== 'compressor') {
+      const [role, equipe] = await Promise.all([
+        AsyncStorage.getItem('@user_role'),
+        AsyncStorage.getItem('@equipe_logada'),
+      ]);
+      if (!isCompressorProfile(role, equipe)) {
         router.replace('/login');
       }
     } catch (error) {
@@ -168,12 +172,79 @@ export default function CompIndex() {
     });
   };
 
+  const getCreatedTs = (item: Obra) => new Date(item.created_at || item.data || 0).getTime() || 0;
+
+  const getRealObraId = (item: Obra): string | null => {
+    if (item.serverId) return item.serverId;
+    return isUuid(item.id) ? item.id : null;
+  };
+
+  const getBookFingerprint = (item: Obra): string | null => {
+    const obraNumero = String(item.obra || '').trim();
+    const equipe = String(item.equipe || '').trim().toLowerCase();
+    const tipo = String(item.tipo_servico || 'Cava em Rocha').trim().toLowerCase();
+    const createdTs = getCreatedTs(item);
+    if (!obraNumero || !createdTs) return null;
+    const timeBucket = Math.floor(createdTs / 10000); // janela de 10s para retries concorrentes
+    return `${obraNumero}|${equipe}|${tipo}|${timeBucket}`;
+  };
+
+  const pickPreferredObra = (current: Obra | undefined, candidate: Obra): Obra => {
+    if (!current) return candidate;
+
+    const currentOnline = current.origem === 'online';
+    const candidateOnline = candidate.origem === 'online';
+    if (currentOnline !== candidateOnline) {
+      return candidateOnline ? candidate : current;
+    }
+
+    const currentHasServerRef = !!getRealObraId(current);
+    const candidateHasServerRef = !!getRealObraId(candidate);
+    if (currentHasServerRef !== candidateHasServerRef) {
+      return candidateHasServerRef ? candidate : current;
+    }
+
+    const currentTs = getCreatedTs(current);
+    const candidateTs = getCreatedTs(candidate);
+    if (candidateTs !== currentTs) {
+      return candidateTs > currentTs ? candidate : current;
+    }
+
+    const currentSync = String(current.sync_status || '');
+    const candidateSync = String(candidate.sync_status || '');
+    if (candidateSync === 'pending' && currentSync !== 'pending') return candidate;
+
+    return current;
+  };
+
   const mergeObras = (online: Obra[], local: Obra[], pending: Obra[]) => {
-    const merged = new Map<string, Obra>();
-    for (const obra of online) merged.set(obra.id, obra);
-    for (const obra of local) merged.set(obra.id, obra);
-    for (const obra of pending) merged.set(obra.id, obra);
-    return sortByCreatedAt(Array.from(merged.values()));
+    const combined = [...online, ...local, ...pending];
+
+    // 1) Dedup por UUID real (serverId/UUID), evitando card duplicado local+online.
+    const byRealId = new Map<string, Obra>();
+    const unresolved: Obra[] = [];
+    for (const item of combined) {
+      const realId = getRealObraId(item);
+      if (!realId) {
+        unresolved.push(item);
+        continue;
+      }
+      byRealId.set(realId, pickPreferredObra(byRealId.get(realId), item));
+    }
+
+    // 2) Dedup por fingerprint de book para evitar cópias do mesmo lançamento com IDs diferentes.
+    const byFingerprint = new Map<string, Obra>();
+    const dedupedNoFingerprint = new Map<string, Obra>();
+    for (const item of [...byRealId.values(), ...unresolved]) {
+      const fp = getBookFingerprint(item);
+      if (fp) {
+        byFingerprint.set(fp, pickPreferredObra(byFingerprint.get(fp), item));
+      } else {
+        dedupedNoFingerprint.set(item.id, pickPreferredObra(dedupedNoFingerprint.get(item.id), item));
+      }
+    }
+
+    return sortByCreatedAt([...byFingerprint.values(), ...dedupedNoFingerprint.values()]);
   };
 
   const loadObras = async () => {
@@ -211,7 +282,9 @@ export default function CompIndex() {
 
       try {
         const pendentes = await getPendingObras();
-        const pendentesComp = pendentes.filter((p) => p.tipo_servico === 'Cava em Rocha');
+        const pendentesComp = pendentes.filter((p) =>
+          isObraVisibleForProfile(p as any, 'compressor', equipeLogada)
+        );
 
         obrasPendentes = pendentesComp.map((p) => ({
           id: p.id,
@@ -219,10 +292,12 @@ export default function CompIndex() {
           obra: p.obra,
           responsavel: p.responsavel || equipeLogada,
           equipe: p.equipe || equipeLogada,
+          tipo_servico: p.tipo_servico,
           status: 'em_aberto',
           created_at: p.created_at || p.data,
           sync_status: (p.sync_status || 'pending') as SyncStatus,
           origem: 'offline',
+          serverId: (p as any).serverId,
         }));
       } catch (error) {
         console.error('Erro ao carregar obras pendentes do compressor:', error);
@@ -230,7 +305,9 @@ export default function CompIndex() {
 
       try {
         const locais = await getLocalObras();
-        const locaisComp = locais.filter((l) => l.tipo_servico === 'Cava em Rocha');
+        const locaisComp = locais.filter((l) =>
+          isObraVisibleForProfile(l as any, 'compressor', equipeLogada)
+        );
 
         obrasLocais = locaisComp.map((l) => ({
           id: l.id,
@@ -238,6 +315,7 @@ export default function CompIndex() {
           obra: l.obra,
           responsavel: l.responsavel || equipeLogada,
           equipe: l.equipe || equipeLogada,
+          tipo_servico: l.tipo_servico,
           status: parseStatus(l.status),
           created_at: l.created_at || l.data,
           sync_status: (l.sync_status ?? (l.synced ? undefined : 'pending')) as SyncStatus | undefined,
@@ -286,6 +364,15 @@ export default function CompIndex() {
   };
 
   const openObra = (item: Obra) => {
+    const obraNumero = String(item.obra || '').trim();
+    if (obraNumero) {
+      router.push({
+        pathname: '/obra-books',
+        params: { obraNumero },
+      });
+      return;
+    }
+
     router.push({
       pathname: '/obra-detalhe',
       params: { data: encodeURIComponent(JSON.stringify({ ...item, origem: item.origem || 'online' })) },

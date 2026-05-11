@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import * as Sentry from '@sentry/react-native';
+import { logger } from '../utils/logger';
 
 Sentry.init({
   dsn: 'https://b99f587e416bd6510cce46af64b4fbf1@o4510794867671040.ingest.de.sentry.io/4510874270433360',
@@ -27,14 +28,46 @@ Sentry.init({
 // Prevent the splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
+// ✅ BLOQUEIO GLOBAL DE LOGS
+if (__DEV__) {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+
+  const allow = (text: string) =>
+    text.includes('📸 [PHOTOS]') ||
+    text.includes('☁️ [SYNC]') ||
+    text.includes('🧩 [SERVICO]') ||
+    text.includes('🏗️ [OBRA]') ||
+    text.includes('🗂️ [STORAGE]') ||
+    text.includes('🔎 [DEBUG]') ||
+    text.includes('⚠️ [WARN]') ||
+    text.includes('🔥 [ERROR]');
+
+  console.log = (...args) => {
+    const first = String(args[0] ?? '');
+    if (allow(first)) originalLog(...args);
+  };
+
+  console.warn = (...args) => {
+    const first = String(args[0] ?? '');
+    if (allow(first)) originalWarn(...args);
+  };
+
+  console.error = (...args) => {
+    const first = String(args[0] ?? '');
+    if (allow(first)) originalError(...args);
+  };
+}
+
 // NOTA: Sentry é inicializado no index.js (antes de tudo)
 export default function RootLayout() {
   useEffect(() => {
 
     // Hide the splash screen after a minimum delay to ensure visibility
     const hideSplash = async () => {
-      // Wait at least 2 seconds before hiding
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait at least 3 seconds before hiding
+      await new Promise(resolve => setTimeout(resolve, 3000));
       await SplashScreen.hideAsync();
     };
 

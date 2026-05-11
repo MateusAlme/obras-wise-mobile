@@ -11,6 +11,11 @@ import {
   startAutoSync,
 } from '../../lib/offline-sync';
 import type { PendingObra } from '../../lib/offline-sync';
+import {
+  getAllowedServiceTypesForProfile,
+  isCompressorProfile,
+  isObraVisibleForProfile,
+} from '../../lib/profile-rules';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -23,7 +28,7 @@ export default function Dashboard() {
   const [pendingObrasUnicas, setPendingObrasUnicas] = useState(0);
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
-  const isCompressor = userRole === 'compressor';
+  const isCompressor = getAllowedServiceTypesForProfile(userRole, equipeLogada)?.[0] === 'Cava em Rocha';
   const isAdmin = userRole === 'admin';
   const isSmallScreen = width < 380;
   const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
@@ -109,8 +114,13 @@ export default function Dashboard() {
         query = query.eq('equipe', equipe);
       }
 
-      if (role === 'compressor') {
+      if (isCompressorProfile(role, equipe)) {
         query = query.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
+      } else {
+        const allowed = getAllowedServiceTypesForProfile(role, equipe);
+        if (allowed?.length === 1) {
+          query = query.eq('tipo_servico', allowed[0]);
+        }
       }
 
       const { data, error } = await query;
@@ -135,13 +145,16 @@ export default function Dashboard() {
       }
 
       const obras = await getPendingObras();
-      const pendentesDaEquipe = obras.filter((obra) => {
+      const obrasSincronizaveis = obras.filter((obra) => {
+        const status = obra.sync_status ?? 'pending';
+        return status === 'pending' || status === 'failed';
+      });
+      const pendentesDaEquipe = obrasSincronizaveis.filter((obra) => {
         if (role !== 'admin') {
           const mesmaEquipe = obra.equipe === equipe;
           if (!mesmaEquipe) return false;
         }
-        if (role !== 'compressor') return true;
-        return obra.tipo_servico === 'Cava em Rocha' || (obra as any).creator_role === 'compressor';
+        return isObraVisibleForProfile(obra as any, role, equipe);
       });
       setPendingObras(pendentesDaEquipe);
       // Contar obras únicas pendentes pelo número da obra
@@ -196,6 +209,63 @@ export default function Dashboard() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={[styles.content, { paddingHorizontal: horizontalPadding }]}>
+
+        {/* Hero Banner */}
+        <View style={styles.heroBanner}>
+          <View style={styles.heroLeft}>
+            <Text style={styles.heroLabel}>Bem-vindo</Text>
+            <Text style={styles.heroTitle} numberOfLines={1}>
+              {equipeLogada ? equipeLogada : isAdmin ? 'Administrador' : 'Equipe'}
+            </Text>
+            <View style={styles.heroStatusPill}>
+              <View style={[styles.heroDot, isOnline ? styles.heroDotOnline : styles.heroDotOffline]} />
+              <Text style={styles.heroStatusText}>
+                {isOnline ? 'Online' : 'Offline'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.heroRight}>
+            <Text style={styles.heroStatNumber}>{loading ? '--' : totalObras}</Text>
+            <Text style={styles.heroStatLabel}>obras</Text>
+          </View>
+        </View>
+
+        {/* Nova Obra — ação principal em destaque */}
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.push('/nova-obra-rapida')}
+        >
+          <View style={styles.primaryButtonContent}>
+            <View style={styles.iconCircle}>
+              <Text style={styles.iconText}>+</Text>
+            </View>
+            <Text style={[styles.primaryButtonText, isSmallScreen && styles.primaryButtonTextSmall]}>
+              Iniciar Nova Obra
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Metrics */}
+        <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
+          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+            <Text style={styles.metricIcon}>🏗️</Text>
+            <Text style={styles.metricValue}>{loading ? '...' : totalObras}</Text>
+            <Text style={styles.metricLabel}>{isAdmin ? 'Total de obras' : 'Obras da equipe'}</Text>
+          </View>
+          <View style={[
+            styles.metricCard,
+            isSmallScreen && styles.metricCardStacked,
+            pendingObrasUnicas > 0 && styles.metricCardAlert,
+          ]}>
+            <Text style={styles.metricIcon}>{pendingObrasUnicas > 0 ? '⏳' : '✓'}</Text>
+            <Text style={[styles.metricValue, pendingObrasUnicas > 0 && styles.metricAlert]}>
+              {loading ? '...' : pendingObrasUnicas}
+            </Text>
+            <Text style={styles.metricLabel}>Pendentes de sync</Text>
+          </View>
+        </View>
+
+        {/* Status Card — sincronização */}
         <View
           style={[
             styles.statusCard,
@@ -235,56 +305,13 @@ export default function Dashboard() {
           )}
         </View>
 
-        <View style={styles.header}>
-          <Text style={styles.title}>Inicio</Text>
-          <Text style={styles.subtitle}>
-            {equipeLogada ? `Equipe ${equipeLogada}` : 'Equipe nao identificada'}
-          </Text>
-        </View>
-
-        <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
-          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
-            <Text style={styles.metricLabel}>{isAdmin ? 'Total de obras' : 'Obras da equipe'}</Text>
-            <Text style={styles.metricValue}>{loading ? '...' : totalObras}</Text>
-          </View>
-          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
-            <Text style={styles.metricLabel}>Pendentes de sync</Text>
-            <Text style={[styles.metricValue, pendingObrasUnicas > 0 && styles.metricAlert]}>
-              {loading ? '...' : pendingObrasUnicas}
-            </Text>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.primaryButton}
-          onPress={() => router.push('/nova-obra')}
-        >
-          <View style={styles.primaryButtonContent}>
-            <View style={styles.iconCircle}>
-              <Text style={styles.iconText}>+</Text>
-            </View>
-            <Text style={[styles.primaryButtonText, isSmallScreen && styles.primaryButtonTextSmall]}>
-              Iniciar Nova Obra
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Obras Cadastradas</Text>
-          <Text style={styles.statsNumber}>{loading ? '--' : totalObras}</Text>
-          <Text style={styles.cardText}>
-            {totalObras === 0
-              ? 'Nenhuma obra cadastrada ainda.'
-              : `${totalObras} obra${totalObras > 1 ? 's' : ''} agrupada${totalObras > 1 ? 's' : ''} por número de obra.`}
-          </Text>
-        </View>
-
+        {/* Ver Histórico */}
         <TouchableOpacity
           style={styles.secondaryButton}
           onPress={() => router.push('/(tabs)/obras')}
         >
           <Text style={[styles.secondaryButtonText, isSmallScreen && styles.secondaryButtonTextSmall]}>
-            Ver Historico Completo
+            Ver Histórico de Obras →
           </Text>
         </TouchableOpacity>
       </View>
@@ -304,17 +331,110 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     paddingHorizontal: 20,
   },
-  header: {
+  heroBanner: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    borderRadius: 18,
+    backgroundColor: '#dc3545',
+    padding: 16,
     marginBottom: 14,
+    shadowColor: '#7f1d1d',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#111827',
+  heroLeft: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  heroLabel: {
+    fontSize: 11,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: '#fecdd3',
+    fontWeight: '700',
     marginBottom: 4,
   },
+  heroTitle: {
+    fontSize: 21,
+    fontWeight: '900',
+    color: '#fff',
+    marginBottom: 10,
+  },
+  heroStatusPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.26)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  heroDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  heroDotOnline: {
+    backgroundColor: '#22c55e',
+  },
+  heroDotOffline: {
+    backgroundColor: '#fbbf24',
+  },
+  heroStatusText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  heroRight: {
+    minWidth: 96,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  heroStatNumber: {
+    fontSize: 30,
+    lineHeight: 34,
+    color: '#fff',
+    fontWeight: '900',
+  },
+  heroStatLabel: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#fee2e2',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+  },
+  header: {
+    marginBottom: 16,
+  },
+  greeting: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9ca3af',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 0,
+  },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#6b7280',
     fontWeight: '500',
   },
@@ -339,9 +459,18 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  metricCardAlert: {
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fff5f5',
+  },
   metricCardStacked: {
     marginHorizontal: 0,
     marginBottom: 10,
+  },
+  metricIcon: {
+    fontSize: 18,
+    marginBottom: 4,
   },
   metricLabel: {
     fontSize: 12,
@@ -416,35 +545,6 @@ const styles = StyleSheet.create({
   },
   secondaryButtonTextSmall: {
     fontSize: 14,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1f2937',
-    marginBottom: 6,
-  },
-  cardText: {
-    fontSize: 14,
-    color: '#6b7280',
-    lineHeight: 21,
-  },
-  statsNumber: {
-    fontSize: 50,
-    fontWeight: '800',
-    color: '#dc3545',
-    textAlign: 'center',
-    marginVertical: 8,
   },
   statusCard: {
     backgroundColor: '#fff',

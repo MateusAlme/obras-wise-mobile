@@ -17,7 +17,7 @@ import {
   AppStateStatus,
 } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -48,6 +48,7 @@ import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
 import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 import { useToast } from '../components/Toast';
+import { isCompressorProfile, isLinhaVivaProfile } from '../lib/profile-rules';
 // Import dinâmico (lazy) para evitar erro no web
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
@@ -85,7 +86,16 @@ const sanitizeObrasPayload = <T extends Record<string, any>>(payload: T): T => {
 
 export default function NovaObra() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ editMode?: string; obraData?: string }>();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{
+    editMode?: string;
+    obraData?: string;
+    contextServicoId?: string | string[];
+    skipLocalReconcile?: string | string[];
+  }>();
+  const normalizeRouteParam = (value?: string | string[]): string =>
+    Array.isArray(value) ? String(value[0] || '').trim() : String(value || '').trim();
+  const contextServicoId = normalizeRouteParam(params.contextServicoId);
   const { showToast, toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
@@ -93,6 +103,7 @@ export default function NovaObra() {
   // Modo de edição
   const isEditMode = params.editMode === 'true';
   const [obraId, setObraId] = useState<string | null>(null);
+  const [legacyServicoId, setLegacyServicoId] = useState<string>(contextServicoId);
 
   // Detectar se é usuário COMP
   const [isCompUser, setIsCompUser] = useState(false);
@@ -501,10 +512,8 @@ export default function NovaObra() {
         const equipeLogada = await AsyncStorage.getItem('@equipe_logada');
         const userRole = await AsyncStorage.getItem('@user_role');
 
-        const linhaVivaRegex = /^LV\b/i;
-
         // Detectar perfis especiais
-        if (userRole === 'compressor') {
+        if (isCompressorProfile(userRole, equipeLogada)) {
           setIsCompUser(true);
           setEquipe(equipeLogada || '');
           setEquipeExecutora('');
@@ -546,7 +555,7 @@ export default function NovaObra() {
           }
         } else if (equipeLogada) {
           setEquipe(equipeLogada);
-          if (linhaVivaRegex.test(equipeLogada.trim())) {
+          if (isLinhaVivaProfile(userRole, equipeLogada)) {
             setIsLinhaVivaUser(true);
             setTipoServico('Linha Viva'); // Fixar serviço para perfis LV
           }
@@ -768,6 +777,7 @@ export default function NovaObra() {
     const obraData: any = {
       id: finalObraId,
       ...((isEditMode && currentServerId) && { serverId: currentServerId }),
+      ...(legacyServicoId && { legacy_servico_id: legacyServicoId }),
       obra: obra?.trim() || '',
       data: data || '',
       responsavel: isCompUser ? (equipe || 'COM-CZ') : (responsavel || ''),
@@ -874,34 +884,14 @@ export default function NovaObra() {
         }
       }
 
-      // ✅ Mostrar feedback visual discreto
-      const totalFotosPostes = isServicoPostesComFotos
-        ? postesData.reduce(
-            (acc, poste) =>
-              acc +
-              poste.fotosAntes.length +
-              poste.fotosDurante.length +
-              poste.fotosDepois.length +
-              (isServicoBookAterramento ? poste.fotosMedicao.length : 0),
-            0
-          )
-        : 0;
-      const totalFotos = Object.values(photoIds).reduce((acc, arr) => acc + arr.length, 0) + totalFotosPostes;
-      const mensagem = totalFotos > 0
-        ? `Rascunho salvo automaticamente (${totalFotos} foto${totalFotos > 1 ? 's' : ''})`
-        : 'Rascunho salvo automaticamente';
-
-      showToast(mensagem, 'info');
-
     } catch (error) {
       console.error('❌ Erro no auto-save:', error);
       // Não mostrar erro para usuário, apenas logar
       throw error;
     }
   }, [
-    showToast, // Adicionar showToast às dependências
     data, obra, responsavel, equipe, equipeExecutora, tipoServico, isCompUser, isAdminUser, isEditMode, obraId,
-    currentServerId, transformadorStatus, numPostes, numSeccionamentos, numEmendas, numPodas, numAterramentosCerca,
+    currentServerId, legacyServicoId, transformadorStatus, numPostes, numSeccionamentos, numEmendas, numPodas, numAterramentosCerca,
     backupObraId,
     isServicoChecklist, isServicoCavaRocha, isServicoBookAterramento, isServicoPostesIdentificacao,
     postesData, postesIdentificados,
@@ -936,6 +926,12 @@ export default function NovaObra() {
     }
   }, [isEditMode]);
 
+  useEffect(() => {
+    if (contextServicoId) {
+      setLegacyServicoId(contextServicoId);
+    }
+  }, [contextServicoId]);
+
   // Carregar dados da obra em modo de edição
   useEffect(() => {
     if (isEditMode && params.obraData) {
@@ -959,6 +955,7 @@ export default function NovaObra() {
           console.log('   obraData.checklist_aterramentos_cerca_data:', obraData.checklist_aterramentos_cerca_data);
 
           setObraId(obraData.id);
+          setLegacyServicoId(String(obraData.legacy_servico_id || contextServicoId || '').trim());
           setData(obraData.data);
           setObra(obraData.obra);
           setResponsavel(obraData.responsavel);
@@ -976,8 +973,8 @@ export default function NovaObra() {
           // ✅ Carregar fotos do photo-backup usando os IDs salvos na obra
           console.log('📸 Buscando fotos da obra:', obraData.id);
 
-          // Coletar todos os IDs de fotos na obra para o fallback
-          const allPhotoIds: string[] = [
+          // Coletar todas as referências de foto da obra para o fallback
+          const rawPhotoEntries: any[] = [
             // Fotos padrão
             ...(obraData.fotos_antes || []),
             ...(obraData.fotos_durante || []),
@@ -1066,7 +1063,42 @@ export default function NovaObra() {
               ...(poste.fotos_depois || []),
               ...(poste.fotos_medicao || []),
             ]),
-          ].filter(id => typeof id === 'string');
+          ];
+
+          const isRenderablePhotoRef = (value: string) =>
+            value.startsWith('http://') ||
+            value.startsWith('https://') ||
+            value.startsWith('file://') ||
+            value.startsWith('content://') ||
+            value.startsWith('/');
+
+          const extractPhotoIdCandidate = (entry: any): string | null => {
+            if (!entry) return null;
+
+            if (typeof entry === 'string') {
+              const normalized = entry.trim();
+              if (!normalized || isRenderablePhotoRef(normalized)) return null;
+              return normalized;
+            }
+
+            if (typeof entry === 'object') {
+              const fromPhotoId = typeof entry.photoId === 'string' ? entry.photoId.trim() : '';
+              const fromId = typeof entry.id === 'string' ? entry.id.trim() : '';
+              const candidate = fromPhotoId || fromId;
+              if (!candidate || isRenderablePhotoRef(candidate)) return null;
+              return candidate;
+            }
+
+            return null;
+          };
+
+          const allPhotoIds: string[] = Array.from(
+            new Set(
+              rawPhotoEntries
+                .map(extractPhotoIdCandidate)
+                .filter((id): id is string => typeof id === 'string' && id.length > 0)
+            )
+          );
 
           let localPhotos: any[] = [];
 
@@ -1088,10 +1120,14 @@ export default function NovaObra() {
           }
 
           // Helper para buscar foto por ID com fallback
-          const findPhotoById = (photoId: string): any | null => {
+          const findPhotoById = (photoId: string, enableTypeIndexFallback: boolean = true): any | null => {
             // Busca direta pelo ID
             let photo = localPhotos.find(p => p.id === photoId);
             if (photo) return photo;
+
+            if (!enableTypeIndexFallback) {
+              return null;
+            }
 
             // Se não encontrou, pode ser que o obraId no ID da foto é diferente do obraId atual
             // Tentar buscar por tipo e index extraídos do ID
@@ -1129,14 +1165,51 @@ export default function NovaObra() {
                 return [];
               }
 
-              const result = photoIds.map((item, index) => {
+              const result = photoIds.map((item) => {
                 try {
-                  // CASO 1: String (ID) - buscar no photo-backup
                   if (typeof item === 'string') {
-                    const photo = findPhotoById(item);
+                    const normalizedItem = item.trim();
+                    if (!normalizedItem) return null;
+
+                    if (normalizedItem.startsWith('http://') || normalizedItem.startsWith('https://')) {
+                      const remoteId = `synced_${normalizedItem.split('/').pop() || Date.now()}`;
+                      return {
+                        uri: normalizedItem,
+                        latitude: null,
+                        longitude: null,
+                        utmX: null,
+                        utmY: null,
+                        utmZone: null,
+                        photoId: remoteId,
+                        _originalData: { url: normalizedItem },
+                      };
+                    }
+
+                    if (
+                      normalizedItem.startsWith('file://') ||
+                      normalizedItem.startsWith('content://') ||
+                      normalizedItem.startsWith('/')
+                    ) {
+                      return {
+                        uri: normalizedItem,
+                        latitude: null,
+                        longitude: null,
+                        utmX: null,
+                        utmY: null,
+                        utmZone: null,
+                        photoId: normalizedItem,
+                      };
+                    }
+
+                    const isPosteField = fieldName.startsWith('postes_');
+                    const photo = findPhotoById(normalizedItem, !isPosteField);
                     if (photo) {
-                      // Priorizar URL do Supabase
-                      const uri = photo.supabaseUrl || photo.compressedPath || photo.originalPath;
+                      const uri =
+                        photo.compressedPath ||
+                        photo.backupPath ||
+                        photo.originalUri ||
+                        photo.uploadUrl ||
+                        photo.supabaseUrl;
                       if (uri) {
                         return {
                           uri,
@@ -1149,43 +1222,57 @@ export default function NovaObra() {
                         };
                       }
                     }
-                    // ✅ CRÍTICO: Preservar photoId mesmo quando não encontra a foto
-                    // Isso evita perder o ID ao pausar a obra novamente
-                    console.warn(`⚠️ [mapPhotos] Foto não encontrada para ${fieldName}: ${item}`);
-                    console.warn(`   ℹ️ Mantendo photoId para não perder a referência`);
+
+                    console.warn(`[mapPhotos] Foto nao encontrada para ${fieldName}: ${normalizedItem}`);
+                    console.warn(`[mapPhotos] Mantendo photoId para nao perder a referencia`);
                     return {
-                      uri: '', // URI vazia - foto não será exibida
+                      uri: '',
                       latitude: null,
                       longitude: null,
                       utmX: null,
                       utmY: null,
                       utmZone: null,
-                      photoId: item, // ✅ Preservar o ID original
-                      _notFound: true, // Flag indicando que a foto não foi encontrada
+                      photoId: normalizedItem,
+                      _notFound: true,
                     };
                   }
 
-                  // CASO 2: Objeto com URL (foto sincronizada do banco)
-                  if (typeof item === 'object' && item !== null && item.url) {
-                    // Criar um ID temporário baseado na URL para poder refazer referência
-                    const tempId = `synced_${item.url.split('/').pop()}`;
+                  if (
+                    typeof item === 'object' &&
+                    item !== null &&
+                    (item.url || item.uploadUrl || item.supabaseUrl)
+                  ) {
+                    const remoteUrl = String(item.url || item.uploadUrl || item.supabaseUrl || '').trim();
+                    if (!remoteUrl) return null;
+
+                    const preservedId =
+                      (typeof item.photoId === 'string' && item.photoId.trim().length > 0 ? item.photoId.trim() : '') ||
+                      (typeof item.id === 'string' && item.id.trim().length > 0 ? item.id.trim() : '');
+                    const tempId = preservedId || `synced_${remoteUrl.split('/').pop() || Date.now()}`;
+                    const localUri = typeof item.uri === 'string' && item.uri.trim().length > 0 ? item.uri : remoteUrl;
+
                     return {
-                      uri: item.url,
-                      latitude: item.latitude || null,
-                      longitude: item.longitude || null,
-                      utmX: item.utmX || null,
-                      utmY: item.utmY || null,
-                      utmZone: item.utmZone || null,
+                      uri: localUri,
+                      latitude: item.latitude ?? null,
+                      longitude: item.longitude ?? null,
+                      utmX: item.utmX ?? item.utm_x ?? null,
+                      utmY: item.utmY ?? item.utm_y ?? null,
+                      utmZone: item.utmZone ?? item.utm_zone ?? null,
                       photoId: tempId,
-                      _originalData: item, // Guardar dados originais para resalvar
+                      _originalData: item,
                     };
                   }
 
-                  // CASO 3: Objeto com ID - buscar no photo-backup
                   if (typeof item === 'object' && item !== null && item.id) {
-                    const photo = findPhotoById(item.id);
+                    const isPosteField = fieldName.startsWith('postes_');
+                    const photo = findPhotoById(item.id, !isPosteField);
                     if (photo) {
-                      const uri = photo.supabaseUrl || photo.compressedPath || photo.originalPath;
+                      const uri =
+                        photo.compressedPath ||
+                        photo.backupPath ||
+                        photo.originalUri ||
+                        photo.uploadUrl ||
+                        photo.supabaseUrl;
                       if (uri) {
                         return {
                           uri,
@@ -1198,8 +1285,31 @@ export default function NovaObra() {
                         };
                       }
                     }
-                    // ✅ CRÍTICO: Preservar ID do objeto mesmo quando não encontra
-                    console.warn(`⚠️ [mapPhotos] Foto não encontrada por item.id: ${item.id}`);
+
+                    const directUri = String(
+                      item.uri ||
+                      item.url ||
+                      item.uploadUrl ||
+                      item.supabaseUrl ||
+                      item.compressedPath ||
+                      item.backupPath ||
+                      item.originalUri ||
+                      ''
+                    ).trim();
+                    if (directUri) {
+                      return {
+                        uri: directUri,
+                        latitude: item.latitude ?? null,
+                        longitude: item.longitude ?? null,
+                        utmX: item.utmX ?? item.utm_x ?? null,
+                        utmY: item.utmY ?? item.utm_y ?? null,
+                        utmZone: item.utmZone ?? item.utm_zone ?? null,
+                        photoId: item.id,
+                        _originalData: item,
+                      };
+                    }
+
+                    console.warn(`[mapPhotos] Foto nao encontrada por item.id: ${item.id}`);
                     return {
                       uri: '',
                       latitude: null,
@@ -1572,6 +1682,7 @@ export default function NovaObra() {
   ): Promise<PendingObra | LocalObra | null> => {
     const [obrasLocais, obrasPendentes] = await Promise.all([getLocalObras(), getPendingObras()]);
     const currentEquipe = normalizeComparableValue(isAdminUser ? equipeExecutora : equipe);
+    const currentLegacyServicoId = normalizeComparableValue(legacyServicoId);
     const idsIgnorados = new Set(
       [backupObraId, obraId, currentServerId].filter((value): value is string => Boolean(value))
     );
@@ -1589,6 +1700,10 @@ export default function NovaObra() {
           normalizeComparableValue(obraExistente.tipo_servico) === normalizeComparableValue(tipoServicoAtual);
         const mesmaEquipe =
           !currentEquipe || normalizeComparableValue(obraExistente.equipe) === currentEquipe;
+        const legacyObraExistente = normalizeComparableValue((obraExistente as any).legacy_servico_id);
+        const mesmoContextoServico = currentLegacyServicoId
+          ? legacyObraExistente === currentLegacyServicoId
+          : !legacyObraExistente;
         const aberta = normalizeComparableValue(obraExistente.status) !== 'finalizada';
         const mesmoRegistro =
           idsIgnorados.has(obraExistente.id) ||
@@ -1596,7 +1711,7 @@ export default function NovaObra() {
             typeof obraExistente.serverId === 'string' &&
             idsIgnorados.has(obraExistente.serverId));
 
-        return mesmoNumero && mesmoTipo && mesmaEquipe && aberta && !mesmoRegistro;
+        return mesmoNumero && mesmoTipo && mesmaEquipe && mesmoContextoServico && aberta && !mesmoRegistro;
       })
       .sort((a, b) => {
         const prioridadeA = a.status === 'rascunho' ? 0 : 1;
@@ -1649,11 +1764,6 @@ export default function NovaObra() {
 
       if (result.success > 0 && result.failed === 0) {
         Alert.alert('Sincronizacao concluida', `${result.success} obra(s) sincronizadas com sucesso.`);
-      } else if (result.failed > 0) {
-        Alert.alert(
-          'Sincronizacao incompleta',
-          `${result.failed} obra(s) nao foram sincronizadas. Verifique e tente novamente.`
-        );
       }
     });
 
@@ -1824,7 +1934,7 @@ export default function NovaObra() {
           accuracy: Location.Accuracy.Balanced,
         }),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('GPS timeout')), 3000)
+          setTimeout(() => reject(new Error('GPS timeout')), 12000)
         )
       ]);
 
@@ -2001,7 +2111,10 @@ export default function NovaObra() {
         'fotosDepois': 'depois',
         'fotosMedicao': 'aterramento_medicao',
       };
-      const tipoFoto = tipoFotoMap[secao];
+      const tipoFotoBase = tipoFotoMap[secao];
+      const postePersistId = posteAtual ? getPosteIdPersistencia(posteAtual) : String(posteId || '').trim();
+      // Namespace por poste evita fallback cruzado entre P1/P2 em reidratação offline.
+      const tipoFoto = `${tipoFotoBase}_${postePersistId}` as any;
 
       // Obter índice atual de fotos nesta seção para este poste
       const indexFoto = posteAtual ? posteAtual[secao].length : 0;
@@ -2013,7 +2126,9 @@ export default function NovaObra() {
         tipoFoto,
         indexFoto,
         location.latitude,
-        location.longitude
+        location.longitude,
+        'image/jpeg',
+        source === 'camera' ? 'camera' : 'gallery'
       );
 
       const fotoData: FotoData = {
@@ -2290,7 +2405,9 @@ export default function NovaObra() {
         tipo,
         index,
         location.latitude,
-        location.longitude
+        location.longitude,
+        'image/jpeg',
+        source === 'camera' ? 'camera' : 'gallery'
       );
 
       const photoData: FotoData = {
@@ -3758,6 +3875,7 @@ export default function NovaObra() {
       const obraData: any = {
         data,
         obra,
+        ...(legacyServicoId && { legacy_servico_id: legacyServicoId }),
         // Para compressor, registrar o código de login (ex: COM-CZ / COM-PT)
         responsavel: isCompUser ? (equipe || 'COM-CZ') : responsavel,
         equipe: isAdminUser ? equipeExecutora : equipe, // Admin escolhe equipe; compressor usa equipe da sessao
@@ -4516,11 +4634,23 @@ export default function NovaObra() {
           .from('obras')
           .select('*')
           .eq('id', obraId)
-          .single();
+          .maybeSingle();
 
         if (fetchError) {
           console.error('Erro ao buscar obra atual:', fetchError);
           Alert.alert('Erro', 'Não foi possível carregar a obra para atualização.');
+          return;
+        }
+
+        if (!obraAtual) {
+          console.warn(`[updateObra] Obra nao encontrada no servidor. Salvando alteracoes offline. obraId=${obraId}`);
+          await updateObraOffline(obraId, obraData, photoIds);
+          await loadPendingObras();
+          Alert.alert(
+            'Obra nao encontrada no servidor',
+            'As alteracoes foram salvas localmente e serao sincronizadas depois.'
+          );
+          setLoading(false);
           return;
         }
 
@@ -5102,6 +5232,7 @@ export default function NovaObra() {
         id: finalObraId,
         // ✅ CRÍTICO: Preservar serverId se já foi sincronizada (evita duplicação)
         ...((isEditMode && currentServerId) && { serverId: currentServerId }),
+        ...(legacyServicoId && { legacy_servico_id: legacyServicoId }),
         obra: obra?.trim() || '',
         data: data || '',
         responsavel: isCompUser ? (equipe || 'COM-CZ') : (responsavel || ''),
@@ -10161,7 +10292,7 @@ export default function NovaObra() {
           style={styles.modalOverlay}
           onPress={() => setShowServicoModal(false)}
         >
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom + 16, 32) }]}>
             <Pressable>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Tipo de Serviço</Text>
@@ -10172,7 +10303,10 @@ export default function NovaObra() {
 
               <Text style={styles.modalSubtitle}>Selecione apenas um serviço</Text>
 
-              <ScrollView style={styles.modalList}>
+              <ScrollView
+                style={styles.modalList}
+                contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 20, 40) }}
+              >
                 {TIPOS_SERVICO.map((tipo) => (
                   <TouchableOpacity
                     key={tipo}
@@ -10213,7 +10347,7 @@ export default function NovaObra() {
             style={styles.modalOverlay}
             onPress={() => setShowEquipeModal(false)}
           >
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom + 16, 32) }]}>
               <Pressable>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>
@@ -10224,7 +10358,10 @@ export default function NovaObra() {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.modalList}>
+                <ScrollView
+                  style={styles.modalList}
+                  contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 20, 40) }}
+                >
                   {equipesAdmin.map((item) => (
                     <TouchableOpacity
                       key={item}
@@ -10268,7 +10405,7 @@ export default function NovaObra() {
           style={styles.modalOverlay}
           onPress={() => setShowDatePicker(false)}
         >
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom + 16, 32) }]}>
             <Pressable>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Selecionar Data</Text>
@@ -10789,7 +10926,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingBottom: 40,
-    maxHeight: '80%',
+    maxHeight: '88%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -10819,7 +10956,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   modalList: {
-    maxHeight: 400,
+    flexGrow: 0,
     paddingHorizontal: 20,
   },
   modalItem: {

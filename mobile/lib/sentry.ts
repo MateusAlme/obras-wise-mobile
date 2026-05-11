@@ -12,6 +12,24 @@ export const initSentry = () => {
   console.log('🔍 [Sentry] Desabilitado');
 };
 
+const NETWORK_ERROR_PATTERNS = [
+  'unable to resolve host',
+  'no address associated with hostname',
+  'network request failed',
+  'failed to fetch',
+  'failed to connect',
+  'network is unreachable',
+  'software caused connection abort',
+  'connection timed out',
+  'timeout',
+];
+
+const isExpectedNetworkIssue = (message?: string): boolean => {
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return NETWORK_ERROR_PATTERNS.some((pattern) => normalized.includes(pattern));
+};
+
 /**
  * Captura erro manualmente com contexto adicional (apenas console.log)
  */
@@ -24,7 +42,18 @@ export const captureError = (
     metadata?: Record<string, any>;
   }
 ) => {
-  console.error('🔴 [Error]', error.message, context);
+  const message = error?.message || 'Erro desconhecido';
+  const isNetworkIssue = context?.type === 'network' || isExpectedNetworkIssue(message);
+
+  if (isNetworkIssue) {
+    console.warn('🟡 [Network]', message, context);
+    if (__DEV__) {
+      console.warn(error);
+    }
+    return;
+  }
+
+  console.error('🔴 [Error]', message, context);
   if (__DEV__) {
     console.error(error);
   }

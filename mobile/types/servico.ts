@@ -4,6 +4,7 @@
  */
 
 export type TipoServico =
+  | 'APR'
   | 'Abertura e Fechamento de Chave'
   | 'Altimetria'
   | 'Bandolamento'
@@ -17,8 +18,10 @@ export type TipoServico =
   | 'Instalação do Medidor'
   | 'Linha Viva'
   | 'Poda'
+  | 'Registro de Impedimento'
   | 'Transformador'
-  | 'Vazamento e Limpeza de Transformador';
+  | 'Vazamento e Limpeza de Transformador'
+  | 'Teste';
 
 export type StatusServico = 'rascunho' | 'em_progresso' | 'completo';
 export type SyncStatusServico = 'offline' | 'syncing' | 'synced' | 'error';
@@ -53,12 +56,17 @@ export interface PosteData {
   id: string;
   numero: number;
   isAditivo?: boolean;
+  status?: 'instalado' | 'retirado' | 'existente';
   fotos_antes: string[]; // Array de photoIds
   fotos_durante: string[];
   fotos_depois: string[];
   fotos_medicao?: string[];
+  descricao?: string[];
   engaste?: string[]; // Para Checklist
   conexao1?: string[];
+  conexao2?: string[];
+  maiorEsforco?: string[];
+  menorEsforco?: string[];
   posteInteiro?: string[];
 }
 
@@ -97,10 +105,30 @@ export interface HasteTermometroData {
 }
 
 /**
+ * Dados complementares de um servico (texto simples e referencias).
+ */
+export interface ServicoDadosAdicionais {
+  transformador_modo?: 'instalado' | 'retirado' | 'ambos';
+  referencia_poste_inicio?: string;
+  referencia_poste_fim?: string;
+  identificador_item?: string; // Ex: E12 (emenda), PD3 (poda)
+  observacao?: string;
+  pontos_referencia?: Array<{
+    id?: string;
+    tipo?: 'poste' | 'emenda' | 'poda' | 'seccionamento' | 'outro';
+    identificador_item?: string;
+    referencia_poste_inicio?: string;
+    referencia_poste_fim?: string;
+    observacao?: string;
+  }>;
+}
+
+/**
  * Interface principal para Serviço
  */
 export interface Servico {
   id: string;
+  client_pk?: string;
   obra_id: string;
   obra_numero?: string; // Redundante com obras.obra — permite queries offline sem JOIN
   tipo_servico: TipoServico;
@@ -117,6 +145,9 @@ export interface Servico {
   fotos_depois: FotoInfo[];
 
   // Fotos específicas de cada tipo
+  fotos_apr?: FotoInfo[]; // APR — sem limite de quantidade, adicionadas diariamente
+  fotos_impedimento?: FotoInfo[]; // Registro de Impedimento — evidências do impedimento
+
   fotos_abertura?: FotoInfo[];
   fotos_fechamento?: FotoInfo[];
 
@@ -195,6 +226,8 @@ export interface Servico {
   checklist_seccionamentos_data?: SeccionamentoData[];
   checklist_aterramentos_cerca_data?: AterramentoCercaData[];
   checklist_hastes_termometros_data?: HasteTermometroData[];
+  dados_adicionais?: ServicoDadosAdicionais;
+
 }
 
 /**
@@ -202,6 +235,7 @@ export interface Servico {
  */
 export interface ServicoLocal {
   id: string;
+  client_pk?: string;
   obra_id: string;
   obra_numero?: string; // Redundante com obras.obra — permite queries offline sem JOIN
   tipo_servico: TipoServico;
@@ -216,6 +250,9 @@ export interface ServicoLocal {
   fotos_antes: string[];
   fotos_durante: string[];
   fotos_depois: string[];
+  fotos_apr?: string[]; // APR — sem limite de quantidade
+  fotos_impedimento?: string[]; // Registro de Impedimento — evidências do impedimento
+
   fotos_abertura?: string[];
   fotos_fechamento?: string[];
   fotos_ditais_abertura?: string[];
@@ -285,6 +322,8 @@ export interface ServicoLocal {
   checklist_seccionamentos_data?: SeccionamentoData[];
   checklist_aterramentos_cerca_data?: AterramentoCercaData[];
   checklist_hastes_termometros_data?: HasteTermometroData[];
+  dados_adicionais?: ServicoDadosAdicionais;
+
 }
 
 /**
@@ -292,6 +331,9 @@ export interface ServicoLocal {
  * Usado na UI para exibir apenas as fotos relevantes
  */
 export const SERVICO_PHOTO_MAP: Record<TipoServico, Array<{ field: keyof Servico; label: string }>> = {
+  'APR': [
+    { field: 'fotos_apr', label: 'Fotos APR' },
+  ],
   'Abertura e Fechamento de Chave': [
     { field: 'fotos_abertura', label: 'Abertura' },
     { field: 'fotos_fechamento', label: 'Fechamento' },
@@ -307,30 +349,9 @@ export const SERVICO_PHOTO_MAP: Record<TipoServico, Array<{ field: keyof Servico
     { field: 'fotos_durante', label: 'Durante' },
     { field: 'fotos_depois', label: 'Depois' },
   ],
-  'Book de Aterramento': [
-    { field: 'fotos_aterramento_vala_aberta', label: 'Vala Aberta' },
-    { field: 'fotos_aterramento_hastes', label: 'Hastes Instaladas' },
-    { field: 'fotos_aterramento_vala_fechada', label: 'Vala Fechada' },
-    { field: 'fotos_aterramento_medicao', label: 'Medição' },
-  ],
-  'Cava em Rocha': [
-    { field: 'fotos_antes', label: 'Antes' },
-    { field: 'fotos_durante', label: 'Durante' },
-    { field: 'fotos_depois', label: 'Depois' },
-  ],
-  'Checklist de Fiscalização': [
-    { field: 'fotos_checklist_croqui', label: 'Croqui' },
-    { field: 'fotos_checklist_panoramica_inicial', label: 'Panorâmica Inicial' },
-    { field: 'fotos_checklist_chede', label: 'CHEDE' },
-    { field: 'fotos_checklist_postes', label: 'Postes' },
-    { field: 'fotos_checklist_seccionamentos', label: 'Seccionamentos' },
-    { field: 'fotos_checklist_aterramento_cerca', label: 'Aterramento da Cerca' },
-    { field: 'fotos_checklist_padrao_geral', label: 'Padrão Geral' },
-    { field: 'fotos_checklist_padrao_interno', label: 'Padrão Interno' },
-    { field: 'fotos_checklist_frying', label: 'Frying' },
-    { field: 'fotos_checklist_abertura_fechamento_pulo', label: 'Abertura/Fechamento Pulo' },
-    { field: 'fotos_checklist_panoramica_final', label: 'Panorâmica Final' },
-  ],
+  'Book de Aterramento': [], // Fotos gerenciadas via postes_data (tela postes-registro)
+  'Cava em Rocha': [], // Fotos gerenciadas via postes_data no formulário padrão
+  'Checklist de Fiscalização': [], // Fotos gerenciadas via tela dedicada (/checklist-fiscalizacao)
   'Ditais': [
     { field: 'fotos_ditais_abertura', label: 'Desligar' },
     { field: 'fotos_ditais_impedir', label: 'Impedir Acionamento' },
@@ -339,7 +360,6 @@ export const SERVICO_PHOTO_MAP: Record<TipoServico, Array<{ field: keyof Servico
     { field: 'fotos_ditais_sinalizar', label: 'Sinalizar Corretamente' },
   ],
   'Documentação': [
-    { field: 'doc_apr', label: 'APR' },
     { field: 'doc_cadastro_medidor', label: 'Cadastro Medidor' },
     { field: 'doc_laudo_transformador', label: 'Laudo Transformador' },
     { field: 'doc_laudo_regulador', label: 'Laudo Regulador' },
@@ -355,11 +375,7 @@ export const SERVICO_PHOTO_MAP: Record<TipoServico, Array<{ field: keyof Servico
     { field: 'fotos_durante', label: 'Durante' },
     { field: 'fotos_depois', label: 'Depois' },
   ],
-  'Fundação Especial': [
-    { field: 'fotos_antes', label: 'Antes' },
-    { field: 'fotos_durante', label: 'Durante' },
-    { field: 'fotos_depois', label: 'Depois' },
-  ],
+  'Fundação Especial': [], // Fotos gerenciadas via postes_data (tela postes-registro)
   'Instalação do Medidor': [
     { field: 'fotos_medidor_padrao', label: 'Padrão c/ Medidor Instalado' },
     { field: 'fotos_medidor_leitura', label: 'Leitura c/ Medidor Instalado' },
@@ -367,33 +383,16 @@ export const SERVICO_PHOTO_MAP: Record<TipoServico, Array<{ field: keyof Servico
     { field: 'fotos_medidor_selo_caixa', label: 'Selo da Caixa' },
     { field: 'fotos_medidor_identificador_fase', label: 'Identificador de Fase' },
   ],
-  'Linha Viva': [
-    { field: 'fotos_antes', label: 'Antes' },
-    { field: 'fotos_durante', label: 'Durante' },
-    { field: 'fotos_depois', label: 'Depois' },
-  ],
+  'Linha Viva': [], // Fotos gerenciadas via postes_data (tela postes-registro)
   'Poda': [
     { field: 'fotos_antes', label: 'Antes' },
     { field: 'fotos_durante', label: 'Durante' },
     { field: 'fotos_depois', label: 'Depois' },
   ],
-  'Transformador': [
-    // Instalado
-    { field: 'fotos_transformador_componente_instalado', label: 'Componente Instalado' },
-    { field: 'fotos_transformador_tombamento_instalado', label: 'Tombamento Instalado' },
-    { field: 'fotos_transformador_tape', label: 'Tape' },
-    { field: 'fotos_transformador_placa_instalado', label: 'Placa Instalado' },
-    { field: 'fotos_transformador_instalado', label: 'Transformador Instalado' },
-    { field: 'fotos_transformador_conexoes_primarias_instalado', label: 'Conexões Primárias Instalado' },
-    { field: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Conexões Secundárias Instalado' },
-    // Retirado
-    { field: 'fotos_transformador_antes_retirar', label: 'Antes de Retirar' },
-    { field: 'fotos_transformador_laudo_retirado', label: 'Laudo Retirado' },
-    { field: 'fotos_transformador_tombamento_retirado', label: 'Tombamento Retirado' },
-    { field: 'fotos_transformador_placa_retirado', label: 'Placa Retirado' },
-    { field: 'fotos_transformador_conexoes_primarias_retirado', label: 'Conexões Primárias Retirado' },
-    { field: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Conexões Secundárias Retirado' },
+  'Registro de Impedimento': [
+    { field: 'fotos_impedimento', label: 'Fotos do Impedimento' },
   ],
+  'Transformador': [], // Fotos gerenciadas via tela dedicada (/transformador)
   'Vazamento e Limpeza de Transformador': [
     { field: 'fotos_vazamento_evidencia', label: 'Evidência do Vazamento' },
     { field: 'fotos_vazamento_equipamentos_limpeza', label: 'Equipamentos de Limpeza' },
@@ -403,4 +402,9 @@ export const SERVICO_PHOTO_MAP: Record<TipoServico, Array<{ field: keyof Servico
     { field: 'fotos_vazamento_placa_instalado', label: 'Placa Instalado' },
     { field: 'fotos_vazamento_instalacao', label: 'Instalação do Transformador' },
   ],
+  'Teste': [
+    {field: 'fotos_antes', label: 'Fotos Antes'},
+    {field: 'fotos_durante', label: 'Fotos Durante'},
+    {field: 'fotos_depois', label: 'Fotos Depois'},
+  ]
 };
