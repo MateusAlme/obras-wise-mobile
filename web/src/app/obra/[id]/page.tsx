@@ -544,6 +544,7 @@ export default function ObraDetailPage() {
   const [exportingXlsx, setExportingXlsx] = useState(false)
   const [finalizandoObra, setFinalizandoObra] = useState(false)
   const [selectedAtipicidades, setSelectedAtipicidades] = useState<number[]>([])
+  const [servicos, setServicos] = useState<any[]>([])
   const { isAdmin } = useAuth()
   const [descricaoAtipicidade, setDescricaoAtipicidade] = useState('')
   const [showEditModal, setShowEditModal] = useState(false)
@@ -657,6 +658,31 @@ export default function ObraDetailPage() {
     }).filter(Boolean)
   }
 
+  function convertPostePhotoRefs(photoField: any): FotoInfo[] {
+    if (!Array.isArray(photoField) || photoField.length === 0) return []
+
+    return photoField.map((item: any) => {
+      const foto = toFotoInfoIfUrl(item)
+      if (foto) return foto
+
+      const photoId = typeof item === 'string'
+        ? item
+        : (typeof item?.id === 'string' ? item.id : null)
+      if (!photoId || photoId.startsWith('temp_') || photoId.startsWith('local_') || photoId.startsWith('file:///')) {
+        return null
+      }
+
+      return {
+        url: supabase.storage.from('obra-photos').getPublicUrl(photoId).data.publicUrl,
+        latitude: item?.latitude ?? null,
+        longitude: item?.longitude ?? null,
+        utmX: item?.utmX ?? item?.utm_x ?? null,
+        utmY: item?.utmY ?? item?.utm_y ?? null,
+        utmZone: item?.utmZone ?? item?.utm_zone ?? null,
+      } as FotoInfo
+    }).filter(Boolean) as FotoInfo[]
+  }
+
   // Função para converter estruturas JSONB do checklist
   function convertChecklistJSONBPhotos(jsonbData: any): any {
     if (!jsonbData || !Array.isArray(jsonbData)) return jsonbData
@@ -689,11 +715,91 @@ export default function ObraDetailPage() {
     if (!jsonbData || !Array.isArray(jsonbData)) return jsonbData
     return jsonbData.map((poste: any) => ({
       ...poste,
-      fotos_antes: convertChecklistPhotoRefs(poste.fotos_antes || []),
-      fotos_durante: convertChecklistPhotoRefs(poste.fotos_durante || []),
-      fotos_depois: convertChecklistPhotoRefs(poste.fotos_depois || []),
-      fotos_medicao: convertChecklistPhotoRefs(poste.fotos_medicao || []),
+      fotos_antes: convertPostePhotoRefs(poste.fotos_antes || []),
+      fotos_durante: convertPostePhotoRefs(poste.fotos_durante || []),
+      fotos_depois: convertPostePhotoRefs(poste.fotos_depois || []),
+      fotos_medicao: convertPostePhotoRefs(poste.fotos_medicao || []),
     }))
+  }
+
+  function mergePhotoRefsForDisplay(existingField: any, incomingField: any): any[] {
+    const existing = Array.isArray(existingField) ? existingField : []
+    const incoming = Array.isArray(incomingField) ? incomingField : []
+    const getKey = (photo: any) => typeof photo === 'string'
+      ? photo
+      : String(photo?.url || photo?.id || JSON.stringify(photo))
+    const merged = [...existing]
+    const seen = new Set(merged.map(getKey))
+    for (const photo of incoming) {
+      const key = getKey(photo)
+      if (!seen.has(key)) {
+        seen.add(key)
+        merged.push(photo)
+      }
+    }
+    return merged
+  }
+
+  function mergePostesDataForDisplay(existingData: any, incomingData: any): any[] | undefined {
+    const existing = Array.isArray(existingData) ? existingData : []
+    const incoming = Array.isArray(incomingData) ? incomingData : []
+    if (existing.length === 0) return incoming.length > 0 ? incoming : undefined
+    if (incoming.length === 0) return existing
+
+    const photoFields = ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_medicao']
+    const merged = existing.map((poste) => ({ ...poste }))
+    const keyOf = (poste: any, index: number) => String(poste?.numero ?? poste?.id ?? index)
+    const byKey = new Map(merged.map((poste, index) => [keyOf(poste, index), index]))
+
+    incoming.forEach((poste, index) => {
+      const key = keyOf(poste, index)
+      const currentIndex = byKey.get(key)
+      if (currentIndex === undefined) {
+        byKey.set(key, merged.length)
+        merged.push({ ...poste })
+        return
+      }
+
+      const current = merged[currentIndex]
+      const next = { ...current, ...poste }
+      for (const field of photoFields) {
+        next[field] = mergePhotoRefsForDisplay(current?.[field], poste?.[field])
+      }
+      merged[currentIndex] = next
+    })
+
+    return merged
+  }
+
+  function countRawPostesPhotos(obraData: any): number {
+    if (!Array.isArray(obraData?.postes_data)) return 0
+    return obraData.postes_data.reduce((acc: number, poste: any) => (
+      acc
+      + (poste?.fotos_antes?.length || 0)
+      + (poste?.fotos_durante?.length || 0)
+      + (poste?.fotos_depois?.length || 0)
+      + (poste?.fotos_medicao?.length || 0)
+    ), 0)
+  }
+
+  function mergeDuplicateObrasForDisplay(rows: any[], preferredId: string): any {
+    if (rows.length <= 1) return rows[0]
+    const sorted = [...rows].sort((a, b) => {
+      const byPhotos = countRawPostesPhotos(b) - countRawPostesPhotos(a)
+      if (byPhotos !== 0) return byPhotos
+      if (a.id === preferredId) return -1
+      if (b.id === preferredId) return 1
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+
+    const merged = { ...sorted[0] }
+    for (const row of sorted.slice(1)) {
+      merged.postes_data = mergePostesDataForDisplay(merged.postes_data, row.postes_data)
+      for (const field of ['fotos_antes', 'fotos_durante', 'fotos_depois']) {
+        merged[field] = mergePhotoRefsForDisplay(merged[field], row[field])
+      }
+    }
+    return merged
   }
 
   async function loadObra(id: string) {
@@ -706,72 +812,94 @@ export default function ObraDetailPage() {
 
       if (error) throw error
 
-      const fotosChecklistPostes = convertPhotoIdsToFotoInfo(data.fotos_checklist_postes)
+      const { data: sameBooks } = await supabase
+        .from('obras')
+        .select('*')
+        .eq('obra', data.obra)
+        .eq('equipe', data.equipe)
+        .eq('tipo_servico', data.tipo_servico)
+        .limit(10)
+
+      const dataForDisplay = Array.isArray(sameBooks) && sameBooks.length > 1
+        ? mergeDuplicateObrasForDisplay(sameBooks, id)
+        : data
+
+      const fotosChecklistPostes = convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_postes)
 
       // ✅ CORREÇÃO: Converter IDs de fotos em objetos FotoInfo
       const obraComFotos = {
-        ...data,
-        fotos_antes: convertPhotoIdsToFotoInfo(data.fotos_antes),
-        fotos_durante: convertPhotoIdsToFotoInfo(data.fotos_durante),
-        fotos_depois: convertPhotoIdsToFotoInfo(data.fotos_depois),
-        fotos_abertura: convertPhotoIdsToFotoInfo(data.fotos_abertura),
-        fotos_fechamento: convertPhotoIdsToFotoInfo(data.fotos_fechamento),
-        fotos_ditais_abertura: convertPhotoIdsToFotoInfo(data.fotos_ditais_abertura),
-        fotos_ditais_impedir: convertPhotoIdsToFotoInfo(data.fotos_ditais_impedir),
-        fotos_ditais_testar: convertPhotoIdsToFotoInfo(data.fotos_ditais_testar),
-        fotos_ditais_aterrar: convertPhotoIdsToFotoInfo(data.fotos_ditais_aterrar),
-        fotos_ditais_sinalizar: convertPhotoIdsToFotoInfo(data.fotos_ditais_sinalizar),
-        fotos_aterramento_vala_aberta: convertPhotoIdsToFotoInfo(data.fotos_aterramento_vala_aberta),
-        fotos_aterramento_hastes: convertPhotoIdsToFotoInfo(data.fotos_aterramento_hastes),
-        fotos_aterramento_vala_fechada: convertPhotoIdsToFotoInfo(data.fotos_aterramento_vala_fechada),
-        fotos_aterramento_medicao: convertPhotoIdsToFotoInfo(data.fotos_aterramento_medicao),
-        fotos_transformador_laudo: convertPhotoIdsToFotoInfo(data.fotos_transformador_laudo),
-        fotos_transformador_componente_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_componente_instalado),
-        fotos_transformador_tombamento_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_tombamento_instalado),
-        fotos_transformador_tape: convertPhotoIdsToFotoInfo(data.fotos_transformador_tape),
-        fotos_transformador_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_placa_instalado),
-        fotos_transformador_instalado: convertPhotoIdsToFotoInfo(data.fotos_transformador_instalado),
-        fotos_transformador_antes_retirar: convertPhotoIdsToFotoInfo(data.fotos_transformador_antes_retirar),
-        fotos_transformador_tombamento_retirado: convertPhotoIdsToFotoInfo(data.fotos_transformador_tombamento_retirado),
-        fotos_transformador_placa_retirado: convertPhotoIdsToFotoInfo(data.fotos_transformador_placa_retirado),
-        fotos_medidor_padrao: convertPhotoIdsToFotoInfo(data.fotos_medidor_padrao),
-        fotos_medidor_leitura: convertPhotoIdsToFotoInfo(data.fotos_medidor_leitura),
-        fotos_medidor_selo_born: convertPhotoIdsToFotoInfo(data.fotos_medidor_selo_born),
-        fotos_medidor_selo_caixa: convertPhotoIdsToFotoInfo(data.fotos_medidor_selo_caixa),
-        fotos_medidor_identificador_fase: convertPhotoIdsToFotoInfo(data.fotos_medidor_identificador_fase),
-        fotos_checklist_croqui: convertPhotoIdsToFotoInfo(data.fotos_checklist_croqui),
-        fotos_checklist_panoramica_inicial: convertPhotoIdsToFotoInfo(data.fotos_checklist_panoramica_inicial),
-        fotos_checklist_chede: convertPhotoIdsToFotoInfo(data.fotos_checklist_chede),
-        fotos_checklist_aterramento_cerca: convertPhotoIdsToFotoInfo(data.fotos_checklist_aterramento_cerca),
-        fotos_checklist_padrao_geral: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_geral),
-        fotos_checklist_padrao_interno: convertPhotoIdsToFotoInfo(data.fotos_checklist_padrao_interno),
-        fotos_checklist_frying: convertPhotoIdsToFotoInfo(data.fotos_checklist_frying),
-        fotos_checklist_abertura_fechamento_pulo: convertPhotoIdsToFotoInfo(data.fotos_checklist_abertura_fechamento_pulo),
-        fotos_checklist_hastes_aplicadas: convertPhotoIdsToFotoInfo(data.fotos_checklist_hastes_aplicadas),
-        fotos_checklist_medicao_termometro: convertPhotoIdsToFotoInfo(data.fotos_checklist_medicao_termometro),
-        fotos_checklist_panoramica_final: convertPhotoIdsToFotoInfo(data.fotos_checklist_panoramica_final),
+        ...dataForDisplay,
+        fotos_antes: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_antes),
+        fotos_durante: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_durante),
+        fotos_depois: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_depois),
+        fotos_abertura: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_abertura),
+        fotos_fechamento: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_fechamento),
+        fotos_ditais_abertura: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_ditais_abertura),
+        fotos_ditais_impedir: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_ditais_impedir),
+        fotos_ditais_testar: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_ditais_testar),
+        fotos_ditais_aterrar: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_ditais_aterrar),
+        fotos_ditais_sinalizar: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_ditais_sinalizar),
+        fotos_aterramento_vala_aberta: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_aterramento_vala_aberta),
+        fotos_aterramento_hastes: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_aterramento_hastes),
+        fotos_aterramento_vala_fechada: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_aterramento_vala_fechada),
+        fotos_aterramento_medicao: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_aterramento_medicao),
+        fotos_transformador_laudo: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_laudo),
+        fotos_transformador_componente_instalado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_componente_instalado),
+        fotos_transformador_tombamento_instalado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_tombamento_instalado),
+        fotos_transformador_tape: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_tape),
+        fotos_transformador_placa_instalado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_placa_instalado),
+        fotos_transformador_instalado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_instalado),
+        fotos_transformador_antes_retirar: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_antes_retirar),
+        fotos_transformador_tombamento_retirado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_tombamento_retirado),
+        fotos_transformador_placa_retirado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_transformador_placa_retirado),
+        fotos_medidor_padrao: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_medidor_padrao),
+        fotos_medidor_leitura: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_medidor_leitura),
+        fotos_medidor_selo_born: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_medidor_selo_born),
+        fotos_medidor_selo_caixa: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_medidor_selo_caixa),
+        fotos_medidor_identificador_fase: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_medidor_identificador_fase),
+        fotos_checklist_croqui: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_croqui),
+        fotos_checklist_panoramica_inicial: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_panoramica_inicial),
+        fotos_checklist_chede: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_chede),
+        fotos_checklist_aterramento_cerca: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_aterramento_cerca),
+        fotos_checklist_padrao_geral: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_padrao_geral),
+        fotos_checklist_padrao_interno: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_padrao_interno),
+        fotos_checklist_frying: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_frying),
+        fotos_checklist_abertura_fechamento_pulo: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_abertura_fechamento_pulo),
+        fotos_checklist_hastes_aplicadas: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_hastes_aplicadas),
+        fotos_checklist_medicao_termometro: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_medicao_termometro),
+        fotos_checklist_panoramica_final: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_panoramica_final),
         fotos_checklist_postes: fotosChecklistPostes,
-        fotos_checklist_seccionamentos: convertPhotoIdsToFotoInfo(data.fotos_checklist_seccionamentos),
-        fotos_altimetria_lado_fonte: convertPhotoIdsToFotoInfo(data.fotos_altimetria_lado_fonte),
-        fotos_altimetria_medicao_fonte: convertPhotoIdsToFotoInfo(data.fotos_altimetria_medicao_fonte),
-        fotos_altimetria_lado_carga: convertPhotoIdsToFotoInfo(data.fotos_altimetria_lado_carga),
-        fotos_altimetria_medicao_carga: convertPhotoIdsToFotoInfo(data.fotos_altimetria_medicao_carga),
-        fotos_vazamento_evidencia: convertPhotoIdsToFotoInfo(data.fotos_vazamento_evidencia),
-        fotos_vazamento_equipamentos_limpeza: convertPhotoIdsToFotoInfo(data.fotos_vazamento_equipamentos_limpeza),
-        fotos_vazamento_tombamento_retirado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_tombamento_retirado),
-        fotos_vazamento_placa_retirado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_retirado),
-        fotos_vazamento_tombamento_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_tombamento_instalado),
-        fotos_vazamento_placa_instalado: convertPhotoIdsToFotoInfo(data.fotos_vazamento_placa_instalado),
-        fotos_vazamento_instalacao: convertPhotoIdsToFotoInfo(data.fotos_vazamento_instalacao),
+        fotos_checklist_seccionamentos: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_checklist_seccionamentos),
+        fotos_altimetria_lado_fonte: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_altimetria_lado_fonte),
+        fotos_altimetria_medicao_fonte: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_altimetria_medicao_fonte),
+        fotos_altimetria_lado_carga: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_altimetria_lado_carga),
+        fotos_altimetria_medicao_carga: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_altimetria_medicao_carga),
+        fotos_vazamento_evidencia: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_evidencia),
+        fotos_vazamento_equipamentos_limpeza: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_equipamentos_limpeza),
+        fotos_vazamento_tombamento_retirado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_tombamento_retirado),
+        fotos_vazamento_placa_retirado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_placa_retirado),
+        fotos_vazamento_tombamento_instalado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_tombamento_instalado),
+        fotos_vazamento_placa_instalado: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_placa_instalado),
+        fotos_vazamento_instalacao: convertPhotoIdsToFotoInfo(dataForDisplay.fotos_vazamento_instalacao),
         // Converter estruturas JSONB do checklist (formato novo)
-        postes_data: convertPostesDataJSONBPhotos(data.postes_data),
-        checklist_postes_data: convertChecklistPostesJSONBPhotos(data.checklist_postes_data, fotosChecklistPostes),
-        checklist_seccionamentos_data: convertChecklistJSONBPhotos(data.checklist_seccionamentos_data),
-        checklist_aterramentos_cerca_data: convertChecklistJSONBPhotos(data.checklist_aterramentos_cerca_data),
-        checklist_hastes_termometros_data: convertChecklistJSONBPhotos(data.checklist_hastes_termometros_data),
+        postes_data: convertPostesDataJSONBPhotos(dataForDisplay.postes_data),
+        checklist_postes_data: convertChecklistPostesJSONBPhotos(dataForDisplay.checklist_postes_data, fotosChecklistPostes),
+        checklist_seccionamentos_data: convertChecklistJSONBPhotos(dataForDisplay.checklist_seccionamentos_data),
+        checklist_aterramentos_cerca_data: convertChecklistJSONBPhotos(dataForDisplay.checklist_aterramentos_cerca_data),
+        checklist_hastes_termometros_data: convertChecklistJSONBPhotos(dataForDisplay.checklist_hastes_termometros_data),
       }
 
       setObra(obraComFotos)
+
+      // Carregar serviços vinculados (nova arquitetura 1:N)
+      const { data: servicosData } = await supabase
+        .from('servicos')
+        .select('id, tipo_servico, status, created_at, responsavel')
+        .eq('obra_id', id)
+        .order('created_at', { ascending: true })
+      if (servicosData && servicosData.length > 0) {
+        setServicos(servicosData)
+      }
 
       // Carregar atipicidades existentes
       if (data.atipicidades && data.atipicidades.length > 0) {
@@ -2203,6 +2331,47 @@ export default function ObraDetailPage() {
             )}
 
           </div>
+
+          {/* Serviços Vinculados (nova arquitetura 1:N) */}
+          {servicos.length > 0 && (
+            <div className="card-padded mb-8">
+              <h2 className="text-xl font-bold text-slate-900 mb-4">
+                Serviços ({servicos.length})
+              </h2>
+              <div className="space-y-3">
+                {servicos.map((s) => {
+                  const isConcluido = s.status === 'completo'
+                  const isEmProgresso = s.status === 'em_progresso'
+                  return (
+                    <div key={s.id} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {isConcluido ? (
+                          <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full flex-shrink-0">Concluído</span>
+                        ) : isEmProgresso ? (
+                          <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded-full flex-shrink-0">Em Progresso</span>
+                        ) : (
+                          <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full flex-shrink-0">Rascunho</span>
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{s.tipo_servico}</p>
+                          <p className="text-xs text-gray-400">
+                            {format(new Date(s.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {s.responsavel ? ` · ${s.responsavel}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={`/servico/${s.id}`}
+                        className="ml-4 px-4 py-2 text-sm font-semibold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors flex-shrink-0"
+                      >
+                        Ver Book →
+                      </a>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Fotos */}
           <div className="card-padded">

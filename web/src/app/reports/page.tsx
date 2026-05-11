@@ -63,6 +63,13 @@ const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; li
   { key: 'fotos_transformador_antes_retirar', label: 'Transformador - Antes de Retirar', color: 'red', lightColor: 'red' },
   { key: 'fotos_transformador_tombamento_retirado', label: 'Transformador - Tombamento Retirado', color: 'red', lightColor: 'red' },
   { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa Retirada', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_laudo_retirado', label: 'Transformador - Laudo Retirado', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_conexoes_primarias_instalado', label: 'Transformador - Conexões Primárias (Instalado)', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Transformador - Conexões Secundárias (Instalado)', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_conexoes_primarias_retirado', label: 'Transformador - Conexões Primárias (Retirado)', color: 'red', lightColor: 'red' },
+  { key: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Transformador - Conexões Secundárias (Retirado)', color: 'red', lightColor: 'red' },
+  { key: 'fotos_apr', label: 'Fotos APR', color: 'violet', lightColor: 'violet' },
+  { key: 'fotos_impedimento', label: 'Fotos do Impedimento', color: 'orange', lightColor: 'orange' },
 ]
 
 const TIPOS_SERVICO_BASE = [
@@ -100,8 +107,10 @@ function getSectionsForBook(tipoServico: string) {
       'fotos_transformador_laudo', 'fotos_transformador_componente_instalado',
       'fotos_transformador_tombamento_instalado', 'fotos_transformador_tape',
       'fotos_transformador_placa_instalado', 'fotos_transformador_instalado',
-      'fotos_transformador_antes_retirar', 'fotos_transformador_tombamento_retirado',
-      'fotos_transformador_placa_retirado',
+      'fotos_transformador_conexoes_primarias_instalado', 'fotos_transformador_conexoes_secundarias_instalado',
+      'fotos_transformador_antes_retirar', 'fotos_transformador_laudo_retirado',
+      'fotos_transformador_tombamento_retirado', 'fotos_transformador_placa_retirado',
+      'fotos_transformador_conexoes_primarias_retirado', 'fotos_transformador_conexoes_secundarias_retirado',
     ],
     'Instalação do Medidor': [
       'fotos_medidor_padrao', 'fotos_medidor_leitura', 'fotos_medidor_selo_born',
@@ -125,6 +134,8 @@ function getSectionsForBook(tipoServico: string) {
       'fotos_checklist_abertura_fechamento_pulo', 'fotos_checklist_hastes_aplicadas',
       'fotos_checklist_panoramica_final',
     ],
+    'APR': ['fotos_apr'],
+    'Registro de Impedimento': ['fotos_impedimento'],
   }
 
   const keys = keyMap[tipoServico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois']
@@ -191,6 +202,135 @@ export default function ReportsPage() {
 
   const isServiceRow = (obra: ReportBook) => obra.source_table === 'servicos'
   const getSelectableRows = (rows: ReportBook[]) => rows
+
+  function getReportBookKey(obra: Partial<ReportBook>) {
+    return [
+      String(obra.obra || '').trim(),
+      String(obra.equipe || '').trim(),
+      String(obra.tipo_servico || '').trim(),
+    ].join('|')
+  }
+
+  function hasRenderablePhotoRef(photoRef: any): boolean {
+    const value = typeof photoRef === 'string'
+      ? photoRef
+      : (photoRef?.url || photoRef?.id || '')
+    if (!value || typeof value !== 'string') return false
+    if (value.startsWith('temp_') || value.startsWith('local_') || value.startsWith('file:///')) return false
+    return true
+  }
+
+  function countPhotoRefs(photoField: any): number {
+    return Array.isArray(photoField) ? photoField.filter(hasRenderablePhotoRef).length : 0
+  }
+
+  function mergePhotoRefs(existingField: any, incomingField: any): any[] {
+    const existing = Array.isArray(existingField) ? existingField : []
+    const incoming = Array.isArray(incomingField) ? incomingField : []
+    if (existing.length === 0) return incoming
+    if (incoming.length === 0) return existing
+
+    const getKey = (photo: any) => {
+      if (typeof photo === 'string') return photo
+      return String(photo?.url || photo?.id || JSON.stringify(photo))
+    }
+    const merged = [...existing]
+    const seen = new Set(merged.map(getKey))
+    for (const photo of incoming) {
+      const key = getKey(photo)
+      if (!seen.has(key)) {
+        seen.add(key)
+        merged.push(photo)
+      }
+    }
+    return merged
+  }
+
+  function mergePostesDataForReport(existingData: any, incomingData: any): any[] | undefined {
+    const existing = Array.isArray(existingData) ? existingData : []
+    const incoming = Array.isArray(incomingData) ? incomingData : []
+    if (existing.length === 0) return incoming.length > 0 ? incoming : undefined
+    if (incoming.length === 0) return existing
+
+    const photoFields = ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_medicao']
+    const merged = existing.map((poste) => ({ ...poste }))
+    const keyOf = (poste: any, index: number) => String(poste?.numero ?? poste?.id ?? index)
+    const byKey = new Map(merged.map((poste, index) => [keyOf(poste, index), index]))
+
+    incoming.forEach((poste, index) => {
+      const key = keyOf(poste, index)
+      const currentIndex = byKey.get(key)
+      if (currentIndex === undefined) {
+        byKey.set(key, merged.length)
+        merged.push({ ...poste })
+        return
+      }
+
+      const current = merged[currentIndex]
+      const next = { ...current, ...poste }
+      for (const field of photoFields) {
+        next[field] = mergePhotoRefs(current?.[field], poste?.[field])
+      }
+      merged[currentIndex] = next
+    })
+
+    return merged
+  }
+
+  function getRawPhotoCount(obra: Partial<Obra>) {
+    let total = REPORT_PHOTO_SECTIONS.reduce((acc, section) => acc + countPhotoRefs((obra as any)[section.key]), 0)
+    if (Array.isArray((obra as any).postes_data)) {
+      total += (obra as any).postes_data.reduce((acc: number, poste: any) => (
+        acc
+        + countPhotoRefs(poste?.fotos_antes)
+        + countPhotoRefs(poste?.fotos_durante)
+        + countPhotoRefs(poste?.fotos_depois)
+        + countPhotoRefs(poste?.fotos_medicao)
+      ), 0)
+    }
+    return total
+  }
+
+  function mergeDuplicateReportBooks(rows: ReportBook[]): ReportBook[] {
+    const mergedByKey = new Map<string, ReportBook>()
+    const passthrough: ReportBook[] = []
+
+    for (const row of rows) {
+      if (isServiceRow(row)) {
+        passthrough.push(row)
+        continue
+      }
+
+      const key = getReportBookKey(row)
+      if (!key.replace(/\|/g, '').trim()) {
+        passthrough.push(row)
+        continue
+      }
+
+      const current = mergedByKey.get(key)
+      if (!current) {
+        mergedByKey.set(key, row)
+        continue
+      }
+
+      const currentCount = getRawPhotoCount(current)
+      const rowCount = getRawPhotoCount(row)
+      const base = rowCount > currentCount ? row : current
+      const other = rowCount > currentCount ? current : row
+      const next: ReportBook = { ...base }
+
+      for (const section of REPORT_PHOTO_SECTIONS) {
+        ;(next as any)[section.key] = mergePhotoRefs((base as any)[section.key], (other as any)[section.key])
+      }
+      ;(next as any).postes_data = mergePostesDataForReport((base as any).postes_data, (other as any).postes_data)
+      next.created_at = new Date(base.created_at) >= new Date(other.created_at) ? base.created_at : other.created_at
+      mergedByKey.set(key, next)
+    }
+
+    return [...mergedByKey.values(), ...passthrough].sort((a, b) => (
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ))
+  }
 
   useEffect(() => {
     loadObras()
@@ -287,7 +427,7 @@ export default function ReportsPage() {
         } as ReportBook
       })
 
-      setObras([...obrasBase, ...servicosNormalizados])
+      setObras(mergeDuplicateReportBooks([...obrasBase, ...servicosNormalizados]))
     } catch (error) {
       console.error('Erro ao carregar obras:', error)
     } finally {
@@ -417,72 +557,7 @@ export default function ReportsPage() {
   }
 
   function getTotalPhotosCount(obra: Obra): number {
-    let count = 0
-    // Fotos básicas
-    if (obra.fotos_antes?.length) count += obra.fotos_antes.length
-    if (obra.fotos_durante?.length) count += obra.fotos_durante.length
-    if (obra.fotos_depois?.length) count += obra.fotos_depois.length
-    if (obra.fotos_abertura?.length) count += obra.fotos_abertura.length
-    if (obra.fotos_fechamento?.length) count += obra.fotos_fechamento.length
-    // DITAIS
-    if (obra.fotos_ditais_abertura?.length) count += obra.fotos_ditais_abertura.length
-    if (obra.fotos_ditais_impedir?.length) count += obra.fotos_ditais_impedir.length
-    if (obra.fotos_ditais_testar?.length) count += obra.fotos_ditais_testar.length
-    if (obra.fotos_ditais_aterrar?.length) count += obra.fotos_ditais_aterrar.length
-    if (obra.fotos_ditais_sinalizar?.length) count += obra.fotos_ditais_sinalizar.length
-    // Aterramento
-    if (obra.fotos_aterramento_vala_aberta?.length) count += obra.fotos_aterramento_vala_aberta.length
-    if (obra.fotos_aterramento_hastes?.length) count += obra.fotos_aterramento_hastes.length
-    if (obra.fotos_aterramento_vala_fechada?.length) count += obra.fotos_aterramento_vala_fechada.length
-    if (obra.fotos_aterramento_medicao?.length) count += obra.fotos_aterramento_medicao.length
-    // Checklist de Fiscalização
-    if (obra.fotos_checklist_croqui?.length) count += obra.fotos_checklist_croqui.length
-    if (obra.fotos_checklist_panoramica_inicial?.length) count += obra.fotos_checklist_panoramica_inicial.length
-    if (obra.fotos_checklist_chede?.length) count += obra.fotos_checklist_chede.length
-    if (obra.fotos_checklist_aterramento_cerca?.length) count += obra.fotos_checklist_aterramento_cerca.length
-    if (obra.fotos_checklist_padrao_geral?.length) count += obra.fotos_checklist_padrao_geral.length
-    if (obra.fotos_checklist_padrao_interno?.length) count += obra.fotos_checklist_padrao_interno.length
-    if (obra.fotos_checklist_frying?.length) count += obra.fotos_checklist_frying.length
-    if (obra.fotos_checklist_abertura_fechamento_pulo?.length) count += obra.fotos_checklist_abertura_fechamento_pulo.length
-    if (obra.fotos_checklist_panoramica_final?.length) count += obra.fotos_checklist_panoramica_final.length
-    if (obra.fotos_checklist_postes?.length) count += obra.fotos_checklist_postes.length
-    if (obra.fotos_checklist_seccionamentos?.length) count += obra.fotos_checklist_seccionamentos.length
-    // Altimetria
-    if (obra.fotos_altimetria_lado_fonte?.length) count += obra.fotos_altimetria_lado_fonte.length
-    if (obra.fotos_altimetria_medicao_fonte?.length) count += obra.fotos_altimetria_medicao_fonte.length
-    if (obra.fotos_altimetria_lado_carga?.length) count += obra.fotos_altimetria_lado_carga.length
-    if (obra.fotos_altimetria_medicao_carga?.length) count += obra.fotos_altimetria_medicao_carga.length
-    // Vazamento
-    if (obra.fotos_vazamento_evidencia?.length) count += obra.fotos_vazamento_evidencia.length
-    if (obra.fotos_vazamento_equipamentos_limpeza?.length) count += obra.fotos_vazamento_equipamentos_limpeza.length
-    if (obra.fotos_vazamento_tombamento_retirado?.length) count += obra.fotos_vazamento_tombamento_retirado.length
-    if (obra.fotos_vazamento_placa_retirado?.length) count += obra.fotos_vazamento_placa_retirado.length
-    if (obra.fotos_vazamento_tombamento_instalado?.length) count += obra.fotos_vazamento_tombamento_instalado.length
-    if (obra.fotos_vazamento_placa_instalado?.length) count += obra.fotos_vazamento_placa_instalado.length
-    if (obra.fotos_vazamento_instalacao?.length) count += obra.fotos_vazamento_instalacao.length
-    // Medidor
-    if (obra.fotos_medidor_padrao?.length) count += obra.fotos_medidor_padrao.length
-    if (obra.fotos_medidor_leitura?.length) count += obra.fotos_medidor_leitura.length
-    if (obra.fotos_medidor_selo_born?.length) count += obra.fotos_medidor_selo_born.length
-    if (obra.fotos_medidor_selo_caixa?.length) count += obra.fotos_medidor_selo_caixa.length
-    if (obra.fotos_medidor_identificador_fase?.length) count += obra.fotos_medidor_identificador_fase.length
-    // Transformador
-    if (obra.fotos_transformador_laudo?.length) count += obra.fotos_transformador_laudo.length
-    if (obra.fotos_transformador_componente_instalado?.length) count += obra.fotos_transformador_componente_instalado.length
-    if (obra.fotos_transformador_tombamento_instalado?.length) count += obra.fotos_transformador_tombamento_instalado.length
-    if (obra.fotos_transformador_tape?.length) count += obra.fotos_transformador_tape.length
-    if (obra.fotos_transformador_placa_instalado?.length) count += obra.fotos_transformador_placa_instalado.length
-    if (obra.fotos_transformador_instalado?.length) count += obra.fotos_transformador_instalado.length
-    if (obra.fotos_transformador_antes_retirar?.length) count += obra.fotos_transformador_antes_retirar.length
-    if (obra.fotos_transformador_tombamento_retirado?.length) count += obra.fotos_transformador_tombamento_retirado.length
-    if (obra.fotos_transformador_placa_retirado?.length) count += obra.fotos_transformador_placa_retirado.length
-    // Linha Viva / Cava em Rocha - postes_data
-    if (Array.isArray(obra.postes_data)) {
-      obra.postes_data.forEach((p: any) => {
-        count += (p.fotos_antes?.length || 0) + (p.fotos_durante?.length || 0) + (p.fotos_depois?.length || 0) + (p.fotos_medicao?.length || 0)
-      })
-    }
-    return count
+    return getRawPhotoCount(obra)
   }
 
   // Função para converter IDs de fotos em objetos FotoInfo com URLs
@@ -2012,7 +2087,7 @@ export default function ReportsPage() {
                   const postesLVData: any[] = (selectedObraForBook as any).postes_data
                   const hasPostesLV = Array.isArray(postesLVData) && postesLVData.length > 0
                   const totalFotosPostesLV = hasPostesLV
-                    ? postesLVData.reduce((acc: number, p: any) => acc + (p.fotos_antes?.length || 0) + (p.fotos_durante?.length || 0) + (p.fotos_depois?.length || 0) + (p.fotos_medicao?.length || 0), 0)
+                    ? postesLVData.reduce((acc: number, p: any) => acc + countPhotoRefs(p.fotos_antes) + countPhotoRefs(p.fotos_durante) + countPhotoRefs(p.fotos_depois) + countPhotoRefs(p.fotos_medicao), 0)
                     : 0
                   const withPhotos = hasPostesLV
                     ? (totalFotosPostesLV > 0 ? 1 : 0)
@@ -2148,7 +2223,7 @@ export default function ReportsPage() {
                             { key: 'fotos_durante', label: 'Fotos Durante', color: 'orange' },
                             { key: 'fotos_depois', label: 'Fotos Depois', color: 'green' },
                           ]
-                      const totalFotosPostes = postesDataRender.reduce((acc: number, p: any) => acc + subKeysPostes.reduce((a, s) => a + (p[s.key]?.length || 0), 0), 0)
+                      const totalFotosPostes = postesDataRender.reduce((acc: number, p: any) => acc + subKeysPostes.reduce((a, s) => a + countPhotoRefs(p[s.key]), 0), 0)
                       return (
                         <div key="postes_data_block" className="rounded-2xl border border-green-200 bg-green-50 overflow-hidden shadow-sm">
                           <div className="flex items-center gap-3 px-4 py-3">
@@ -2162,14 +2237,14 @@ export default function ReportsPage() {
                           <div className="px-4 pb-4 space-y-2">
                             {postesDataRender.map((poste: any, pIdx: number) => {
                               const labelP = `P${poste.numero || pIdx + 1}`
-                              const hasAnyP = subKeysPostes.some(s => (poste[s.key] || []).length > 0)
+                              const hasAnyP = subKeysPostes.some(s => countPhotoRefs(poste[s.key]) > 0)
                               if (!hasAnyP) return null
                               return (
                                 <div key={pIdx} className="bg-white rounded-xl border border-green-100 overflow-hidden">
                                   <div className="flex items-center gap-3 px-3 py-2 bg-green-100/60 border-b border-green-100">
                                     <span className="font-bold text-sm text-green-900">{labelP}</span>
                                     <span className="text-xs text-green-400 ml-auto">
-                                      {subKeysPostes.reduce((a, s) => a + (poste[s.key]?.length || 0), 0)} foto{subKeysPostes.reduce((a, s) => a + (poste[s.key]?.length || 0), 0) !== 1 ? 's' : ''}
+                                      {subKeysPostes.reduce((a, s) => a + countPhotoRefs(poste[s.key]), 0)} foto{subKeysPostes.reduce((a, s) => a + countPhotoRefs(poste[s.key]), 0) !== 1 ? 's' : ''}
                                     </span>
                                   </div>
                                   {subKeysPostes.map(ss => {

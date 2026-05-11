@@ -18,12 +18,20 @@ const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
   'Poda': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
   'Fundação Especial': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
   'Cava em Rocha': ['fotos_antes', 'fotos_durante', 'fotos_depois'],
+  'APR': ['fotos_apr'],
+  'Registro de Impedimento': ['fotos_impedimento'],
+  'Documentação': [
+    'doc_cadastro_medidor', 'doc_laudo_transformador', 'doc_laudo_regulador',
+    'doc_laudo_religador', 'doc_apr', 'doc_fvbt', 'doc_termo_desistencia_lpt',
+  ],
   'Transformador': [
     'fotos_transformador_laudo', 'fotos_transformador_componente_instalado',
     'fotos_transformador_tombamento_instalado', 'fotos_transformador_tape',
     'fotos_transformador_placa_instalado', 'fotos_transformador_instalado',
-    'fotos_transformador_antes_retirar', 'fotos_transformador_tombamento_retirado',
-    'fotos_transformador_placa_retirado',
+    'fotos_transformador_conexoes_primarias_instalado', 'fotos_transformador_conexoes_secundarias_instalado',
+    'fotos_transformador_antes_retirar', 'fotos_transformador_laudo_retirado',
+    'fotos_transformador_tombamento_retirado', 'fotos_transformador_placa_retirado',
+    'fotos_transformador_conexoes_primarias_retirado', 'fotos_transformador_conexoes_secundarias_retirado',
   ],
   'Abertura e Fechamento de Chave': ['fotos_abertura', 'fotos_fechamento'],
   'Instalação do Medidor': [
@@ -61,6 +69,8 @@ const SECTION_LABELS: Record<string, string> = {
   fotos_antes: 'Fotos Antes',
   fotos_durante: 'Fotos Durante',
   fotos_depois: 'Fotos Depois',
+  fotos_apr: 'Fotos APR',
+  fotos_impedimento: 'Fotos do Impedimento',
   fotos_abertura: 'Abertura de Chave',
   fotos_fechamento: 'Fechamento de Chave',
   fotos_ditais_abertura: 'DITAIS - Desligar/Abertura',
@@ -78,9 +88,14 @@ const SECTION_LABELS: Record<string, string> = {
   fotos_transformador_tape: 'Tape',
   fotos_transformador_placa_instalado: 'Placa Instalada',
   fotos_transformador_instalado: 'Instalado',
+  fotos_transformador_conexoes_primarias_instalado: 'Conexões Primárias (Instalado)',
+  fotos_transformador_conexoes_secundarias_instalado: 'Conexões Secundárias (Instalado)',
   fotos_transformador_antes_retirar: 'Antes de Retirar',
+  fotos_transformador_laudo_retirado: 'Laudo Retirado',
   fotos_transformador_tombamento_retirado: 'Tombamento Retirado',
   fotos_transformador_placa_retirado: 'Placa Retirada',
+  fotos_transformador_conexoes_primarias_retirado: 'Conexões Primárias (Retirado)',
+  fotos_transformador_conexoes_secundarias_retirado: 'Conexões Secundárias (Retirado)',
   fotos_medidor_padrao: 'Padrão',
   fotos_medidor_leitura: 'Leitura',
   fotos_medidor_selo_born: 'Selo Born',
@@ -108,15 +123,44 @@ const SECTION_LABELS: Record<string, string> = {
   fotos_vazamento_tombamento_instalado: 'Tombamento Instalado',
   fotos_vazamento_placa_instalado: 'Placa Instalada',
   fotos_vazamento_instalacao: 'Instalação',
+  doc_cadastro_medidor: 'Cadastro de Medidor',
+  doc_laudo_transformador: 'Laudo de Transformador',
+  doc_laudo_regulador: 'Laudo de Regulador',
+  doc_laudo_religador: 'Laudo de Religador',
+  doc_apr: 'APR',
+  doc_fvbt: 'FVBT',
+  doc_termo_desistencia_lpt: 'Termo de Desistência LPT',
 }
 
 function convertPhotoField(photoField: any): FotoInfo[] {
   if (!photoField || !Array.isArray(photoField) || photoField.length === 0) return []
+
+  const resolvePhotoUrl = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null
+    const normalized = value.trim()
+    if (!normalized) return null
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized
+    if (
+      normalized.startsWith('file:///') ||
+      normalized.startsWith('content://') ||
+      normalized.startsWith('temp_') ||
+      normalized.startsWith('local_')
+    ) {
+      return null
+    }
+    return supabase.storage.from('obra-photos').getPublicUrl(normalized).data.publicUrl
+  }
+
   return photoField.map((item: any) => {
-    if (typeof item === 'object' && item !== null && item.url) {
-      if (item.url.startsWith('file:///') || item.url.startsWith('temp_') || item.url.startsWith('local_')) return null
+    if (typeof item === 'object' && item !== null) {
+      const url =
+        resolvePhotoUrl(item.url) ??
+        resolvePhotoUrl(item.uri) ??
+        resolvePhotoUrl(item.path) ??
+        resolvePhotoUrl(item.id)
+      if (!url) return null
       return {
-        url: item.url,
+        url,
         latitude: item.latitude ?? null,
         longitude: item.longitude ?? null,
         utmX: item.utmX ?? item.utm_x ?? null,
@@ -125,15 +169,21 @@ function convertPhotoField(photoField: any): FotoInfo[] {
         placaData: item.placaData || item.placa_data || null,
       } as FotoInfo
     }
-    if (typeof item === 'string' && item.startsWith('http')) {
-      return { url: item, latitude: null, longitude: null, utmX: null, utmY: null, utmZone: null, placaData: null } as FotoInfo
-    }
-    if (typeof item === 'string' && item.trim() && !item.startsWith('temp_') && !item.startsWith('local_')) {
-      const url = supabase.storage.from('obra-photos').getPublicUrl(item).data.publicUrl
-      return { url, latitude: null, longitude: null, utmX: null, utmY: null, utmZone: null, placaData: null } as FotoInfo
-    }
+    const url = resolvePhotoUrl(item)
+    if (url) return { url, latitude: null, longitude: null, utmX: null, utmY: null, utmZone: null, placaData: null } as FotoInfo
     return null
   }).filter(Boolean) as FotoInfo[]
+}
+
+function convertPostesDataField(postesData: any): any[] {
+  if (!Array.isArray(postesData)) return []
+  return postesData.map((poste: any) => ({
+    ...poste,
+    fotos_antes: convertPhotoField(poste?.fotos_antes),
+    fotos_durante: convertPhotoField(poste?.fotos_durante),
+    fotos_depois: convertPhotoField(poste?.fotos_depois),
+    fotos_medicao: convertPhotoField(poste?.fotos_medicao),
+  }))
 }
 
 type ServicoData = {
@@ -203,13 +253,14 @@ export default function ServicoDetailPage() {
         if (obraData) setParentObra(obraData)
       }
 
-      // Converter campos de fotos
+      // Converter campos de fotos (fotos_* e doc_*)
       const converted: ServicoData = { ...data }
       for (const key of Object.keys(data)) {
-        if (key.startsWith('fotos_')) {
+        if (key.startsWith('fotos_') || key.startsWith('doc_')) {
           converted[key] = convertPhotoField(data[key])
         }
       }
+      converted.postes_data = convertPostesDataField((data as any).postes_data)
       setServico(converted)
     } catch (error) {
       console.error('Erro ao carregar serviço:', error)
@@ -399,6 +450,7 @@ export default function ServicoDetailPage() {
   const galerias = servico
     ? (GALERIAS_POR_TIPO_SERVICO[servico.tipo_servico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois'])
     : []
+  const hasPostesData = Array.isArray(servico?.postes_data) && servico.postes_data.length > 0
 
   const isConcluido = servico?.status === 'completo'
 
@@ -569,7 +621,36 @@ export default function ServicoDetailPage() {
 
         {/* Photo Galleries */}
         <div className="space-y-0">
-          {galerias.map(key => {
+          {hasPostesData ? (
+            <div className="space-y-6">
+              {[...servico.postes_data]
+                .sort((a: any, b: any) => Number(a?.numero || 0) - Number(b?.numero || 0))
+                .map((poste: any, posteIndex: number) => {
+                  const sections = [
+                    { key: 'fotos_antes', label: 'Fotos Antes' },
+                    { key: 'fotos_durante', label: 'Fotos Durante' },
+                    { key: 'fotos_depois', label: 'Fotos Depois' },
+                    { key: 'fotos_medicao', label: 'Fotos Medição' },
+                  ] as const
+                  const numero = poste?.numero ?? posteIndex + 1
+                  return (
+                    <div key={`poste_${poste?.id || posteIndex}`} className="rounded-2xl border border-gray-200 bg-white p-4">
+                      <h3 className="text-base font-semibold text-slate-800 mb-3">Poste P{numero}</h3>
+                      {sections.map((section) => (
+                        <PhotoGallery
+                          key={`${posteIndex}_${section.key}`}
+                          photos={Array.isArray(poste?.[section.key]) ? poste[section.key] : []}
+                          title={section.label}
+                          sectionKey={`postes_data_${posteIndex}_${section.key}`}
+                          {...galleryProps}
+                          allowAdd={false}
+                        />
+                      ))}
+                    </div>
+                  )
+                })}
+            </div>
+          ) : galerias.map(key => {
             const photos: FotoInfo[] = servico[key] || []
             if (!photos.length && !galleryProps.allowAdd) return null
             return (
@@ -582,7 +663,7 @@ export default function ServicoDetailPage() {
               />
             )
           })}
-          {galerias.every(key => !(servico[key]?.length)) && (
+          {!hasPostesData && galerias.every(key => !(servico[key]?.length)) && (
             <div className="text-center py-20">
               <svg className="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />

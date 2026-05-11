@@ -38,8 +38,10 @@ export default function PhotoGallery({
   const [adding, setAdding] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const hasPhotos = photos && photos.length > 0
-  if (!hasPhotos && !allowAdd) return null
+  const uploadedPhotos = (photos || []).filter(p => p.url && String(p.url).startsWith('http'))
+  const pendingCount = (photos || []).length - uploadedPhotos.length
+  const hasPhotos = uploadedPhotos.length > 0
+  if (!hasPhotos && pendingCount === 0 && !allowAdd) return null
 
   async function handleAddFile(file: File) {
     if (!sectionKey || !onAddPhoto) return
@@ -65,7 +67,7 @@ export default function PhotoGallery({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             {title}
-            <span className="text-sm text-gray-500 font-normal">({photos.length})</span>
+            <span className="text-sm text-gray-500 font-normal">({uploadedPhotos.length}{pendingCount > 0 ? `+${pendingCount}⏳` : ''})</span>
           </h3>
           {allowAdd && sectionKey && (
             <div className="flex items-center gap-2">
@@ -94,9 +96,17 @@ export default function PhotoGallery({
         </div>
       )}
 
+      {pendingCount > 0 && !hasPhotos && (
+        <div className="mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+          {pendingCount} foto{pendingCount > 1 ? 's' : ''} aguardando sincronização com o servidor.
+        </div>
+      )}
+
       {hasPhotos ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-          {photos.map((photo, index) => (
+          {(photos || []).map((photo, index) => {
+            if (!photo.url || !String(photo.url).startsWith('http')) return null
+            return (
             <div
               key={index}
               className="relative group cursor-pointer overflow-hidden rounded-lg shadow-md hover:shadow-xl transition-all transform hover:scale-105"
@@ -128,11 +138,19 @@ export default function PhotoGallery({
                 </svg>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
-          Nenhuma foto adicionada ainda.
+        !pendingCount && (
+          <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+            Nenhuma foto adicionada ainda.
+          </div>
+        )
+      )}
+
+      {pendingCount > 0 && hasPhotos && (
+        <div className="mt-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700">
+          +{pendingCount} foto{pendingCount > 1 ? 's' : ''} aguardando sincronização com o servidor.
         </div>
       )}
 

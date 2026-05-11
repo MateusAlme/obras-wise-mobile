@@ -53,6 +53,13 @@ export interface Obra {
   fotos_transformador_laudo_retirado?: FotoInfo[]
   fotos_transformador_tombamento_retirado?: FotoInfo[]
   fotos_transformador_placa_retirado?: FotoInfo[]
+  fotos_transformador_conexoes_primarias_instalado?: FotoInfo[]
+  fotos_transformador_conexoes_secundarias_instalado?: FotoInfo[]
+  fotos_transformador_conexoes_primarias_retirado?: FotoInfo[]
+  fotos_transformador_conexoes_secundarias_retirado?: FotoInfo[]
+  // APR / Registro de Impedimento (servicos table)
+  fotos_apr?: FotoInfo[]
+  fotos_impedimento?: FotoInfo[]
   // MEDIDOR - 5 fotos
   fotos_medidor_padrao?: FotoInfo[]
   fotos_medidor_leitura?: FotoInfo[]
