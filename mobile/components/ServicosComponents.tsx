@@ -1046,7 +1046,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
                     return acc +
                       (Array.isArray(p.fotos_antes) ? p.fotos_antes.length : 0) +
                       (Array.isArray(p.fotos_durante) ? p.fotos_durante.length : 0) +
-                      (Array.isArray(p.fotos_depois) ? p.fotos_depois.length : 0);
+                      (Array.isArray(p.fotos_depois) ? p.fotos_depois.length : 0) +
+                      (Array.isArray(p.fotos_medicao) ? p.fotos_medicao.length : 0);
                   }, 0);
                   return (
                     <View style={styles.postesPromptBox}>

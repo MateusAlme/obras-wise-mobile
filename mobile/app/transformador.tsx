@@ -21,7 +21,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { type Servico, type FotoInfo } from '../types/servico';
-import { fetchServicosForObra, saveServicoLocal } from '../lib/servico-sync';
+import NetInfo from '@react-native-community/netinfo';
+import { fetchServicosForObra, saveServicoLocal, syncServico } from '../lib/servico-sync';
 import { backupPhoto, getPhotoMetadatasByIds, type PhotoMetadata } from '../lib/photo-backup';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -261,6 +262,7 @@ export default function TransformadorPage() {
     };
     await saveServicoLocal(updated as any);
     setServico(updated as any);
+    return updated;
   }, []);
 
   const persistModoOnly = useCallback(async (nextModo: TransformadorModo) => {
@@ -410,10 +412,20 @@ export default function TransformadorPage() {
 
   // ─── Salvar ──────────────────────────────────────────────────────────────────
 
+  const triggerBackgroundSync = useCallback((updated: Awaited<ReturnType<typeof saveToLocal>>) => {
+    if (!updated || !updated.id || updated.id.startsWith('temp-')) return;
+    NetInfo.fetch().then((netState) => {
+      const online = netState.isConnected === true && netState.isInternetReachable !== false;
+      if (!online) return;
+      void syncServico(updated as any).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
   const handleSalvar = async () => {
     setCompleting(true);
     try {
-      await saveToLocal(photos, modo);
+      const updated = await saveToLocal(photos, modo);
+      triggerBackgroundSync(updated);
       router.back();
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar o serviço.');
@@ -437,7 +449,8 @@ export default function TransformadorPage() {
     setCompleting(true);
     try {
       if (modo) {
-        await saveToLocal(photos, modo);
+        const updated = await saveToLocal(photos, modo);
+        triggerBackgroundSync(updated);
       }
       router.back();
     } catch {
@@ -445,7 +458,7 @@ export default function TransformadorPage() {
     } finally {
       setCompleting(false);
     }
-  }, [completing, modo, photos, router, saveToLocal]);
+  }, [completing, modo, photos, router, saveToLocal, triggerBackgroundSync]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {

@@ -10,7 +10,69 @@ import { createEmergencyBackup, shouldCreateEmergencyBackup } from './emergency-
 
 const PENDING_OBRAS_KEY = '@obras_pending_sync';
 const SYNC_STATUS_KEY = '@sync_status';
-const LOCAL_OBRAS_KEY = '@obras_local'; // Nova chave para todas as obras locais
+const LOCAL_OBRAS_KEY = '@obras_local';
+// Chunked storage para @obras_local — evita o erro "Row too big" do SQLite Android (limite ~2MB por linha)
+const LOCAL_OBRAS_CHUNK_KEY = '@obras_local_c';
+const LOCAL_OBRAS_CHUNK_COUNT = '@obras_local_n';
+const OBRAS_CHUNK_MAX_BYTES = 1_400_000; // 1.4MB por chunk, bem abaixo do limite de 2MB
+
+/** Lê todas as obras locais independente do formato (chave única ou chunks). */
+async function readObrasRaw(): Promise<LocalObra[]> {
+  const nRaw = await AsyncStorage.getItem(LOCAL_OBRAS_CHUNK_COUNT);
+  if (nRaw) {
+    const n = parseInt(nRaw, 10);
+    if (n > 0) {
+      const keys = Array.from({ length: n }, (_, i) => `${LOCAL_OBRAS_CHUNK_KEY}${i}`);
+      const pairs = await AsyncStorage.multiGet(keys);
+      const all: LocalObra[] = [];
+      for (const [, chunk] of pairs) {
+        if (chunk) all.push(...(JSON.parse(chunk) as LocalObra[]));
+      }
+      return all;
+    }
+  }
+  const raw = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
+  return raw ? (JSON.parse(raw) as LocalObra[]) : [];
+}
+
+/** Escreve obras locais, dividindo em chunks se necessário. */
+async function writeObrasRaw(obras: LocalObra[]): Promise<void> {
+  const json = JSON.stringify(obras);
+  if (json.length <= OBRAS_CHUNK_MAX_BYTES) {
+    const nRaw = await AsyncStorage.getItem(LOCAL_OBRAS_CHUNK_COUNT);
+    if (nRaw) {
+      const oldN = parseInt(nRaw, 10);
+      const toRemove = [LOCAL_OBRAS_CHUNK_COUNT, ...Array.from({ length: oldN }, (_, i) => `${LOCAL_OBRAS_CHUNK_KEY}${i}`)];
+      await AsyncStorage.multiRemove(toRemove);
+    }
+    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, json);
+    return;
+  }
+  const chunks: LocalObra[][] = [[]];
+  let used = 0;
+  for (const obra of obras) {
+    const s = JSON.stringify(obra);
+    if (used + s.length > OBRAS_CHUNK_MAX_BYTES && chunks[chunks.length - 1].length > 0) {
+      chunks.push([]);
+      used = 0;
+    }
+    chunks[chunks.length - 1].push(obra);
+    used += s.length;
+  }
+  const nRaw = await AsyncStorage.getItem(LOCAL_OBRAS_CHUNK_COUNT);
+  const oldN = nRaw ? parseInt(nRaw, 10) : 0;
+  const writes: [string, string][] = [
+    [LOCAL_OBRAS_CHUNK_COUNT, String(chunks.length)],
+    ...chunks.map((c, i) => [`${LOCAL_OBRAS_CHUNK_KEY}${i}`, JSON.stringify(c)] as [string, string]),
+  ];
+  await AsyncStorage.multiSet(writes);
+  const toRemove = [LOCAL_OBRAS_KEY, ...Array.from({ length: Math.max(0, oldN - chunks.length) }, (_, i) => `${LOCAL_OBRAS_CHUNK_KEY}${chunks.length + i}`)];
+  await AsyncStorage.multiRemove(toRemove);
+}
+
+/** Exportado para módulos externos que precisam salvar a lista completa de obras. */
+export const saveLocalObras = writeObrasRaw;
+
 let syncInProgress = false;
 // Debounce global para evitar múltiplos triggers simultâneos do auto-sync
 // (vários screens registram startAutoSync ao mesmo tempo)
@@ -413,7 +475,7 @@ export const saveObraLocal = async (
       logger.sync(`✅ Nova obra local criada: ${obraId} (serverId: ${serverId || 'none'})`);
     }
 
-    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+    await writeObrasRaw(localObras);
 
     // NÃO sincroniza automaticamente - apenas salva local
     // Usuário decide quando sincronizar via botão manual
@@ -430,8 +492,7 @@ export const saveObraLocal = async (
  */
 export const getLocalObras = async (): Promise<LocalObra[]> => {
   try {
-    const data = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
-    const localObras: LocalObra[] = data ? JSON.parse(data) : [];
+    const localObras: LocalObra[] = await readObrasRaw();
 
     if (!localObras.length) {
       return [];
@@ -466,7 +527,7 @@ export const getLocalObras = async (): Promise<LocalObra[]> => {
     });
 
     if (changed) {
-      await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(normalized));
+      await writeObrasRaw(normalized);
     }
 
     return normalized;
@@ -553,7 +614,7 @@ export const restoreObraPhotos = async (obraId: string): Promise<boolean> => {
     };
 
     localObras[obraIndex] = updatedObra;
-    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+    await writeObrasRaw(localObras);
 
     logger.sync(`✅ Fotos restauradas com sucesso para obra ${obraId}`);
     logger.sync(`   Total: ${obraPhotos.length} fotos reconectadas`);
@@ -697,7 +758,7 @@ const updateObraInAsyncStorage = async (
       localObras.push(updatedObra);
     }
 
-    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+    await writeObrasRaw(localObras);
     logger.sync(`✅ Obra atualizada com sucesso no AsyncStorage`);
 
     return true;
@@ -714,7 +775,7 @@ export const removeLocalObra = async (id: string): Promise<void> => {
   try {
     const localObras = await getLocalObras();
     const filtered = localObras.filter(o => o.id !== id);
-    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(filtered));
+    await writeObrasRaw(filtered);
     logger.sync(`🗑️ Obra local removida: ${id}`);
   } catch (error) {
     logger.error('Erro ao remover obra local:', error);
@@ -836,7 +897,7 @@ export const syncLocalObra = async (
           }
         }
 
-        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+        await writeObrasRaw(localObras);
         logger.sync(`✅ Obra ${hasPendingPhotos ? 'parcialmente' : 'totalmente'} sincronizada: ${obraId} (serverId: ${finalId})`);
       }
     }
@@ -1328,9 +1389,8 @@ export const markObraFinalizada = async (obraId: string): Promise<boolean> => {
     let remoteTargetId: string | null = uuidRegex.test(obraId) ? obraId : null;
 
     // 1) Atualiza obras locais
-    const localObrasRaw = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
-    if (localObrasRaw) {
-      const localObras: any[] = JSON.parse(localObrasRaw);
+    {
+      const localObras: any[] = await readObrasRaw();
       const updatedLocal = localObras.map((obra) => {
         const matches = obra?.id === obraId || obra?.serverId === obraId;
         if (!matches) return obra;
@@ -1358,7 +1418,7 @@ export const markObraFinalizada = async (obraId: string): Promise<boolean> => {
       });
 
       if (changedLocal) {
-        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(updatedLocal));
+        await writeObrasRaw(updatedLocal);
       }
     }
 
@@ -1413,9 +1473,8 @@ export const markObraFinalizada = async (obraId: string): Promise<boolean> => {
           remoteUpdated = true;
 
           // Marca cache local como sincronizado para evitar voltar status antigo no merge.
-          const localObrasRaw2 = await AsyncStorage.getItem(LOCAL_OBRAS_KEY);
-          if (localObrasRaw2) {
-            const localObras2: any[] = JSON.parse(localObrasRaw2);
+          {
+            const localObras2: any[] = await readObrasRaw();
             const normalized = localObras2.map((obra) => {
               const matches = obra?.id === obraId || obra?.serverId === obraId || obra?.id === remoteTargetId || obra?.serverId === remoteTargetId;
               if (!matches) return obra;
@@ -1430,7 +1489,7 @@ export const markObraFinalizada = async (obraId: string): Promise<boolean> => {
                 error_message: null,
               };
             });
-            await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(normalized));
+            await writeObrasRaw(normalized);
           }
         } else {
           logger.warn('[markObraFinalizada] Falha ao atualizar obra no Supabase:', error);
@@ -2531,7 +2590,7 @@ export const syncObra = async (
         const localObraIndex = localObras.findIndex(o => o.id === obra.id);
         if (localObraIndex !== -1) {
           localObras[localObraIndex].serverId = existingSameBook.id;
-          await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(localObras));
+          await writeObrasRaw(localObras);
           logger.sync(`✅ [syncObra] serverId atualizado na obra local: ${existingSameBook.id}`);
         }
       } catch (localUpdateError) {
@@ -3243,7 +3302,7 @@ export const removeDuplicateObras = async (): Promise<{ removed: number; kept: n
     }
 
     // Salvar lista limpa
-    await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasToKeep));
+    await writeObrasRaw(obrasToKeep);
 
     logger.sync(`✅ Limpeza concluída:`);
     logger.sync(`   - Obras mantidas: ${obrasToKeep.length}`);

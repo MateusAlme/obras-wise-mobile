@@ -22,7 +22,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { type Servico, type FotoInfo, type PosteData } from '../types/servico';
-import { fetchServicosForObra, saveServicoLocal } from '../lib/servico-sync';
+import NetInfo from '@react-native-community/netinfo';
+import { fetchServicosForObra, saveServicoLocal, syncServico } from '../lib/servico-sync';
 import { backupPhoto, getPhotoMetadatasByIds, type PhotoMetadata } from '../lib/photo-backup';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -407,7 +408,7 @@ export default function PostesRegistroPage() {
 
   const savePostesToLocal = useCallback(async (updatedPostes: PosteLocal[]) => {
     const current = servicoRef.current;
-    if (!current) return;
+    if (!current) return null;
     // Serializa preservando url quando disponível — evita perder referência de fotos
     // que só existem no Supabase (sem metadata local), pois o useEffect reconstrói
     // postes a partir desses dados e descartaria fotos sem url E sem metadata.
@@ -437,6 +438,7 @@ export default function PostesRegistroPage() {
     };
     await saveServicoLocal(updated as any);
     setServico(updated as any);
+    return updated;
   }, []);
 
   // Adiciona novo ponto no INÍCIO da lista
@@ -622,10 +624,20 @@ export default function PostesRegistroPage() {
     }
   };
 
+  const triggerBackgroundSync = useCallback((updated: Awaited<ReturnType<typeof savePostesToLocal>>) => {
+    if (!updated || !updated.id || updated.id.startsWith('temp-')) return;
+    NetInfo.fetch().then((netState) => {
+      const online = netState.isConnected === true && netState.isInternetReachable !== false;
+      if (!online) return;
+      void syncServico(updated as any).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
   const handleSalvar = async () => {
     setCompleting(true);
     try {
-      await savePostesToLocal(postes);
+      const updated = await savePostesToLocal(postes);
+      triggerBackgroundSync(updated);
       router.back();
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar o serviço.');
@@ -644,14 +656,15 @@ export default function PostesRegistroPage() {
     if (completing) return;
     setCompleting(true);
     try {
-      await savePostesToLocal(postes);
+      const updated = await savePostesToLocal(postes);
+      triggerBackgroundSync(updated);
       router.back();
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar o serviço.');
     } finally {
       setCompleting(false);
     }
-  }, [completing, postes, router, savePostesToLocal]);
+  }, [completing, postes, router, savePostesToLocal, triggerBackgroundSync]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {

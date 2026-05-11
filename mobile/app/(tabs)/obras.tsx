@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../../lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, syncAllPendingObrasWithProgress, removePendingObra, removeLocalObra, syncObra, type CancellationToken } from '../../lib/offline-sync';
+import { checkInternetConnection, getPendingObras, startAutoSync, syncAllPendingObras, getLocalObras, saveLocalObras, syncAllPendingObrasWithProgress, removePendingObra, removeLocalObra, syncObra, type CancellationToken } from '../../lib/offline-sync';
 import type { PendingObra, LocalObra } from '../../lib/offline-sync';
 import { getQueueStats, retryFailedUploads, processObraPhotos } from '../../lib/photo-queue';
 import { backupPhoto, getPhotoMetadatasByIds } from '../../lib/photo-backup';
@@ -273,20 +273,6 @@ export default function Obras() {
     }
 
     try {
-      // Buscar TODAS as obras para debug
-      const { data: todasObras } = await supabase
-        .from('obras')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      console.log(`📊 Total de obras no Supabase: ${todasObras?.length || 0}`);
-
-      if (todasObras && todasObras.length > 0) {
-        const equipesUnicas = [...new Set(todasObras.map(o => o.equipe))];
-        console.log(`👥 Equipes encontradas: ${equipesUnicas.join(', ')}`);
-      }
-
-      // Buscar obras visiveis para o perfil logado
       const roleAtual = role || userRole;
       let query = supabase
         .from('obras')
@@ -304,29 +290,21 @@ export default function Obras() {
 
       const { data, error } = await query;
 
-      const contextoBusca = roleAtual === 'admin' ? 'todas as equipes' : `equipe "${equipe}"`;
-      console.log(`🎯 Obras visiveis para ${contextoBusca}: ${data?.length || 0}`);
-
       if (error) {
         console.error('❌ Erro ao buscar obras:', error);
         return;
       }
 
       if (!data || data.length === 0) {
-        console.log(roleAtual === 'admin'
-          ? '⚠️ Nenhuma obra encontrada para o admin'
-          : '⚠️ Nenhuma obra encontrada para esta equipe');
         return;
       }
 
-      console.log(`📥 Migrando ${data.length} obra(s) do Supabase para AsyncStorage...`);
-
       let obrasLocais = await getLocalObras();
+      const localIdsSet = new Set(obrasLocais.map((o) => o.id));
+      let changed = false;
+
       for (const obra of data) {
-        if (obrasLocais.find(o => o.id === obra.id)) {
-          console.log(`⚠️ Obra ${obra.id} já existe localmente - preservando versão local`);
-          continue;
-        }
+        if (localIdsSet.has(obra.id)) continue;
 
         const savedObra: LocalObra = {
           ...obra,
@@ -340,28 +318,22 @@ export default function Obras() {
         } as LocalObra;
 
         obrasLocais.push(savedObra);
-        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasLocais));
+        localIdsSet.add(obra.id);
+        changed = true;
       }
 
       // Remover obras locais que foram apagadas no banco de dados
       const serverIds = new Set(data.map((o: any) => o.id));
       const beforeCount = obrasLocais.length;
       obrasLocais = obrasLocais.filter((obra) => {
-        // Nunca remove obras sem serverId (não sincronizadas) ou com modificações locais pendentes
         if (!obra.serverId || obra.locallyModified || obra.synced === false) return true;
-        // Só avalia obras dentro do escopo desta consulta
         const noEscopeDestaConsulta = roleAtual === 'admin' || obra.equipe === equipe;
         if (!noEscopeDestaConsulta) return true;
-        // Remove se não está mais no banco
-        const exists = serverIds.has(obra.serverId) || serverIds.has(obra.id);
-        if (!exists) console.log(`🗑️ Obra ${obra.obra || obra.id} apagada no banco — removendo localmente`);
-        return exists;
+        return serverIds.has(obra.serverId) || serverIds.has(obra.id);
       });
-      if (obrasLocais.length < beforeCount) {
-        await AsyncStorage.setItem(LOCAL_OBRAS_KEY, JSON.stringify(obrasLocais));
+      if (changed || obrasLocais.length < beforeCount) {
+        await saveLocalObras(obrasLocais);
       }
-
-      console.log(`✅ Migração completa: ${obrasLocais.length} obra(s)`);
     } catch (error) {
       console.error('Erro ao migrar obras do Supabase:', error);
     }

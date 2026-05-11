@@ -21,6 +21,7 @@ const SERVICOS_OBRA_IDS_KEY = '@servicos_obra_ids';
 const SERVICO_POSTES_STORAGE_TIPOS = new Set(['Linha Viva', 'Cava em Rocha', 'Book de Aterramento', 'FundaÃ§Ã£o Especial']);
 const getServicoPostesStorageKey = (servicoId: string): string => `@servico_postes_data:${servicoId}`;
 const SERVICO_RETRY_COUNTS_KEY = '@servicos_retry_counts'; // Maps servicoId -> nmero de falhas permanentes
+const SERVICO_ID_REMAP_KEY = '@servico_id_remap'; // Maps temp-xxx -> uuid após sync
 
 // Lock de sincroniza?fAaAaaAaAaAaaAAAAaAaaAAAasAAaAA?f??s?,?o: Map de servicoId  timestamp de incio
 // Auto-expira apos SYNC_LOCK_TIMEOUT_MS para evitar bloqueio permanente em caso de crash
@@ -1699,6 +1700,15 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
     servicoLocal.error_message = lostPhotosMessage;
 
     if (isNewServico && pendingLocalId !== servicoLocal.id) {
+      // Persiste o mapeamento temp-id -> uuid para que appendPhotoToServicoLocal possa seguir
+      // a referência caso o usuário tente adicionar foto antes da UI atualizar o estado.
+      try {
+        const remapRaw = await AsyncStorage.getItem(SERVICO_ID_REMAP_KEY);
+        const remap: Record<string, string> = remapRaw ? JSON.parse(remapRaw) : {};
+        remap[pendingLocalId] = servicoLocal.id;
+        await AsyncStorage.setItem(SERVICO_ID_REMAP_KEY, JSON.stringify(remap));
+      } catch {}
+
       // Limpa referencias do ID temporario em TODAS as chaves locais para evitar card duplicado
       // apos troca de temp-id -> uuid.
       const indexRaw = await AsyncStorage.getItem(SERVICOS_OBRA_IDS_KEY);
@@ -2708,7 +2718,21 @@ export async function appendPhotoToServicoLocal(
       }
     }
 
-    if (!targetKey || index < 0) return false;
+    if (!targetKey || index < 0) {
+      // Fallback: o serviço pode ter sido sincronizado e o ID temp-xxx substituído por UUID
+      // enquanto a UI ainda mostrava o ID antigo (race condition background sync vs. foto).
+      try {
+        const remapRaw = await AsyncStorage.getItem(SERVICO_ID_REMAP_KEY);
+        if (remapRaw) {
+          const remap: Record<string, string> = JSON.parse(remapRaw);
+          const remappedId = remap[servicoId];
+          if (remappedId && remappedId !== servicoId) {
+            return appendPhotoToServicoLocal(remappedId, obraId, fieldName, photoId, localUri, geoData);
+          }
+        }
+      } catch {}
+      return false;
+    }
 
     const currentRaw = (servicos[index] as any)[fieldName];
     let current: any[] = [];

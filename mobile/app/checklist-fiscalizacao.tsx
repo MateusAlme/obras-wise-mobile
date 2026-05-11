@@ -30,7 +30,8 @@ import {
   type AterramentoCercaData,
   type HasteTermometroData,
 } from '../types/servico';
-import { fetchServicosForObra, saveServicoLocal } from '../lib/servico-sync';
+import NetInfo from '@react-native-community/netinfo';
+import { fetchServicosForObra, saveServicoLocal, syncServico } from '../lib/servico-sync';
 import { backupPhoto, getPhotoMetadatasByIds, type PhotoMetadata } from '../lib/photo-backup';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -659,6 +660,7 @@ export default function ChecklistFiscalizacaoPage() {
     await saveServicoLocal(updatedServico as any);
     skipNextHydrationRef.current = true;
     setServico(updatedServico as any);
+    return updatedServico;
   }, []);
 
   // Salva imediatamente — usar em adição de fotos
@@ -1124,10 +1126,20 @@ export default function ChecklistFiscalizacaoPage() {
     return missing;
   };
 
+  const triggerBackgroundSync = useCallback((updated: Awaited<ReturnType<typeof saveChecklistToLocal>>) => {
+    if (!updated || !updated.id || updated.id.startsWith('temp-')) return;
+    NetInfo.fetch().then((netState) => {
+      const online = netState.isConnected === true && netState.isInternetReachable !== false;
+      if (!online) return;
+      void syncServico(updated as any).catch(() => {});
+    }).catch(() => {});
+  }, []);
+
   const handleSalvar = async () => {
     setCompleting(true);
     try {
-      await saveChecklistToLocal(simplePhotos, checklistPostes, emendas, podas, seccionamentos, aterramentosCerca, hastesTermometro);
+      const updated = await saveChecklistToLocal(simplePhotos, checklistPostes, emendas, podas, seccionamentos, aterramentosCerca, hastesTermometro);
+      triggerBackgroundSync(updated);
       router.back();
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar o serviço.');
@@ -1140,7 +1152,8 @@ export default function ChecklistFiscalizacaoPage() {
     if (completing) return;
     setCompleting(true);
     try {
-      await saveChecklistToLocal(simplePhotos, checklistPostes, emendas, podas, seccionamentos, aterramentosCerca, hastesTermometro);
+      const updated = await saveChecklistToLocal(simplePhotos, checklistPostes, emendas, podas, seccionamentos, aterramentosCerca, hastesTermometro);
+      triggerBackgroundSync(updated);
       router.back();
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar o serviço.');
@@ -1158,6 +1171,7 @@ export default function ChecklistFiscalizacaoPage() {
     saveChecklistToLocal,
     seccionamentos,
     simplePhotos,
+    triggerBackgroundSync,
   ]);
 
   useEffect(() => {
