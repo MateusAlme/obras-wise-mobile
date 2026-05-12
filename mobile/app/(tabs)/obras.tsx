@@ -305,15 +305,13 @@ export default function Obras() {
         return;
       }
 
-      if (!data || data.length === 0) {
-        return;
-      }
-
       let obrasLocais = await getLocalObras();
+      const serverIds = new Set((data || []).map((o: any) => o.id));
       const localIdsSet = new Set(obrasLocais.map((o) => o.id));
       let changed = false;
 
-      for (const obra of data) {
+      // Adicionar obras novas vindas do servidor
+      for (const obra of (data || [])) {
         if (localIdsSet.has(obra.id)) continue;
 
         const savedObra: LocalObra = {
@@ -333,7 +331,6 @@ export default function Obras() {
       }
 
       // Remover obras locais que foram apagadas no banco de dados
-      const serverIds = new Set(data.map((o: any) => o.id));
       const beforeCount = obrasLocais.length;
       obrasLocais = obrasLocais.filter((obra) => {
         if (!obra.serverId || obra.locallyModified || obra.synced === false) return true;
