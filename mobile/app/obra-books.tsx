@@ -623,6 +623,9 @@ export default function ObraBooksPage() {
   const [serviceSelectorVisible, setServiceSelectorVisible] = useState(false);
   const [selectedObraIdForService, setSelectedObraIdForService] = useState<string | null>(null);
   const [creatingService, setCreatingService] = useState(false);
+  const [equipePickerVisible, setEquipePickerVisible] = useState(false);
+  const [equipeForService, setEquipeForService] = useState('');
+  const [equipesDisponiveis, setEquipesDisponiveis] = useState<string[]>([]);
   const [pendingNewServiceFocus, setPendingNewServiceFocus] = useState<{
     serviceId: string;
     createdAt: string;
@@ -776,6 +779,24 @@ export default function ObraBooksPage() {
       const isAdmin = isAdminOrSupervisor(userRole);
       setSessionRole(userRole);
       setSessionEquipe(equipe || '');
+
+      if (isAdmin) {
+        try {
+          const cached = await AsyncStorage.getItem('@equipes_cache');
+          if (cached) setEquipesDisponiveis(JSON.parse(cached));
+          const { data: equipesData } = await supabase
+            .from('equipe_credenciais')
+            .select('equipe_codigo')
+            .eq('ativo', true);
+          if (equipesData && equipesData.length > 0) {
+            const lista = Array.from(new Set(
+              equipesData.map((x: any) => String(x.equipe_codigo || '').trim()).filter(Boolean)
+            )).sort() as string[];
+            setEquipesDisponiveis(lista);
+            await AsyncStorage.setItem('@equipes_cache', JSON.stringify(lista));
+          }
+        } catch { /* usa cache */ }
+      }
 
       const pendingFiltered: ObraListItem[] = pending
         .filter((obra) => {
@@ -1095,7 +1116,13 @@ export default function ObraBooksPage() {
 
     const targetObraId = getSyncedObraId(target) || target.id;
     setSelectedObraIdForService(targetObraId);
-    setServiceSelectorVisible(true);
+
+    if (isAdminOrSupervisor(sessionRole)) {
+      setEquipeForService('');
+      setEquipePickerVisible(true);
+    } else {
+      setServiceSelectorVisible(true);
+    }
   };
 
   const handleCreateService = async (tipo: TipoServico) => {
@@ -1125,7 +1152,8 @@ export default function ObraBooksPage() {
         )
         .map((s) => s.id);
 
-      const result = await createServico(targetObraId, tipo, targetObra?.responsavel, obraNumero);
+      const servicoEquipe = isAdminOrSupervisor(sessionRole) ? equipeForService : sessionEquipe;
+      const result = await createServico(targetObraId, tipo, targetObra?.responsavel, obraNumero, servicoEquipe || undefined);
       if (!result.success || !result.servico) {
         Alert.alert('Erro', result.error || 'Não foi possível criar o serviço.');
         return;
@@ -2593,6 +2621,75 @@ export default function ObraBooksPage() {
             )}
           </ScrollView>
         )}
+
+        {/* Equipe picker — exibido antes do ServiceTypeSelector para admin/supervisor */}
+        <Modal
+          visible={equipePickerVisible}
+          animationType="slide"
+          transparent
+          statusBarTranslucent
+          onRequestClose={() => setEquipePickerVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.detailsOverlay}
+            onPress={() => setEquipePickerVisible(false)}
+            activeOpacity={1}
+          >
+            <View style={styles.detailsModal}>
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', alignSelf: 'center', marginBottom: 14 }} />
+              <Text style={styles.detailsTitle}>Equipe do Serviço</Text>
+              <Text style={styles.detailsSubtitle}>Selecione a equipe que executará este serviço</Text>
+              <ScrollView showsVerticalScrollIndicator style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                {equipesDisponiveis.map((item, idx) => {
+                  const selected = equipeForService === item;
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingVertical: 13,
+                        paddingHorizontal: 4,
+                        borderBottomWidth: idx < equipesDisponiveis.length - 1 ? 1 : 0,
+                        borderBottomColor: '#F1F5F9',
+                        backgroundColor: selected ? '#EFF6FF' : 'transparent',
+                        borderRadius: selected ? 8 : 0,
+                      }}
+                      onPress={() => {
+                        setEquipeForService(item);
+                        setEquipePickerVisible(false);
+                        setServiceSelectorVisible(true);
+                      }}
+                    >
+                      <View style={{
+                        width: 18, height: 18, borderRadius: 9, borderWidth: 2,
+                        borderColor: selected ? '#2563EB' : '#CBD5E1',
+                        backgroundColor: selected ? '#2563EB' : 'transparent',
+                        marginRight: 12, alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {selected && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' }} />}
+                      </View>
+                      <Text style={{ fontSize: 15, fontWeight: selected ? '700' : '500', color: selected ? '#1E40AF' : '#1E293B' }}>
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {equipesDisponiveis.length === 0 && (
+                  <Text style={{ textAlign: 'center', color: '#94A3B8', paddingVertical: 24, fontSize: 14 }}>
+                    Nenhuma equipe disponível
+                  </Text>
+                )}
+              </ScrollView>
+              <TouchableOpacity
+                style={{ marginTop: 12, paddingVertical: 10, alignItems: 'center' }}
+                onPress={() => setEquipePickerVisible(false)}
+              >
+                <Text style={{ color: '#64748B', fontSize: 14, fontWeight: '600' }}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         <ServiceTypeSelector
           visible={serviceSelectorVisible}

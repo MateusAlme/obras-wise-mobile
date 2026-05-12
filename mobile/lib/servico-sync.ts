@@ -1517,6 +1517,7 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
       client_pk: clientPk,
       obra_id: servicoLocal.obra_id,
       obra_numero: servicoLocal.obra_numero,
+      equipe: servicoLocal.equipe,
       tipo_servico: servicoLocal.tipo_servico,
       responsavel: servicoLocal.responsavel,
       status: servicoLocal.status,
@@ -2418,7 +2419,8 @@ export async function createServico(
   obraId: string,
   tipoServico: string,
   responsavel?: string,
-  obraNumero?: string
+  obraNumero?: string,
+  equipe?: string
 ): Promise<{ success: boolean; servico?: ServicoLocal; error?: string; syncSuccess?: boolean; syncError?: string }> {
   try {
     // Idempotencia local para evitar dupla criacao em cliques/eventos repetidos.
@@ -2478,6 +2480,7 @@ export async function createServico(
       client_pk: generateClientPk(),
       obra_id: obraId,
       obra_numero: obraNumero,
+      equipe,
       tipo_servico: tipoServico as any,
       responsavel,
       status: 'rascunho',

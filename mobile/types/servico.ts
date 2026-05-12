@@ -131,6 +131,7 @@ export interface Servico {
   client_pk?: string;
   obra_id: string;
   obra_numero?: string; // Redundante com obras.obra — permite queries offline sem JOIN
+  equipe?: string;
   tipo_servico: TipoServico;
   responsavel?: string;
   status: StatusServico;
@@ -238,6 +239,7 @@ export interface ServicoLocal {
   client_pk?: string;
   obra_id: string;
   obra_numero?: string; // Redundante com obras.obra — permite queries offline sem JOIN
+  equipe?: string;
   tipo_servico: TipoServico;
   responsavel?: string;
   status: StatusServico;
