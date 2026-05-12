@@ -1184,9 +1184,6 @@ export default function Obras() {
             <TouchableOpacity style={styles.syncObraButton} onPress={() => handleSyncSingleObra(obra)}>
               <Text style={styles.syncObraButtonText}>Sincronizar obra</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.deleteObraButton} onPress={() => handleDeleteObra(obra)}>
-              <Text style={styles.deleteObraButtonText}>Remover rascunho</Text>
-            </TouchableOpacity>
           </View>
         )}
       </View>
