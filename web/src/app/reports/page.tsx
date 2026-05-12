@@ -2143,16 +2143,16 @@ export default function ReportsPage() {
                 <div className="space-y-6">
                   {(() => {
                     const colorMap: Record<string, string> = {
-                      blue: 'bg-blue-600', orange: 'bg-orange-600', green: 'bg-green-600', cyan: 'bg-cyan-600', teal: 'bg-teal-600', red: 'bg-red-600', amber: 'bg-amber-600', purple: 'bg-purple-600', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', sky: 'bg-sky-600', rose: 'bg-rose-600',
+                      blue: 'bg-blue-600', orange: 'bg-orange-600', green: 'bg-green-600', cyan: 'bg-cyan-600', teal: 'bg-teal-600', red: 'bg-red-600', amber: 'bg-amber-600', purple: 'bg-purple-600', indigo: 'bg-indigo-600', emerald: 'bg-emerald-600', sky: 'bg-sky-600', rose: 'bg-rose-600', violet: 'bg-violet-600', slate: 'bg-slate-600',
                     };
                     const lightColorMap: Record<string, string> = {
-                      blue: 'from-blue-300', orange: 'from-orange-300', green: 'from-green-300', cyan: 'from-cyan-300', teal: 'from-teal-300', red: 'from-red-300', amber: 'from-amber-300', purple: 'from-purple-300', indigo: 'from-indigo-300', emerald: 'from-emerald-300', sky: 'from-sky-300', rose: 'from-rose-300',
+                      blue: 'from-blue-300', orange: 'from-orange-300', green: 'from-green-300', cyan: 'from-cyan-300', teal: 'from-teal-300', red: 'from-red-300', amber: 'from-amber-300', purple: 'from-purple-300', indigo: 'from-indigo-300', emerald: 'from-emerald-300', sky: 'from-sky-300', rose: 'from-rose-300', violet: 'from-violet-300', slate: 'from-slate-300',
                     };
                     const borderColorMap: Record<string, string> = {
-                      blue: 'border-blue-200', orange: 'border-orange-200', green: 'border-green-200', cyan: 'border-cyan-200', teal: 'border-teal-200', red: 'border-red-200', amber: 'border-amber-200', purple: 'border-purple-200', indigo: 'border-indigo-200', emerald: 'border-emerald-200', sky: 'border-sky-200', rose: 'border-rose-200',
+                      blue: 'border-blue-200', orange: 'border-orange-200', green: 'border-green-200', cyan: 'border-cyan-200', teal: 'border-teal-200', red: 'border-red-200', amber: 'border-amber-200', purple: 'border-purple-200', indigo: 'border-indigo-200', emerald: 'border-emerald-200', sky: 'border-sky-200', rose: 'border-rose-200', violet: 'border-violet-200', slate: 'border-slate-300',
                     };
                     const bgLightMap: Record<string, string> = {
-                      blue: 'bg-blue-50', orange: 'bg-orange-50', green: 'bg-green-50', cyan: 'bg-cyan-50', teal: 'bg-teal-50', red: 'bg-red-50', amber: 'bg-amber-50', purple: 'bg-purple-50', indigo: 'bg-indigo-50', emerald: 'bg-emerald-50', sky: 'bg-sky-50', rose: 'bg-rose-50',
+                      blue: 'bg-blue-50', orange: 'bg-orange-50', green: 'bg-green-50', cyan: 'bg-cyan-50', teal: 'bg-teal-50', red: 'bg-red-50', amber: 'bg-amber-50', purple: 'bg-purple-50', indigo: 'bg-indigo-50', emerald: 'bg-emerald-50', sky: 'bg-sky-50', rose: 'bg-rose-50', violet: 'bg-violet-50', slate: 'bg-slate-50',
                     };
 
                     const getPhotoUrlFromRef = (photoRef: any): string | null => {
