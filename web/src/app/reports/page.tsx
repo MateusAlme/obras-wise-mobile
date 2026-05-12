@@ -1500,13 +1500,25 @@ export default function ReportsPage() {
                         : <span className="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-bold">Parcial</span>
                     }
 
-                    const renderDateCell = (dateStr: string) => (
-                      <td className="px-6 py-4">
-                        <span className="text-sm text-slate-600">{format(new Date(dateStr), "dd/MM/yyyy", { locale: ptBR })}</span>
-                        <br />
-                        <span className="text-xs text-slate-500">{format(new Date(dateStr), "HH:mm", { locale: ptBR })}</span>
-                      </td>
-                    )
+                    const parseUtcDate = (dateStr: string) => {
+                      if (!dateStr) return new Date(NaN)
+                      // Supabase retorna timestamps sem timezone (ex: "2026-05-12 22:24:11.328")
+                      // O browser interpreta sem Z como horário local — forçar UTC adicionando Z
+                      const normalized = dateStr.includes('+') || dateStr.endsWith('Z')
+                        ? dateStr
+                        : dateStr.replace(' ', 'T') + 'Z'
+                      return new Date(normalized)
+                    }
+                    const renderDateCell = (dateStr: string) => {
+                      const date = parseUtcDate(dateStr)
+                      return (
+                        <td className="px-6 py-4">
+                          <span className="text-sm text-slate-600">{format(date, "dd/MM/yyyy", { locale: ptBR })}</span>
+                          <br />
+                          <span className="text-xs text-slate-500">{format(date, "HH:mm", { locale: ptBR })}</span>
+                        </td>
+                      )
+                    }
 
                     const renderServicoRow = (servico: ReportBook) => (
                       <tr
