@@ -89,6 +89,8 @@ export default function Obras() {
   const [syncModalVisible, setSyncModalVisible] = useState(false);
   const [syncProgress, setSyncProgress] = useState<ObraSyncProgress | null>(null);
   const cancellationTokenRef = useRef<CancellationToken>({ cancelled: false });
+  const lastMigrateAtRef = useRef<number>(0);
+  const MIGRATE_COOLDOWN_MS = 2 * 60 * 1000;
 
   // Estado de status das fotos na fila de upload
   const [photoStats, setPhotoStats] = useState({ pending: 0, uploading: 0, failed: 0 });
@@ -272,6 +274,12 @@ export default function Obras() {
       console.log('📴 Offline - pulando busca do Supabase');
       return;
     }
+
+    const now = Date.now();
+    if (now - lastMigrateAtRef.current < MIGRATE_COOLDOWN_MS) {
+      return;
+    }
+    lastMigrateAtRef.current = now;
 
     try {
       const roleAtual = role || userRole;
@@ -494,6 +502,7 @@ export default function Obras() {
   );
 
   const onRefresh = () => {
+    lastMigrateAtRef.current = 0; // força re-busca do Supabase no pull-to-refresh
     setRefreshing(true);
     reloadAllObras().finally(() => setRefreshing(false));
   };

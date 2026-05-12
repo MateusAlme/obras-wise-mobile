@@ -10,7 +10,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { captureError } from './sentry';
 import { logger } from '../utils/logger';
 import { processObraPhotos } from './photo-queue';
-import { getAllPhotoMetadata, deletePhotoBackup, resetLostPhotosByIds, ensurePhotoMetadataFromUri, ensurePhotoMetadataById, type PhotoMetadata } from './photo-backup';
+import { getAllPhotoMetadata, getPhotoMetadatasByIds, deletePhotoBackup, resetLostPhotosByIds, ensurePhotoMetadataFromUri, ensurePhotoMetadataById, type PhotoMetadata } from './photo-backup';
 import { getLocalObras } from './offline-sync';
 
 const PENDING_SERVICOS_KEY = '@servicos_pending_sync';
@@ -547,7 +547,7 @@ async function resolveLocalPhotosToUrls(
 
   if (needsUpload.length === 0) return fotosField;
 
-  // processObraPhotos e getAllPhotoMetadata ja importados no topo do arquivo
+  // processObraPhotos e getPhotoMetadatasByIds ja importados no topo do arquivo
 
   const localPhotoIds: string[] = needsUpload.map((item: any) =>
     typeof item === 'string' ? item : (item.id || item.photoId)
@@ -590,8 +590,8 @@ async function resolveLocalPhotosToUrls(
     // Ignora erro de upload e mantem URI local para exibicao offline
   }
 
-  // Busca metadados de TODAS as fotos para montar o mapa completo (URL + geo)
-  const allMetadata = await getAllPhotoMetadata();
+  // Busca metadados apenas dos IDs relevantes para montar o mapa (URL + geo)
+  const allMetadata = await getPhotoMetadatasByIds(localPhotoIds);
 
   type ResolvedMeta = { url: string; latitude?: number | null; longitude?: number | null; utmX?: number | null; utmY?: number | null; utmZone?: string | null };
   const metaMap: Record<string, ResolvedMeta> = {};
@@ -1003,7 +1003,7 @@ async function hydrateServicosPhotoFields(servicos: Servico[]): Promise<Servico[
 
   if (candidateIds.size === 0) return servicos;
 
-  const allMetadata = await getAllPhotoMetadata();
+  const allMetadata = await getPhotoMetadatasByIds([...candidateIds]);
   const metadataMap = new Map(allMetadata.map((meta) => [meta.id, meta]));
 
   return servicos.map((servico) => {
@@ -1799,22 +1799,21 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
       //  CLEANUP SEGURO: backups fsicos removidos SOMENTE apos confirma?fAaAaaAaAaAaaAAAAaAaaAAAasAAaAA?f??s?,?o do banco.
       // No  feito no photo-queue para evitar dele?fAaAaaAaAaAaaAAAAaAaaAAAasAAaAA?f??s?,?o antes do INSERT/UPDATE confirmar.
       try {
-        // getAllPhotoMetadata e deletePhotoBackup ja importados no topo do arquivo
-        const allMeta = await getAllPhotoMetadata();
+        const snapshotPhotoIds: string[] = [];
         for (const key of fotosDocKeys) {
-          const items: any[] = fotosSnapshot[key] || [];
-          for (const item of items) {
+          for (const item of (fotosSnapshot[key] || []) as any[]) {
             const photoId = typeof item === 'string' ? item : (item?.id || item?.photoId);
-            if (!photoId) continue;
-            const meta = allMeta.find((m) => m.id === photoId);
-            if (meta?.uploaded && (meta.uploadUrl || meta.supabaseUrl)) {
-              // Fire-and-forget: falha nao impede o fluxo
-              deletePhotoBackup(photoId).catch(() => {});
-            }
+            if (photoId) snapshotPhotoIds.push(photoId);
+          }
+        }
+        const allMeta = await getPhotoMetadatasByIds(snapshotPhotoIds);
+        for (const meta of allMeta) {
+          if (meta.uploaded && (meta.uploadUrl || meta.supabaseUrl)) {
+            deletePhotoBackup(meta.id).catch(() => {});
           }
         }
       } catch {
-        // No crtico: arquivos sero removidos na prxima limpeza de manuten?fAaAaaAaAaAaaAAAAaAaaAAAasAAaAA?f??s?,?o
+        // nao critico: arquivos serao removidos na proxima limpeza de manutencao
       }
     } else {
       await saveServicoLocal(servicoLocal);
