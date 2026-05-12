@@ -431,6 +431,10 @@ export default function Obras() {
 
       setOnlineObras(obrasFormatadas);
       console.log(`✅ ${obrasFormatadas.length} obra(s) carregadas`);
+      const indexList = obrasFormatadas.map((obra) =>
+        Object.fromEntries(Object.entries(obra).filter(([k]) => !k.startsWith('fotos_') && !k.startsWith('doc_')))
+      );
+      AsyncStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(indexList)).catch(() => {});
     } catch (err) {
       console.error('Erro ao carregar obras:', err);
     } finally {

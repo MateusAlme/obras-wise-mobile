@@ -2,7 +2,7 @@
   "expo": {
     "name": "Obras Teccel",
     "slug": "obras-wise-mobile",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -29,7 +29,7 @@
         "backgroundColor": "#FF0000"
       },
       "package": "com.obraswise.mobile",
-      "versionCode": 10,
+      "versionCode": 11,
       "minSdkVersion": 26,
       "targetSdkVersion": 34,
       "permissions": [

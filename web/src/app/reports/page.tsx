@@ -395,7 +395,12 @@ export default function ReportsPage() {
       const obrasById = new Map(obrasBase.map((obra) => [obra.id, obra]))
       const servicosNormalizados = servicosData.map((servico: any) => {
         const parentObra = obrasById.get(servico.obra_id)
-        const base: Partial<ReportBook> = parentObra ? { ...parentObra } : {
+
+        // Metadata do pai — sem campos de foto, pois o serviço é a fonte canônica deles
+        const stripPhotoFields = (obj: Record<string, any>) =>
+          Object.fromEntries(Object.entries(obj).filter(([k]) => !k.startsWith('fotos_') && !k.startsWith('doc_') && k !== 'postes_data'))
+
+        const base: Partial<ReportBook> = parentObra ? stripPhotoFields(parentObra as any) as Partial<ReportBook> : {
           id: servico.obra_id,
           data: servico.created_at,
           obra: servico.obra_id,
@@ -427,7 +432,11 @@ export default function ReportsPage() {
         } as ReportBook
       })
 
-      setObras(mergeDuplicateReportBooks([...obrasBase, ...servicosNormalizados]))
+      // Ocultar linhas da tabela obras que já possuem serviços na tabela servicos.
+      // Nesse caso, os serviços são a fonte canônica dos dados (fotos, status, etc).
+      const obraIdsComServicos = new Set(servicosNormalizados.map((s) => s.parent_obra_id).filter(Boolean))
+      const obrasParaExibir = obrasBase.filter((obra) => !obraIdsComServicos.has(obra.id))
+      setObras(mergeDuplicateReportBooks([...obrasParaExibir, ...servicosNormalizados]))
     } catch (error) {
       console.error('Erro ao carregar obras:', error)
     } finally {
