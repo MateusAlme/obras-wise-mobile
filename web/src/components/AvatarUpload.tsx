@@ -123,8 +123,8 @@ export default function AvatarUpload({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div className={`relative ${sizeClasses[size]} rounded-full overflow-hidden bg-gray-200`}>
+    <div className="flex flex-col items-center gap-4">
+      <div className={`relative ${sizeClasses[size]} rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-700 ring-4 ring-white dark:ring-slate-900 shadow-xl`}>
         {avatarUrl ? (
           <Image
             src={avatarUrl}
@@ -134,13 +134,13 @@ export default function AvatarUpload({
             unoptimized
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-2xl font-bold">
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-primary to-blue-600 text-white text-2xl font-bold">
             ?
           </div>
         )}
 
         {uploading && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/55 flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
           </div>
         )}
@@ -155,12 +155,12 @@ export default function AvatarUpload({
         className="hidden"
       />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-600/25 transition-all hover:bg-blue-700 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
         >
           {avatarUrl ? 'Alterar Foto' : 'Adicionar Foto'}
         </button>
@@ -170,7 +170,7 @@ export default function AvatarUpload({
             type="button"
             onClick={removeAvatar}
             disabled={uploading}
-            className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-red-600/20 transition-all hover:bg-red-700 hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           >
             Remover
           </button>
@@ -178,10 +178,10 @@ export default function AvatarUpload({
       </div>
 
       {error && (
-        <p className="text-xs text-red-600 text-center max-w-xs">{error}</p>
+        <p className="max-w-xs rounded-lg bg-red-50 dark:bg-red-900/20 px-3 py-2 text-center text-xs font-medium text-red-700 dark:text-red-300">{error}</p>
       )}
 
-      <p className="text-xs text-gray-500 text-center max-w-xs">
+      <p className="max-w-xs text-center text-xs text-slate-500 dark:text-slate-400">
         JPG, PNG ou WebP. Máximo 2MB.
       </p>
     </div>

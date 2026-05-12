@@ -235,8 +235,8 @@ export default function UsersPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
               </svg>
             </div>
-            <p className="text-3xl font-bold text-slate-900 tracking-tight">{users.length}</p>
-            <p className="text-sm font-semibold text-slate-700 mt-0.5">Total</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{users.length}</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-0.5">Total</p>
           </div>
           <div className="stat-card">
             <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl flex items-center justify-center shadow-sm shadow-violet-500/30 mb-4">
@@ -244,8 +244,8 @@ export default function UsersPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
             </div>
-            <p className="text-3xl font-bold text-slate-900 tracking-tight">{admins}</p>
-            <p className="text-sm font-semibold text-slate-700 mt-0.5">Admins</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{admins}</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-0.5">Admins</p>
           </div>
           <div className="stat-card">
             <div className="w-11 h-11 bg-gradient-to-br from-slate-500 to-slate-600 rounded-xl flex items-center justify-center shadow-sm shadow-slate-500/20 mb-4">
@@ -254,14 +254,14 @@ export default function UsersPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
               </svg>
             </div>
-            <p className="text-3xl font-bold text-slate-900 tracking-tight">{viewers}</p>
-            <p className="text-sm font-semibold text-slate-700 mt-0.5">Visualizadores</p>
+            <p className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{viewers}</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-300 mt-0.5">Visualizadores</p>
           </div>
         </div>
 
         {/* Search */}
         <div className="relative mb-5">
-          <svg className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 text-gray-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -276,8 +276,8 @@ export default function UsersPage() {
         {/* Table */}
         <div className="table-wrapper">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-50">
-              <thead className="bg-gray-50/50">
+            <table className="min-w-full divide-y divide-gray-50 dark:divide-slate-700">
+              <thead className="bg-gray-50/50 dark:bg-slate-700/50">
                 <tr>
                   <th className="th">Usuário</th>
                   <th className="th">Perfil</th>
@@ -286,23 +286,23 @@ export default function UsersPage() {
                   <th className="th-center">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
                 {filteredUsers.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
+                  <tr key={u.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/40 transition-colors">
                     <td className="td">
                       <div className="flex items-center gap-3">
                         <div className="relative flex-shrink-0 h-9 w-9 rounded-lg overflow-hidden">
                           {u.avatar_url ? (
                             <Image src={u.avatar_url} alt={u.full_name || u.email} fill className="object-cover" unoptimized />
                           ) : (
-                            <div className={`w-full h-full ${u.role === 'admin' ? 'bg-purple-600' : 'bg-slate-500'} text-white flex items-center justify-center text-xs font-bold`}>
+                            <div className={`w-full h-full ${u.role === 'admin' ? 'bg-purple-600' : 'bg-slate-500 dark:bg-slate-600'} text-white flex items-center justify-center text-xs font-bold`}>
                               {(u.full_name || u.email).substring(0, 2).toUpperCase()}
                             </div>
                           )}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">{u.full_name || '—'}</p>
-                          <p className="text-xs text-gray-400">{u.email}</p>
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{u.full_name || '—'}</p>
+                          <p className="text-xs text-gray-400 dark:text-slate-400">{u.email}</p>
                         </div>
                       </div>
                     </td>
@@ -311,12 +311,12 @@ export default function UsersPage() {
                         {u.role === 'admin' ? 'Admin' : 'Visualizador'}
                       </span>
                     </td>
-                    <td className="td text-gray-400">
+                    <td className="td text-gray-400 dark:text-slate-300">
                       {u.last_sign_in_at
                         ? format(new Date(u.last_sign_in_at), "dd/MM/yy HH:mm", { locale: ptBR })
                         : 'Nunca'}
                     </td>
-                    <td className="td text-gray-400">
+                    <td className="td text-gray-400 dark:text-slate-300">
                       {format(new Date(u.created_at), "dd/MM/yy", { locale: ptBR })}
                     </td>
                     <td className="td">
@@ -324,7 +324,7 @@ export default function UsersPage() {
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => openEditModal(u)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="p-2 text-gray-400 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                             title="Editar"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -334,7 +334,7 @@ export default function UsersPage() {
                           {u.email !== 'mateusalmeidacz@gmail.com' && (
                             <button
                               onClick={() => handleDelete(u)}
-                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-2 text-gray-400 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                               title="Excluir"
                             >
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -344,7 +344,7 @@ export default function UsersPage() {
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-gray-300 text-center block">—</span>
+                        <span className="text-xs text-gray-300 dark:text-slate-600 text-center block">—</span>
                       )}
                     </td>
                   </tr>
@@ -355,12 +355,12 @@ export default function UsersPage() {
 
           {filteredUsers.length === 0 && (
             <div className="text-center py-16">
-              <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-14 h-14 bg-gray-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                <svg className="w-7 h-7 text-gray-300 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               </div>
-              <p className="text-sm font-medium text-gray-400">
+              <p className="text-sm font-medium text-gray-400 dark:text-slate-400">
                 {searchTerm ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}
               </p>
             </div>
@@ -382,7 +382,7 @@ export default function UsersPage() {
                   </div>
                   <h2 className="modal-title">{isCreating ? 'Novo Usuário' : 'Editar Usuário'}</h2>
                 </div>
-                <button onClick={closeModal} disabled={submitting} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                <button onClick={closeModal} disabled={submitting} className="p-1.5 text-gray-400 dark:text-slate-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -392,7 +392,7 @@ export default function UsersPage() {
               <form onSubmit={handleSubmit}>
                 <div className="modal-body space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Email *</label>
+                    <label className="block text-xs font-semibold text-gray-400 dark:text-slate-400 uppercase tracking-wider mb-1.5">Email *</label>
                     <input
                       type="email"
                       required
@@ -402,11 +402,11 @@ export default function UsersPage() {
                       className="input-field"
                       placeholder="usuario@exemplo.com"
                     />
-                    {!isCreating && <p className="text-xs text-gray-400 mt-1">Email não pode ser alterado</p>}
+                    {!isCreating && <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Email não pode ser alterado</p>}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Nome Completo</label>
+                    <label className="block text-xs font-semibold text-gray-400 dark:text-slate-400 uppercase tracking-wider mb-1.5">Nome Completo</label>
                     <input
                       type="text"
                       value={formData.full_name}
@@ -417,7 +417,7 @@ export default function UsersPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+                    <label className="block text-xs font-semibold text-gray-400 dark:text-slate-400 uppercase tracking-wider mb-1.5">
                       {isCreating ? 'Senha *' : 'Nova Senha'}
                     </label>
                     <input
@@ -432,12 +432,12 @@ export default function UsersPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Perfil *</label>
+                    <label className="block text-xs font-semibold text-gray-400 dark:text-slate-400 uppercase tracking-wider mb-2">Perfil *</label>
                     <div className="grid grid-cols-2 gap-2">
                       {(['admin', 'viewer'] as const).map((r) => (
                         <label
                           key={r}
-                          className={`flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all ${formData.role === r ? 'border-blue-500 bg-blue-50' : 'border-gray-100 hover:border-gray-200'}`}
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-all ${formData.role === r ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30' : 'border-gray-100 dark:border-slate-700 hover:border-gray-200 dark:hover:border-slate-600'}`}
                         >
                           <input
                             type="radio"
@@ -446,10 +446,10 @@ export default function UsersPage() {
                             onChange={() => setFormData({ ...formData, role: r })}
                             className="sr-only"
                           />
-                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${formData.role === r ? 'border-blue-500 bg-blue-500' : 'border-gray-300'}`}>
+                          <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${formData.role === r ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-slate-500'}`}>
                             {formData.role === r && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
                           </div>
-                          <span className={`text-sm font-medium ${formData.role === r ? 'text-blue-700' : 'text-gray-600'}`}>
+                          <span className={`text-sm font-medium ${formData.role === r ? 'text-blue-700 dark:text-blue-300' : 'text-gray-600 dark:text-slate-300'}`}>
                             {r === 'admin' ? 'Administrador' : 'Visualizador'}
                           </span>
                         </label>

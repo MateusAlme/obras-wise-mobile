@@ -2116,7 +2116,7 @@ export default function ObraDetailPage() {
           <div className="mb-6 space-y-4">
             <button
               onClick={handleGoBack}
-              className="flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors group"
+              className="flex items-center gap-1.5 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors group"
             >
               <svg className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -2127,7 +2127,7 @@ export default function ObraDetailPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">{obra.obra}</h1>
+                  <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 dark:text-white tracking-tight">{obra.obra}</h1>
                   {obra.data_fechamento ? (
                     <span className="px-3 py-1 bg-green-100 text-green-800 border border-green-200 text-sm font-semibold rounded-full flex items-center gap-1.5">
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2146,7 +2146,7 @@ export default function ObraDetailPage() {
                   <span className="px-3 py-1 bg-red-600 text-white text-sm font-semibold rounded-full">
                     {obra.equipe}
                   </span>
-                  <span className="text-gray-500 text-sm">
+                  <span className="text-gray-500 dark:text-slate-400 text-sm">
                     {format(new Date(obra.data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                   </span>
                   {obra.data_fechamento && (
@@ -2162,7 +2162,7 @@ export default function ObraDetailPage() {
                     <button
                       onClick={handleReabrirObra}
                       disabled={finalizandoObra}
-                      className="px-4 py-2.5 bg-white border border-gray-300 hover:border-gray-400 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                      className="px-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 hover:border-gray-400 dark:hover:border-slate-500 text-sm font-semibold text-gray-700 dark:text-slate-200 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
@@ -2185,7 +2185,7 @@ export default function ObraDetailPage() {
                 {isAdmin && (
                   <button
                     onClick={handleOpenEditModal}
-                    className="px-4 py-2.5 bg-white border border-gray-200 hover:border-indigo-400 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                    className="px-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 text-sm font-semibold text-gray-700 dark:text-slate-200 rounded-lg shadow-sm transition-colors flex items-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -2196,7 +2196,7 @@ export default function ObraDetailPage() {
                 <button
                   onClick={handleExportPdf}
                   disabled={exportingPdf}
-                  className="px-4 py-2.5 bg-white border border-gray-200 hover:border-blue-500 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-blue-500 dark:hover:border-blue-400 text-sm font-semibold text-gray-700 dark:text-slate-200 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {exportingPdf ? "Gerando PDF..." : "Exportar PDF"}
                 </button>
@@ -2209,22 +2209,22 @@ export default function ObraDetailPage() {
                 </button>
               </div>
             </div>
-            <p className="text-sm text-gray-400">Clique em uma foto para visualizar, trocar ou editar a placa.</p>
+            <p className="text-sm text-gray-400 dark:text-slate-500">Clique em uma foto para visualizar, trocar ou editar a placa.</p>
           </div>
 
 
           {/* Info Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Responsável</div>
-              <div className="text-sm font-semibold text-gray-900">{obra.responsavel || '—'}</div>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+              <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Responsável</div>
+              <div className="text-sm font-semibold text-gray-900 dark:text-white">{obra.responsavel || '—'}</div>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Tipo de Serviço</div>
-              <div className="text-sm font-semibold text-gray-900">{obra.tipo_servico}</div>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+              <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Tipo de Serviço</div>
+              <div className="text-sm font-semibold text-gray-900 dark:text-white">{obra.tipo_servico}</div>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Status</div>
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+              <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Status</div>
               <div>
                 {obra.data_fechamento ? (
                   <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">Concluída</span>
@@ -2233,11 +2233,11 @@ export default function ObraDetailPage() {
                 )}
               </div>
             </div>
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
+            <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+              <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">
                 {obra.data_fechamento ? 'Concluída em' : 'Data da Obra'}
               </div>
-              <div className="text-sm font-semibold text-gray-900">
+              <div className="text-sm font-semibold text-gray-900 dark:text-white">
                 {obra.data_fechamento
                   ? format(new Date(obra.data_fechamento), "dd/MM/yyyy HH:mm", { locale: ptBR })
                   : format(new Date(obra.data), "dd/MM/yyyy", { locale: ptBR })}
@@ -2247,7 +2247,7 @@ export default function ObraDetailPage() {
 
           {/* Atipicidades */}
           <div className="card-padded mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
               <svg className="w-7 h-7 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
@@ -2256,7 +2256,7 @@ export default function ObraDetailPage() {
 
             {/* Adicionar Atipicidade */}
             <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Adicionar Atipicidade</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Adicionar Atipicidade</h3>
               <div className="flex gap-3">
                 <select
                   value={selectedDropdownId || ''}
@@ -2266,7 +2266,7 @@ export default function ObraDetailPage() {
                       handleAddAtipicidade()
                     }
                   }}
-                  className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-sm"
+                  className="flex-1 px-4 py-3 border-2 border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-sm"
                 >
                   <option value="">Selecione uma atipicidade...</option>
                   {ATIPICIDADES.map((atip) => (
@@ -2291,7 +2291,7 @@ export default function ObraDetailPage() {
             {/* Lista de Atipicidades Selecionadas */}
             {selectedAtipicidades.length > 0 && (
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
                   Atipicidades Selecionadas ({selectedAtipicidades.length})
                 </h3>
                 <div className="space-y-3">
@@ -2309,9 +2309,9 @@ export default function ObraDetailPage() {
                               <span className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center font-bold text-sm">
                                 {atip.id}
                               </span>
-                              <h4 className="font-semibold text-gray-900 text-sm">{atip.titulo}</h4>
+                              <h4 className="font-semibold text-gray-900 dark:text-white text-sm">{atip.titulo}</h4>
                             </div>
-                            <p className="text-gray-700 text-sm leading-relaxed">{atip.descricao}</p>
+                            <p className="text-gray-700 dark:text-slate-300 text-sm leading-relaxed">{atip.descricao}</p>
                           </div>
                           <button
                             onClick={() => handleRemoveAtipicidade(id)}
@@ -2335,7 +2335,7 @@ export default function ObraDetailPage() {
           {/* Serviços Vinculados (nova arquitetura 1:N) */}
           {servicos.length > 0 && (
             <div className="card-padded mb-8">
-              <h2 className="text-xl font-bold text-slate-900 mb-4">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
                 Serviços ({servicos.length})
               </h2>
               <div className="space-y-3">
@@ -2343,7 +2343,7 @@ export default function ObraDetailPage() {
                   const isConcluido = s.status === 'completo'
                   const isEmProgresso = s.status === 'em_progresso'
                   return (
-                    <div key={s.id} className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 transition-colors">
+                    <div key={s.id} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors">
                       <div className="flex items-center gap-3 min-w-0">
                         {isConcluido ? (
                           <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full flex-shrink-0">Concluído</span>
@@ -2353,8 +2353,8 @@ export default function ObraDetailPage() {
                           <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full flex-shrink-0">Rascunho</span>
                         )}
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">{s.tipo_servico}</p>
-                          <p className="text-xs text-gray-400">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{s.tipo_servico}</p>
+                          <p className="text-xs text-gray-400 dark:text-slate-500">
                             {format(new Date(s.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                             {s.responsavel ? ` · ${s.responsavel}` : ''}
                           </p>
@@ -2362,7 +2362,7 @@ export default function ObraDetailPage() {
                       </div>
                       <a
                         href={`/servico/${s.id}`}
-                        className="ml-4 px-4 py-2 text-sm font-semibold text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors flex-shrink-0"
+                        className="ml-4 px-4 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors flex-shrink-0"
                       >
                         Ver Book →
                       </a>
@@ -2375,7 +2375,7 @@ export default function ObraDetailPage() {
 
           {/* Fotos */}
           <div className="card-padded">
-            <h2 className="text-xl font-bold text-slate-900 mb-6">Registro Fotográfico</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6">Registro Fotográfico</h2>
 
             {deveExibirGaleria('fotos_antes', obra.tipo_servico) && !(Array.isArray(obra.postes_data) && obra.postes_data.length > 0) && (
               <PhotoGallery photos={obra.fotos_antes || []} title="Fotos Antes" sectionKey="fotos_antes" {...galleryProps} />
@@ -2404,16 +2404,16 @@ export default function ObraDetailPage() {
                   ]
               return (
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Checklist de Postes</h3>
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-slate-200 mb-3">Checklist de Postes</h3>
                   {obra.postes_data!.map((poste: any, posteIndex: number) => {
                     const label = `Poste P${poste.numero || posteIndex + 1}`
                     const totalFotos = sections.reduce((acc, s) => acc + (poste[s.key]?.length || 0), 0)
                     return (
-                      <div key={posteIndex} className="mb-4 p-4 rounded-lg bg-green-50 border-l-4 border-green-500">
+                      <div key={posteIndex} className="mb-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500">
                         <div className="flex items-center gap-2 mb-3">
                           <span className="px-3 py-1 rounded-full text-sm font-bold bg-green-500 text-white">{label}</span>
-                          <span className="text-sm text-gray-500">{totalFotos} foto(s)</span>
-                          {poste.observacao ? <span className="text-sm text-gray-600 italic">{poste.observacao}</span> : null}
+                          <span className="text-sm text-gray-500 dark:text-slate-400">{totalFotos} foto(s)</span>
+                          {poste.observacao ? <span className="text-sm text-gray-600 dark:text-slate-300 italic">{poste.observacao}</span> : null}
                         </div>
                         {sections.map(s => (
                           <PhotoGallery key={s.key} photos={poste[s.key] || []} title={s.label} sectionKey={`postes_data_${posteIndex}_${s.key}`} {...galleryProps} />
@@ -2434,8 +2434,8 @@ export default function ObraDetailPage() {
 
             {/* DITAIS */}
             {(obra.fotos_ditais_abertura?.length || obra.fotos_ditais_impedir?.length || obra.fotos_ditais_testar?.length || obra.fotos_ditais_aterrar?.length || obra.fotos_ditais_sinalizar?.length) ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Método DITAIS</h3>
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Método DITAIS</h3>
                 <PhotoGallery photos={obra.fotos_ditais_abertura || []} title="1. Desligar/Abertura" sectionKey="fotos_ditais_abertura" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_ditais_impedir || []} title="2. Impedir Religamento" sectionKey="fotos_ditais_impedir" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_ditais_testar || []} title="3. Testar Ausencia de Tensao" sectionKey="fotos_ditais_testar" {...galleryProps} />
@@ -2446,8 +2446,8 @@ export default function ObraDetailPage() {
 
             {/* Book de Aterramento */}
             {(obra.fotos_aterramento_vala_aberta?.length || obra.fotos_aterramento_hastes?.length || obra.fotos_aterramento_vala_fechada?.length || obra.fotos_aterramento_medicao?.length) ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Book de Aterramento</h3>
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Book de Aterramento</h3>
                 <PhotoGallery photos={obra.fotos_aterramento_vala_aberta || []} title="Vala Aberta" sectionKey="fotos_aterramento_vala_aberta" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_aterramento_hastes || []} title="Hastes Aplicadas" sectionKey="fotos_aterramento_hastes" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_aterramento_vala_fechada || []} title="Vala Fechada" sectionKey="fotos_aterramento_vala_fechada" {...galleryProps} />
@@ -2457,8 +2457,8 @@ export default function ObraDetailPage() {
 
             {/* Transformador */}
             {(obra.fotos_transformador_laudo?.length || obra.fotos_transformador_componente_instalado?.length || obra.fotos_transformador_tombamento_instalado?.length || obra.fotos_transformador_tape?.length || obra.fotos_transformador_placa_instalado?.length || obra.fotos_transformador_instalado?.length || obra.fotos_transformador_antes_retirar?.length || obra.fotos_transformador_tombamento_retirado?.length || obra.fotos_transformador_placa_retirado?.length) ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">
                   Transformador
                   {obra.transformador_status && (
                     <span className="ml-3 text-base text-blue-600">({obra.transformador_status})</span>
@@ -2478,8 +2478,8 @@ export default function ObraDetailPage() {
 
             {/* Altimetria */}
             {(obra.fotos_altimetria_lado_fonte?.length || obra.fotos_altimetria_medicao_fonte?.length || obra.fotos_altimetria_lado_carga?.length || obra.fotos_altimetria_medicao_carga?.length) ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Altimetria</h3>
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Altimetria</h3>
                 <PhotoGallery photos={obra.fotos_altimetria_lado_fonte || []} title="Lado Fonte" sectionKey="fotos_altimetria_lado_fonte" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_altimetria_medicao_fonte || []} title="Medição Fonte" sectionKey="fotos_altimetria_medicao_fonte" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_altimetria_lado_carga || []} title="Lado Carga" sectionKey="fotos_altimetria_lado_carga" {...galleryProps} />
@@ -2489,8 +2489,8 @@ export default function ObraDetailPage() {
 
             {/* Vazamento e Limpeza de Transformador */}
             {(obra.fotos_vazamento_evidencia?.length || obra.fotos_vazamento_equipamentos_limpeza?.length || obra.fotos_vazamento_tombamento_retirado?.length || obra.fotos_vazamento_placa_retirado?.length || obra.fotos_vazamento_tombamento_instalado?.length || obra.fotos_vazamento_placa_instalado?.length || obra.fotos_vazamento_instalacao?.length) ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Vazamento e Limpeza de Transformador</h3>
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Vazamento e Limpeza de Transformador</h3>
                 <PhotoGallery photos={obra.fotos_vazamento_evidencia || []} title="Evidência" sectionKey="fotos_vazamento_evidencia" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_vazamento_equipamentos_limpeza || []} title="Equipamentos de Limpeza" sectionKey="fotos_vazamento_equipamentos_limpeza" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_vazamento_tombamento_retirado || []} title="Tombamento Retirado" sectionKey="fotos_vazamento_tombamento_retirado" {...galleryProps} />
@@ -2503,8 +2503,8 @@ export default function ObraDetailPage() {
 
             {/* Instalação do Medidor */}
             {(obra.fotos_medidor_padrao?.length || obra.fotos_medidor_leitura?.length || obra.fotos_medidor_selo_born?.length || obra.fotos_medidor_selo_caixa?.length || obra.fotos_medidor_identificador_fase?.length) ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Instalação do Medidor</h3>
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Instalação do Medidor</h3>
                 <PhotoGallery photos={obra.fotos_medidor_padrao || []} title="Padrão" sectionKey="fotos_medidor_padrao" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_medidor_leitura || []} title="Leitura" sectionKey="fotos_medidor_leitura" {...galleryProps} />
                 <PhotoGallery photos={obra.fotos_medidor_selo_born || []} title="Selo Born" sectionKey="fotos_medidor_selo_born" {...galleryProps} />
@@ -2515,8 +2515,8 @@ export default function ObraDetailPage() {
 
             {/* Checklist de Fiscalização */}
             {(obra.tipo_servico === 'Checklist' || obra.tipo_servico === 'Checklist de Fiscalização') ? (
-              <div className="mt-8 pt-8 border-t border-gray-200">
-                <h3 className="text-xl font-bold text-gray-900 mb-4">Checklist de Fiscalização</h3>
+              <div className="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Checklist de Fiscalização</h3>
 
                 {/* 1. Croqui */}
                 <PhotoGallery photos={obra.fotos_checklist_croqui || []} title="1. Croqui da Obra" sectionKey="fotos_checklist_croqui" {...galleryProps} />
@@ -2540,7 +2540,7 @@ export default function ObraDetailPage() {
                   return (
                     <div className="mb-6">
                       <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-gray-800">4. Registro dos Postes</h4>
+                        <h4 className="text-lg font-semibold text-gray-800 dark:text-slate-200">4. Registro dos Postes</h4>
                         <button
                           onClick={handleAddPoste}
                           className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
@@ -2557,13 +2557,13 @@ export default function ObraDetailPage() {
                         const label = poste.numero ? `${prefixo}${poste.numero}` : `Poste ${posteIndex + 1}`;
                         const status = poste.status || 'N/A';
                         return (
-                          <div key={sourceIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 border-red-500' : 'bg-blue-50 border-blue-500'}`}>
+                          <div key={sourceIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${poste.isAditivo ? 'bg-red-50 dark:bg-red-900/20 border-red-500' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-500'}`}>
                             <div className="flex items-center justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2">
                                 <span className={`px-3 py-1 rounded-full text-sm font-bold ${poste.isAditivo ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
                                   {label}
                                 </span>
-                                <span className="text-sm text-gray-600">Status: {status}</span>
+                                <span className="text-sm text-gray-600 dark:text-slate-300">Status: {status}</span>
                               </div>
                               <button
                                 type="button"
@@ -2586,7 +2586,7 @@ export default function ObraDetailPage() {
                         // Fallback: mostrar todas as fotos juntas se não tiver dados estruturados
                         (obra.fotos_checklist_postes?.length ?? 0) > 0
                           ? <PhotoGallery photos={obra.fotos_checklist_postes || []} title="Postes" sectionKey="fotos_checklist_postes" {...galleryProps} />
-                          : <p className="text-sm text-gray-500 italic">Nenhum poste adicionado ainda. Clique em &quot;Adicionar Poste&quot; para começar.</p>
+                          : <p className="text-sm text-gray-500 dark:text-slate-400 italic">Nenhum poste adicionado ainda. Clique em &quot;Adicionar Poste&quot; para começar.</p>
                       )}
                     </div>
                   );
@@ -2604,7 +2604,7 @@ export default function ObraDetailPage() {
                       tipo: 'emenda' as const,
                       titulo: '5. Emendas',
                       prefixo: 'E',
-                      containerClass: 'bg-orange-50 border-orange-500',
+                      containerClass: 'bg-orange-50 dark:bg-orange-900/20 border-orange-500',
                       badgeClass: 'bg-orange-500 text-white',
                       btnClass: 'bg-orange-500 hover:bg-orange-600',
                     },
@@ -2612,7 +2612,7 @@ export default function ObraDetailPage() {
                       tipo: 'poda' as const,
                       titulo: '6. Podas',
                       prefixo: 'PD',
-                      containerClass: 'bg-emerald-50 border-emerald-500',
+                      containerClass: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500',
                       badgeClass: 'bg-emerald-500 text-white',
                       btnClass: 'bg-emerald-500 hover:bg-emerald-600',
                     },
@@ -2620,7 +2620,7 @@ export default function ObraDetailPage() {
                       tipo: 'seccionamento' as const,
                       titulo: '7. Seccionamentos',
                       prefixo: 'S',
-                      containerClass: 'bg-purple-50 border-purple-500',
+                      containerClass: 'bg-purple-50 dark:bg-purple-900/20 border-purple-500',
                       badgeClass: 'bg-purple-500 text-white',
                       btnClass: 'bg-purple-500 hover:bg-purple-600',
                     }
@@ -2639,7 +2639,7 @@ export default function ObraDetailPage() {
                         {grupos.map((grupo) => (
                           <div key={grupo.tipo} className="mb-6">
                             <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-lg font-semibold text-gray-800">{grupo.titulo}</h4>
+                              <h4 className="text-lg font-semibold text-gray-800 dark:text-slate-200">{grupo.titulo}</h4>
                               <button
                                 onClick={() => handleAddSeccionamentoItem(grupo.tipo)}
                                 className={`px-3 py-2 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 ${grupo.btnClass}`}
@@ -2664,7 +2664,7 @@ export default function ObraDetailPage() {
                         return (
                           <div key={grupo.tipo} className="mb-6">
                             <div className="flex items-center justify-between mb-3">
-                              <h4 className="text-lg font-semibold text-gray-800">{grupo.titulo}</h4>
+                              <h4 className="text-lg font-semibold text-gray-800 dark:text-slate-200">{grupo.titulo}</h4>
                               <button
                                 onClick={() => handleAddSeccionamentoItem(grupo.tipo)}
                                 className={`px-3 py-2 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 ${grupo.btnClass}`}
@@ -2693,7 +2693,7 @@ export default function ObraDetailPage() {
                                       {label}
                                     </span>
                                     {mostrarTrecho && (
-                                      <span className="text-sm text-gray-600">
+                                      <span className="text-sm text-gray-600 dark:text-slate-300">
                                         Trecho: P{posteInicio ?? '?'} - P{posteFim ?? '?'}
                                       </span>
                                     )}
@@ -2702,7 +2702,7 @@ export default function ObraDetailPage() {
                                 </div>
                               )
                             }) : (
-                              <p className="text-sm text-gray-500 italic">Nenhum item adicionado ainda.</p>
+                              <p className="text-sm text-gray-500 dark:text-slate-400 italic">Nenhum item adicionado ainda.</p>
                             )}
                           </div>
                         )
@@ -2714,7 +2714,7 @@ export default function ObraDetailPage() {
                 {/* 6. Aterramentos de Cerca - suporta formato novo (estruturado) e antigo */}
                 {getAterramentosFotos(obra).length > 0 && (
                   <div className="mb-6">
-                    <h4 className="text-lg font-semibold text-gray-800 mb-3">8. Aterramento de Cerca</h4>
+                    <h4 className="text-lg font-semibold text-gray-800 dark:text-slate-200 mb-3">8. Aterramento de Cerca</h4>
                     {getAterramentosFotos(obra).map((aterramento, index) => (
                       <PhotoGallery
                         key={`aterramento_${index}`}
@@ -2742,7 +2742,7 @@ export default function ObraDetailPage() {
                 {/* 11. Hastes Aplicadas e Medição do Termômetro */}
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-lg font-semibold text-gray-800">📸 13. Hastes Aplicadas e Medição do Termômetro</h4>
+                    <h4 className="text-lg font-semibold text-gray-800 dark:text-slate-200">📸 13. Hastes Aplicadas e Medição do Termômetro</h4>
                     <button
                       type="button"
                       onClick={handleAddHasteTermometroPoint}
@@ -2789,13 +2789,13 @@ export default function ObraDetailPage() {
                         const totalFotos = hasteFotos.length + termoFotos.length;
 
                         return (
-                          <div key={sourceIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${ponto.isAditivo ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'}`}>
+                          <div key={sourceIndex} className={`mb-4 p-4 rounded-lg border-l-4 ${ponto.isAditivo ? 'bg-red-50 dark:bg-red-900/20 border-red-500' : 'bg-green-50 dark:bg-green-900/20 border-green-500'}`}>
                             <div className="flex items-center justify-between gap-2 mb-2">
                               <div className="flex items-center gap-2">
                                 <span className={`px-3 py-1 rounded-full text-sm font-bold ${ponto.isAditivo ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
                                   {label}
                                 </span>
-                                <span className="text-sm text-gray-500">
+                                <span className="text-sm text-gray-500 dark:text-slate-400">
                                   ({totalFotos} {totalFotos === 1 ? 'foto' : 'fotos'})
                                 </span>
                               </div>
@@ -2810,7 +2810,7 @@ export default function ObraDetailPage() {
                             <PhotoGallery photos={hasteFotos} title="Haste Aplicada" sectionKey={`haste_${sourceIndex}`} {...galleryProps} />
                             <PhotoGallery photos={termoFotos} title="Medição do Termômetro" sectionKey={`termo_${sourceIndex}`} {...galleryProps} />
                             {totalFotos === 0 && (
-                              <p className="text-gray-500 text-sm italic">Nenhuma foto adicionada ainda.</p>
+                              <p className="text-gray-500 dark:text-slate-400 text-sm italic">Nenhuma foto adicionada ainda.</p>
                             )}
                           </div>
                         );
@@ -2887,7 +2887,7 @@ export default function ObraDetailPage() {
                           </div>
                           <input
                             type="text"
-                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            className="input-field bg-slate-50 dark:bg-slate-800 pl-9 focus:bg-white dark:focus:bg-slate-700 transition-colors"
                             placeholder="Ex: Equipe A"
                             value={editForm.equipe}
                             onChange={(e) => setEditForm({ ...editForm, equipe: e.target.value })}
@@ -2909,7 +2909,7 @@ export default function ObraDetailPage() {
                           </div>
                           <input
                             type="text"
-                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            className="input-field bg-slate-50 dark:bg-slate-800 pl-9 focus:bg-white dark:focus:bg-slate-700 transition-colors"
                             placeholder="Ex: 2024-001"
                             value={editForm.obra}
                             onChange={(e) => setEditForm({ ...editForm, obra: e.target.value })}
@@ -2931,7 +2931,7 @@ export default function ObraDetailPage() {
                           </div>
                           <input
                             type="date"
-                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            className="input-field bg-slate-50 dark:bg-slate-800 pl-9 focus:bg-white dark:focus:bg-slate-700 transition-colors"
                             value={editForm.data}
                             onChange={(e) => setEditForm({ ...editForm, data: e.target.value })}
                             required
@@ -2952,7 +2952,7 @@ export default function ObraDetailPage() {
                           </div>
                           <input
                             type="text"
-                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            className="input-field bg-slate-50 dark:bg-slate-800 pl-9 focus:bg-white dark:focus:bg-slate-700 transition-colors"
                             placeholder="Nome do responsável"
                             value={editForm.responsavel}
                             onChange={(e) => setEditForm({ ...editForm, responsavel: e.target.value })}
@@ -2974,7 +2974,7 @@ export default function ObraDetailPage() {
                           </div>
                           <input
                             type="text"
-                            className="input-field bg-slate-50 pl-9 focus:bg-white transition-colors"
+                            className="input-field bg-slate-50 dark:bg-slate-800 pl-9 focus:bg-white dark:focus:bg-slate-700 transition-colors"
                             placeholder="Ex: Checklist de Fiscalização"
                             value={editForm.tipo_servico}
                             onChange={(e) => setEditForm({ ...editForm, tipo_servico: e.target.value })}

@@ -1260,21 +1260,21 @@ export default function ReportsPage() {
           />
 
           {/* Filtros */}
-          <div className="mb-8 bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
+          <div className="mb-8 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-2 mb-4">
-              <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
-              <h3 className="text-base font-semibold text-slate-800">Filtros</h3>
+              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">Filtros</h3>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Buscar Nº Obra */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Buscar Nº Obra</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Buscar Nº Obra</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5 text-slate-400 dark:text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                   </div>
@@ -1283,12 +1283,12 @@ export default function ReportsPage() {
                     placeholder="Digite o número..."
                     value={searchNumeroObra}
                     onChange={(e) => setSearchNumeroObra(e.target.value)}
-                    className="w-full pl-10 pr-10 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full pl-10 pr-10 py-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                   {searchNumeroObra && (
                     <button
                       onClick={() => setSearchNumeroObra('')}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     >
                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1299,9 +1299,9 @@ export default function ReportsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Período</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Período</label>
                 <select
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   value={selectedPeriod}
                   onChange={(e) => setSelectedPeriod(e.target.value)}
                 >
@@ -1313,9 +1313,9 @@ export default function ReportsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Equipe</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Equipe</label>
                 <select
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   value={selectedTeam}
                   onChange={(e) => setSelectedTeam(e.target.value)}
                 >
@@ -1329,9 +1329,9 @@ export default function ReportsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Tipo de Serviço</label>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Tipo de Serviço</label>
                 <select
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   value={selectedService}
                   onChange={(e) => setSelectedService(e.target.value)}
                 >
@@ -1438,10 +1438,10 @@ export default function ReportsPage() {
           </div>
 
           {/* Tabela */}
-          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full">
-                <thead className="bg-slate-50 border-b-2 border-slate-200">
+                <thead className="bg-slate-50 dark:bg-slate-700/50 border-b-2 border-slate-200 dark:border-slate-700">
                   <tr>
                     <th className="px-6 py-4 text-center w-12">
                       <input
@@ -1451,30 +1451,30 @@ export default function ReportsPage() {
                         className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                       />
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       Nº OBRA
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       EQUIPE
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       TIPO DE SERVIÇO
                     </th>
-                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       STATUS
                     </th>
-                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       FOTOS
                     </th>
-                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       DATA
                     </th>
-                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-center text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                       AÇÕES
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   {(() => {
                     const obrasOnly = filteredObras.filter(o => !isServiceRow(o))
                     const servicosOnly = filteredObras.filter(o => isServiceRow(o))
@@ -1517,9 +1517,9 @@ export default function ReportsPage() {
                       const date = parseUtcDate(dateStr)
                       return (
                         <td className="px-6 py-4">
-                          <span className="text-sm text-slate-600">{format(date, "dd/MM/yyyy", { locale: ptBR })}</span>
+                          <span className="text-sm text-slate-600 dark:text-slate-300">{format(date, "dd/MM/yyyy", { locale: ptBR })}</span>
                           <br />
-                          <span className="text-xs text-slate-500">{format(date, "HH:mm", { locale: ptBR })}</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{format(date, "HH:mm", { locale: ptBR })}</span>
                         </td>
                       )
                     }
@@ -1528,7 +1528,7 @@ export default function ReportsPage() {
                       <tr
                         key={servico.id}
                         onDoubleClick={() => { void handleOpenBook(servico.id) }}
-                        className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedObras.has(servico.id) ? 'bg-blue-50' : ''}`}
+                        className={`hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer ${selectedObras.has(servico.id) ? 'bg-blue-50 dark:bg-blue-900/25' : ''}`}
                       >
                         <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
@@ -1541,15 +1541,15 @@ export default function ReportsPage() {
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm font-bold text-slate-900">{servico.obra || '-'}</span>
+                          <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{servico.obra || '-'}</span>
                         </td>
-                        <td className="px-6 py-4"><span className="text-sm text-slate-900">{servico.equipe}</span></td>
+                        <td className="px-6 py-4"><span className="text-sm text-slate-900 dark:text-slate-100">{servico.equipe}</span></td>
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{servico.tipo_servico}</span>
+                          <span className="inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 rounded-full text-xs font-semibold">{servico.tipo_servico}</span>
                         </td>
                         <td className="px-6 py-4 text-center">{renderStatusBadge(servico)}</td>
                         <td className="px-6 py-4 text-center">
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-semibold">
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full text-sm font-semibold">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                             {getTotalPhotosCount(servico)}
                           </span>
@@ -1568,7 +1568,7 @@ export default function ReportsPage() {
                               setMenuPosition({ top, left })
                               setOpenMenuId(servico.id)
                             }}
-                            className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === servico.id ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                            className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === servico.id ? 'bg-slate-200 dark:bg-slate-600 text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200'}`}
                             title="Opções"
                           >
                             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></svg>
@@ -1587,7 +1587,7 @@ export default function ReportsPage() {
                         <tr
                           key={obra.id}
                           onDoubleClick={() => { void handleOpenBook(obra.id) }}
-                          className={`hover:bg-slate-50 transition-colors cursor-pointer ${selectedObras.has(obra.id) ? 'bg-blue-50' : ''}`}
+                          className={`hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors cursor-pointer ${selectedObras.has(obra.id) ? 'bg-blue-50 dark:bg-blue-900/25' : ''}`}
                         >
                           <td className="px-6 py-4 text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1.5">
@@ -1600,15 +1600,15 @@ export default function ReportsPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="text-sm font-bold text-slate-900">{obra.obra || '-'}</span>
+                            <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{obra.obra || '-'}</span>
                           </td>
-                          <td className="px-6 py-4"><span className="text-sm text-slate-900">{obra.equipe}</span></td>
+                          <td className="px-6 py-4"><span className="text-sm text-slate-900 dark:text-slate-100">{obra.equipe}</span></td>
                           <td className="px-6 py-4">
-                            <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">{obra.tipo_servico}</span>
+                            <span className="inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200 rounded-full text-xs font-semibold">{obra.tipo_servico}</span>
                           </td>
                           <td className="px-6 py-4 text-center">{renderStatusBadge(obra)}</td>
                           <td className="px-6 py-4 text-center">
-                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-sm font-semibold">
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full text-sm font-semibold">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                               {getTotalPhotosCount(obra)}
                             </span>
@@ -1627,7 +1627,7 @@ export default function ReportsPage() {
                                 setMenuPosition({ top, left })
                                 setOpenMenuId(obra.id)
                               }}
-                              className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === obra.id ? 'bg-slate-200 text-slate-900' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'}`}
+                              className={`p-2 rounded-lg transition-all duration-150 ${openMenuId === obra.id ? 'bg-slate-200 dark:bg-slate-600 text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200'}`}
                               title="Opções"
                             >
                               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" /></svg>
@@ -1668,8 +1668,8 @@ export default function ReportsPage() {
                     d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                   />
                 </svg>
-                <p className="text-xl text-slate-500 font-medium">Nenhuma obra encontrada</p>
-                <p className="text-sm text-slate-400 mt-2">Ajuste os filtros para ver mais resultados</p>
+                <p className="text-xl text-slate-500 dark:text-slate-300 font-medium">Nenhuma obra encontrada</p>
+                <p className="text-sm text-slate-400 dark:text-slate-500 mt-2">Ajuste os filtros para ver mais resultados</p>
               </div>
             )}
           </div>
@@ -1970,7 +1970,7 @@ export default function ReportsPage() {
             ></div>
 
             {/* Drawer - Animação slide-in */}
-            <div className="absolute right-0 top-0 h-full w-full md:w-[85%] lg:w-[75%] bg-gradient-to-b from-slate-50 to-white shadow-2xl overflow-y-auto animate-slideInRight">
+            <div className="absolute right-0 top-0 h-full w-full md:w-[85%] lg:w-[75%] bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 shadow-2xl overflow-y-auto animate-slideInRight">
               {/* Header Moderno */}
               <div className="sticky top-0 z-10 bg-gradient-to-r from-primary via-primary-dark to-primary text-white shadow-xl">
                 <div className="px-8 py-6">
@@ -2015,9 +2015,9 @@ export default function ReportsPage() {
               {/* Conteúdo do Book */}
               <div className="px-8 py-8">
                 {/* Card de Informações - Design Moderno */}
-                <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden mb-8">
-                  <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200">
-                    <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden mb-8">
+                  <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-700/80 px-6 py-4 border-b border-slate-200 dark:border-slate-600">
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                       <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
                         <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" />
@@ -2028,39 +2028,39 @@ export default function ReportsPage() {
                   <div className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Nº da Obra</p>
-                        <p className="text-2xl font-bold text-slate-900">{selectedObraForBook.obra || '-'}</p>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Nº da Obra</p>
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{selectedObraForBook.obra || '-'}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Placa</p>
-                        <p className="text-lg font-semibold text-slate-700">{selectedObraForBook.placa || '-'}</p>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Placa</p>
+                        <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">{selectedObraForBook.placa || '-'}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Equipe</p>
-                        <p className="text-lg font-semibold text-slate-700">{selectedObraForBook.equipe}</p>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Equipe</p>
+                        <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">{selectedObraForBook.equipe}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tipo de Serviço</p>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tipo de Serviço</p>
                         <p className="text-lg font-semibold text-primary">{selectedObraForBook.tipo_servico}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Data</p>
-                        <p className="text-lg font-semibold text-slate-700">
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Data</p>
+                        <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">
                           {format(new Date(selectedObraForBook.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                         </p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Responsável</p>
-                        <p className="text-lg font-semibold text-slate-700">{selectedObraForBook.responsavel}</p>
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Responsável</p>
+                        <p className="text-lg font-semibold text-slate-700 dark:text-slate-200">{selectedObraForBook.responsavel}</p>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 {servicosDaObra.length > 0 && selectedObraForBook?.source_table !== 'servicos' && (
-                  <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden mb-8">
-                    <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4 border-b border-slate-200">
-                      <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden mb-8">
+                    <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700 dark:to-slate-700/80 px-6 py-4 border-b border-slate-200 dark:border-slate-600">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <svg className="w-5 h-5 text-primary" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M4 4a2 2 0 012-2h8a2 2 0 012 2v1h1.5A1.5 1.5 0 0119 6.5v10A1.5 1.5 0 0117.5 18H2.5A1.5 1.5 0 011 16.5v-10A1.5 1.5 0 012.5 5H4V4zm10 1V4H6v1h8z" />
                         </svg>
@@ -2086,11 +2086,11 @@ export default function ReportsPage() {
                             : 'bg-amber-100 text-amber-700'
 
                         return (
-                          <div key={servico.id} className="rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden">
-                            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 bg-white">
+                          <div key={servico.id} className="rounded-2xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 overflow-hidden">
+                            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
                               <div>
-                                <p className="text-sm font-bold text-slate-900">{servico.tipo_servico}</p>
-                                <p className="text-xs text-slate-500 mt-0.5">
+                                <p className="text-sm font-bold text-slate-900 dark:text-white">{servico.tipo_servico}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                   {servico.responsavel || 'Sem responsável'}
                                 </p>
                               </div>
@@ -2098,15 +2098,15 @@ export default function ReportsPage() {
                                 <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${statusClass}`}>
                                   {statusLabel}
                                 </span>
-                                <span className="text-[11px] text-slate-500">
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400">
                                   {servico.sync_status === 'synced' ? 'Sincronizado' : servico.sync_status || 'offline'}
                                 </span>
                               </div>
                             </div>
-                            <div className="px-4 py-3 text-sm text-slate-700">
+                            <div className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
                               <div className="flex items-center justify-between gap-4">
                                 <span>{sections.length} seção(ões)</span>
-                                <span className="font-semibold text-slate-900">{totalFotosServico} foto(s)</span>
+                                <span className="font-semibold text-slate-900 dark:text-white">{totalFotosServico} foto(s)</span>
                               </div>
                               {servico.error_message ? (
                                 <p className="mt-2 text-xs text-red-600">{servico.error_message}</p>
@@ -2135,22 +2135,22 @@ export default function ReportsPage() {
                     ? totalFotosPostesLV
                     : bookSections.reduce((acc, s) => acc + convertPhotoIdsToFotoInfo((selectedObraForBook as any)[s.key]).length, 0)
                   return (
-                    <div className="flex items-center gap-4 mb-6 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                    <div className="flex items-center gap-4 mb-6 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl border border-slate-200 dark:border-slate-600">
                       <div className="flex items-center gap-2 text-sm">
                         <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block"></span>
-                        <span className="font-semibold text-slate-700">{bookSections.length} seções</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{bookSections.length} seções</span>
                       </div>
-                      <div className="w-px h-4 bg-slate-300"></div>
+                      <div className="w-px h-4 bg-slate-300 dark:bg-slate-500"></div>
                       <div className="flex items-center gap-2 text-sm">
                         <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block"></span>
-                        <span className="font-semibold text-slate-700">{withPhotos} com fotos</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{withPhotos} com fotos</span>
                       </div>
-                      <div className="w-px h-4 bg-slate-300"></div>
+                      <div className="w-px h-4 bg-slate-300 dark:bg-slate-500"></div>
                       <div className="flex items-center gap-2 text-sm">
-                        <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
-                        <span className="font-semibold text-slate-700">{totalFotosBook} fotos no total</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-200">{totalFotosBook} fotos no total</span>
                       </div>
                     </div>
                   )
@@ -2165,10 +2165,10 @@ export default function ReportsPage() {
                       blue: 'from-blue-300', orange: 'from-orange-300', green: 'from-green-300', cyan: 'from-cyan-300', teal: 'from-teal-300', red: 'from-red-300', amber: 'from-amber-300', purple: 'from-purple-300', indigo: 'from-indigo-300', emerald: 'from-emerald-300', sky: 'from-sky-300', rose: 'from-rose-300', violet: 'from-violet-300', slate: 'from-slate-300',
                     };
                     const borderColorMap: Record<string, string> = {
-                      blue: 'border-blue-200', orange: 'border-orange-200', green: 'border-green-200', cyan: 'border-cyan-200', teal: 'border-teal-200', red: 'border-red-200', amber: 'border-amber-200', purple: 'border-purple-200', indigo: 'border-indigo-200', emerald: 'border-emerald-200', sky: 'border-sky-200', rose: 'border-rose-200', violet: 'border-violet-200', slate: 'border-slate-300',
+                      blue: 'border-blue-200 dark:border-blue-800', orange: 'border-orange-200 dark:border-orange-800', green: 'border-green-200 dark:border-green-800', cyan: 'border-cyan-200 dark:border-cyan-800', teal: 'border-teal-200 dark:border-teal-800', red: 'border-red-200 dark:border-red-800', amber: 'border-amber-200 dark:border-amber-800', purple: 'border-purple-200 dark:border-purple-800', indigo: 'border-indigo-200 dark:border-indigo-800', emerald: 'border-emerald-200 dark:border-emerald-800', sky: 'border-sky-200 dark:border-sky-800', rose: 'border-rose-200 dark:border-rose-800', violet: 'border-violet-200 dark:border-violet-800', slate: 'border-slate-300 dark:border-slate-600',
                     };
                     const bgLightMap: Record<string, string> = {
-                      blue: 'bg-blue-50', orange: 'bg-orange-50', green: 'bg-green-50', cyan: 'bg-cyan-50', teal: 'bg-teal-50', red: 'bg-red-50', amber: 'bg-amber-50', purple: 'bg-purple-50', indigo: 'bg-indigo-50', emerald: 'bg-emerald-50', sky: 'bg-sky-50', rose: 'bg-rose-50', violet: 'bg-violet-50', slate: 'bg-slate-50',
+                      blue: 'bg-blue-50 dark:bg-blue-900/20', orange: 'bg-orange-50 dark:bg-orange-900/20', green: 'bg-green-50 dark:bg-green-900/20', cyan: 'bg-cyan-50 dark:bg-cyan-900/20', teal: 'bg-teal-50 dark:bg-teal-900/20', red: 'bg-red-50 dark:bg-red-900/20', amber: 'bg-amber-50 dark:bg-amber-900/20', purple: 'bg-purple-50 dark:bg-purple-900/20', indigo: 'bg-indigo-50 dark:bg-indigo-900/20', emerald: 'bg-emerald-50 dark:bg-emerald-900/20', sky: 'bg-sky-50 dark:bg-sky-900/20', rose: 'bg-rose-50 dark:bg-rose-900/20', violet: 'bg-violet-50 dark:bg-violet-900/20', slate: 'bg-slate-50 dark:bg-slate-700/40',
                     };
 
                     const getPhotoUrlFromRef = (photoRef: any): string | null => {
@@ -2264,12 +2264,12 @@ export default function ReportsPage() {
                           ]
                       const totalFotosPostes = postesDataRender.reduce((acc: number, p: any) => acc + subKeysPostes.reduce((a, s) => a + countPhotoRefs(p[s.key]), 0), 0)
                       return (
-                        <div key="postes_data_block" className="rounded-2xl border border-green-200 bg-green-50 overflow-hidden shadow-sm">
+                        <div key="postes_data_block" className="rounded-2xl border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 overflow-hidden shadow-sm">
                           <div className="flex items-center gap-3 px-4 py-3">
                             <div className="bg-green-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
                               <h4 className="font-bold text-xs uppercase tracking-wider">Checklist de Postes</h4>
                             </div>
-                            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                            <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm">
                               {postesDataRender.length} poste{postesDataRender.length !== 1 ? 's' : ''} · {totalFotosPostes} foto{totalFotosPostes !== 1 ? 's' : ''}
                             </span>
                           </div>
@@ -2279,10 +2279,10 @@ export default function ReportsPage() {
                               const hasAnyP = subKeysPostes.some(s => countPhotoRefs(poste[s.key]) > 0)
                               if (!hasAnyP) return null
                               return (
-                                <div key={pIdx} className="bg-white rounded-xl border border-green-100 overflow-hidden">
-                                  <div className="flex items-center gap-3 px-3 py-2 bg-green-100/60 border-b border-green-100">
-                                    <span className="font-bold text-sm text-green-900">{labelP}</span>
-                                    <span className="text-xs text-green-400 ml-auto">
+                                <div key={pIdx} className="bg-white dark:bg-slate-800 rounded-xl border border-green-100 dark:border-green-900 overflow-hidden">
+                                  <div className="flex items-center gap-3 px-3 py-2 bg-green-100/60 dark:bg-green-900/30 border-b border-green-100 dark:border-green-900">
+                                    <span className="font-bold text-sm text-green-900 dark:text-green-300">{labelP}</span>
+                                    <span className="text-xs text-green-400 dark:text-green-500 ml-auto">
                                       {subKeysPostes.reduce((a, s) => a + countPhotoRefs(poste[s.key]), 0)} foto{subKeysPostes.reduce((a, s) => a + countPhotoRefs(poste[s.key]), 0) !== 1 ? 's' : ''}
                                     </span>
                                   </div>
@@ -2290,8 +2290,8 @@ export default function ReportsPage() {
                                     const urls = (poste[ss.key] || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                     if (urls.length === 0) return null
                                     return (
-                                      <div key={ss.key} className="px-3 py-2 border-t border-green-50">
-                                        <p className="text-xs font-semibold text-green-600 mb-2 uppercase tracking-wide">{ss.label} ({urls.length})</p>
+                                      <div key={ss.key} className="px-3 py-2 border-t border-green-50 dark:border-green-900/40">
+                                        <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 uppercase tracking-wide">{ss.label} ({urls.length})</p>
                                         <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
                                           {urls.map((url, i) => renderPhotoThumb(url, `${labelP} ${ss.label}`, i, ss.color))}
                                         </div>
@@ -2327,12 +2327,12 @@ export default function ReportsPage() {
                           const statusColors: Record<string, string> = { instalado: 'bg-green-100 text-green-700', retirado: 'bg-red-100 text-red-700', existente: 'bg-blue-100 text-blue-700' }
                           const statusLabels: Record<string, string> = { instalado: 'Instalado', retirado: 'Retirado', existente: 'Existente' }
                           return (
-                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 overflow-hidden shadow-sm">
                               <div className="flex items-center gap-3 px-4 py-3">
                                 <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
                                   <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Postes</h4>
                                 </div>
-                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm">
                                   {postesData.length} poste{postesData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
                                 </span>
                               </div>
@@ -2345,11 +2345,11 @@ export default function ReportsPage() {
                                   const hasAny = subKeys.some(s => (poste[s.key] || []).length > 0)
                                   if (!hasAny) return null
                                   return (
-                                    <div key={pIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
-                                        <span className="font-bold text-sm text-purple-900">{label}</span>
+                                    <div key={pIdx} className="bg-white dark:bg-slate-800 rounded-xl border border-purple-100 dark:border-purple-900 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-100 dark:border-purple-900">
+                                        <span className="font-bold text-sm text-purple-900 dark:text-purple-300">{label}</span>
                                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${statusColor}`}>{statusLabel}</span>
-                                        <span className="text-xs text-purple-400 ml-auto">
+                                        <span className="text-xs text-purple-400 dark:text-purple-500 ml-auto">
                                           {subKeys.reduce((a, s) => a + (poste[s.key]?.length || 0), 0)} foto{subKeys.reduce((a, s) => a + (poste[s.key]?.length || 0), 0) !== 1 ? 's' : ''}
                                         </span>
                                       </div>
@@ -2357,8 +2357,8 @@ export default function ReportsPage() {
                                         const urls = (poste[ss.key] || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                         if (urls.length === 0) return null
                                         return (
-                                          <div key={ss.key} className="px-3 py-2 border-t border-purple-50">
-                                            <p className="text-xs font-semibold text-purple-500 mb-2 uppercase tracking-wide">{ss.label} ({urls.length})</p>
+                                          <div key={ss.key} className="px-3 py-2 border-t border-purple-50 dark:border-purple-900/40">
+                                            <p className="text-xs font-semibold text-purple-500 dark:text-purple-400 mb-2 uppercase tracking-wide">{ss.label} ({urls.length})</p>
                                             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
                                               {urls.map((url, i) => renderPhotoThumb(url, `${label} ${ss.label}`, i, 'purple'))}
                                             </div>
@@ -2396,12 +2396,12 @@ export default function ReportsPage() {
                           ]
 
                           return (
-                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 overflow-hidden shadow-sm">
                               <div className="flex items-center gap-3 px-4 py-3">
                                 <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
                                   <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Emendas, Podas e Seccionamentos</h4>
                                 </div>
-                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm">
                                   {secDataComFotos.length} ponto{secDataComFotos.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
                                 </span>
                               </div>
@@ -2420,7 +2420,7 @@ export default function ReportsPage() {
 
                                   return (
                                     <div key={grupo.tipo} className="space-y-2">
-                                      <p className="text-xs font-semibold text-purple-500 uppercase tracking-wide">{grupo.titulo}</p>
+                                      <p className="text-xs font-semibold text-purple-500 dark:text-purple-400 uppercase tracking-wide">{grupo.titulo}</p>
                                       {itens.map((item, itemIdx) => {
                                         const numero = item.numero || (itemIdx + 1)
                                         const label = `${grupo.prefixo}${numero}`
@@ -2429,14 +2429,14 @@ export default function ReportsPage() {
                                         if (urls.length === 0) return null
 
                                         return (
-                                          <div key={`${grupo.tipo}_${item.__index ?? itemIdx}`} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                                            <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
+                                          <div key={`${grupo.tipo}_${item.__index ?? itemIdx}`} className="bg-white dark:bg-slate-800 rounded-xl border border-purple-100 dark:border-purple-900 overflow-hidden">
+                                            <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-100 dark:border-purple-900">
                                               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${grupo.badgeClass}`}>{label}</span>
-                                              <span className="font-bold text-sm text-purple-900">{grupo.labelTitulo}</span>
+                                              <span className="font-bold text-sm text-purple-900 dark:text-purple-300">{grupo.labelTitulo}</span>
                                               {trecho && (
-                                                <span className="text-xs text-slate-600">Trecho {trecho}</span>
+                                                <span className="text-xs text-slate-600 dark:text-slate-300">Trecho {trecho}</span>
                                               )}
-                                              <span className="text-xs text-purple-400 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
+                                              <span className="text-xs text-purple-400 dark:text-purple-500 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
                                             </div>
                                             <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
                                               {urls.map((url, i) => renderPhotoThumb(url, `${grupo.labelTitulo} ${label}`, i, 'purple'))}
@@ -2459,12 +2459,12 @@ export default function ReportsPage() {
                         if (aterrData && Array.isArray(aterrData) && aterrData.length > 0) {
                           const totalFotos = aterrData.reduce((acc, a) => acc + (a.fotos?.length || 0), 0)
                           return (
-                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 overflow-hidden shadow-sm">
                               <div className="flex items-center gap-3 px-4 py-3">
                                 <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
                                   <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Aterramento de Cerca</h4>
                                 </div>
-                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm">
                                   {aterrData.length} aterramento{aterrData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
                                 </span>
                               </div>
@@ -2473,10 +2473,10 @@ export default function ReportsPage() {
                                   const urls = (aterr.fotos || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                   if (urls.length === 0) return null
                                   return (
-                                    <div key={aIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
-                                        <span className="font-bold text-sm text-purple-900">Aterramento {aterr.numero}</span>
-                                        <span className="text-xs text-purple-400 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
+                                    <div key={aIdx} className="bg-white dark:bg-slate-800 rounded-xl border border-purple-100 dark:border-purple-900 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-100 dark:border-purple-900">
+                                        <span className="font-bold text-sm text-purple-900 dark:text-purple-300">Aterramento {aterr.numero}</span>
+                                        <span className="text-xs text-purple-400 dark:text-purple-500 ml-auto">{urls.length} foto{urls.length !== 1 ? 's' : ''}</span>
                                       </div>
                                       <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 p-3">
                                         {urls.map((url, i) => renderPhotoThumb(url, `Aterramento ${aterr.numero}`, i, 'purple'))}
@@ -2497,12 +2497,12 @@ export default function ReportsPage() {
                         if (hastesData.length > 0) {
                           const totalFotos = hastesData.reduce((acc, p) => acc + (p.fotoHaste?.length || 0) + (p.fotoTermometro?.length || 0), 0)
                           return (
-                            <div key={sectionKey} className="rounded-2xl border border-purple-200 bg-purple-50 overflow-hidden shadow-sm">
+                            <div key={sectionKey} className="rounded-2xl border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20 overflow-hidden shadow-sm">
                               <div className="flex items-center gap-3 px-4 py-3">
                                 <div className="bg-purple-600 text-white px-3 py-1.5 rounded-lg shadow-sm">
                                   <h4 className="font-bold text-xs uppercase tracking-wider">Checklist - Hastes Aplicadas e Medição do Termômetro</h4>
                                 </div>
-                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white text-slate-700 shadow-sm">
+                                <span className="text-xs font-semibold px-2 py-1 rounded-full bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm">
                                   {hastesData.length} ponto{hastesData.length !== 1 ? 's' : ''} · {totalFotos} foto{totalFotos !== 1 ? 's' : ''}
                                 </span>
                               </div>
@@ -2514,22 +2514,22 @@ export default function ReportsPage() {
                                   const termoUrls = (ponto.fotoTermometro || []).map((p: any) => getPhotoUrlFromRef(p)).filter(Boolean) as string[]
                                   if (hasteUrls.length === 0 && termoUrls.length === 0) return null
                                   return (
-                                    <div key={pIdx} className="bg-white rounded-xl border border-purple-100 overflow-hidden">
-                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 border-b border-purple-100">
-                                        <span className="font-bold text-sm text-purple-900">{label}</span>
-                                        <span className="text-xs text-purple-400 ml-auto">{hasteUrls.length + termoUrls.length} foto{hasteUrls.length + termoUrls.length !== 1 ? 's' : ''}</span>
+                                    <div key={pIdx} className="bg-white dark:bg-slate-800 rounded-xl border border-purple-100 dark:border-purple-900 overflow-hidden">
+                                      <div className="flex items-center gap-3 px-3 py-2 bg-purple-100/60 dark:bg-purple-900/30 border-b border-purple-100 dark:border-purple-900">
+                                        <span className="font-bold text-sm text-purple-900 dark:text-purple-300">{label}</span>
+                                        <span className="text-xs text-purple-400 dark:text-purple-500 ml-auto">{hasteUrls.length + termoUrls.length} foto{hasteUrls.length + termoUrls.length !== 1 ? 's' : ''}</span>
                                       </div>
                                       {hasteUrls.length > 0 && (
-                                        <div className="px-3 py-2 border-t border-purple-50">
-                                          <p className="text-xs font-semibold text-purple-500 mb-2 uppercase tracking-wide">Haste Aplicada ({hasteUrls.length})</p>
+                                        <div className="px-3 py-2 border-t border-purple-50 dark:border-purple-900/40">
+                                          <p className="text-xs font-semibold text-purple-500 dark:text-purple-400 mb-2 uppercase tracking-wide">Haste Aplicada ({hasteUrls.length})</p>
                                           <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
                                             {hasteUrls.map((url, i) => renderPhotoThumb(url, `${label} Haste`, i, 'purple'))}
                                           </div>
                                         </div>
                                       )}
                                       {termoUrls.length > 0 && (
-                                        <div className="px-3 py-2 border-t border-purple-50">
-                                          <p className="text-xs font-semibold text-purple-500 mb-2 uppercase tracking-wide">Medição do Termômetro ({termoUrls.length})</p>
+                                        <div className="px-3 py-2 border-t border-purple-50 dark:border-purple-900/40">
+                                          <p className="text-xs font-semibold text-purple-500 dark:text-purple-400 mb-2 uppercase tracking-wide">Medição do Termômetro ({termoUrls.length})</p>
                                           <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5">
                                             {termoUrls.map((url, i) => renderPhotoThumb(url, `${label} Termômetro`, i, 'purple'))}
                                           </div>
@@ -2552,7 +2552,7 @@ export default function ReportsPage() {
                       return (
                         <div
                           key={sectionKey}
-                          className={`rounded-2xl border ${hasPhotos ? borderColorMap[section.color] + ' ' + bgLightMap[section.color] : 'border-slate-200 bg-white'} overflow-hidden shadow-sm`}
+                          className={`rounded-2xl border ${hasPhotos ? borderColorMap[section.color] + ' ' + bgLightMap[section.color] : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800'} overflow-hidden shadow-sm`}
                         >
                           {/* Header da seção */}
                           <div className={`flex items-center justify-between px-4 py-3 ${hasPhotos ? '' : 'border-b-0'}`}>
@@ -2560,7 +2560,7 @@ export default function ReportsPage() {
                               <div className={`${colorMap[section.color]} text-white px-3 py-1.5 rounded-lg shadow-sm`}>
                                 <h4 className="font-bold text-xs uppercase tracking-wider">{section.label}</h4>
                               </div>
-                              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${hasPhotos ? 'bg-white text-slate-700 shadow-sm' : 'text-slate-400'}`}>
+                              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${hasPhotos ? 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 shadow-sm' : 'text-slate-400 dark:text-slate-500'}`}>
                                 {fotos.length} foto{fotos.length !== 1 ? 's' : ''}
                               </span>
                             </div>
@@ -2646,7 +2646,7 @@ export default function ReportsPage() {
                               ))}
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 px-4 py-2.5 text-slate-400 text-xs border-t border-slate-100">
+                            <div className="flex items-center gap-2 px-4 py-2.5 text-slate-400 dark:text-slate-500 text-xs border-t border-slate-100 dark:border-slate-700">
                               <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                               </svg>
@@ -2660,9 +2660,9 @@ export default function ReportsPage() {
                 </div>
 
                 {/* Botão para página completa - Design Premium */}
-                <div className="mt-12 pt-8 border-t-2 border-slate-200">
+                <div className="mt-12 pt-8 border-t-2 border-slate-200 dark:border-slate-700">
                   <div className="flex flex-col items-center gap-4">
-                    <p className="text-sm text-slate-600 text-center">
+                    <p className="text-sm text-slate-600 dark:text-slate-400 text-center">
                       Para editar fotos, adicionar novas ou visualizar todas as seções da obra
                     </p>
                     <button
@@ -2740,11 +2740,11 @@ export default function ReportsPage() {
           <div
             ref={menuRef}
             style={{ top: menuPosition.top, left: menuPosition.left }}
-            className="fixed z-[9999] w-56 bg-white rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/80 overflow-hidden animate-slideUp"
+            className="fixed z-[9999] w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl shadow-slate-900/15 border border-slate-200/80 dark:border-slate-700 overflow-hidden animate-slideUp"
           >
             {/* Cabeçalho */}
             <div className="px-3 pt-3 pb-1.5">
-              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Ações da obra</p>
+              <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Ações da obra</p>
             </div>
 
             {/* Itens principais */}
@@ -2756,9 +2756,9 @@ export default function ReportsPage() {
                   setMenuPosition(null)
                   void handleOpenBook(id)
                 }}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-blue-50 hover:text-blue-700 rounded-xl flex items-center gap-3 transition-colors group"
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-700 dark:hover:text-blue-200 rounded-xl flex items-center gap-3 transition-colors group"
               >
-                <span className="w-7 h-7 bg-blue-100 group-hover:bg-blue-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                <span className="w-7 h-7 bg-blue-100 dark:bg-blue-900/40 group-hover:bg-blue-200 dark:group-hover:bg-blue-900/60 rounded-lg flex items-center justify-center shrink-0 transition-colors">
                   <svg className="w-3.5 h-3.5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
@@ -2778,9 +2778,9 @@ export default function ReportsPage() {
                   setOpenMenuId(null)
                   setMenuPosition(null)
                 }}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-xl flex items-center gap-3 transition-colors group"
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 hover:text-emerald-700 dark:hover:text-emerald-200 rounded-xl flex items-center gap-3 transition-colors group"
               >
-                <span className="w-7 h-7 bg-emerald-100 group-hover:bg-emerald-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                <span className="w-7 h-7 bg-emerald-100 dark:bg-emerald-900/40 group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/60 rounded-lg flex items-center justify-center shrink-0 transition-colors">
                   <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
@@ -2796,9 +2796,9 @@ export default function ReportsPage() {
                     setOpenMenuId(null)
                     setMenuPosition(null)
                   }}
-                  className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-amber-50 hover:text-amber-700 rounded-xl flex items-center gap-3 transition-colors group"
+                  className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-700 dark:hover:text-amber-200 rounded-xl flex items-center gap-3 transition-colors group"
                 >
-                  <span className="w-7 h-7 bg-amber-100 group-hover:bg-amber-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                  <span className="w-7 h-7 bg-amber-100 dark:bg-amber-900/40 group-hover:bg-amber-200 dark:group-hover:bg-amber-900/60 rounded-lg flex items-center justify-center shrink-0 transition-colors">
                     <svg className="w-3.5 h-3.5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
@@ -2814,9 +2814,9 @@ export default function ReportsPage() {
                   setOpenMenuId(null)
                   setMenuPosition(null)
                 }}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-purple-50 hover:text-purple-700 rounded-xl flex items-center gap-3 transition-colors group"
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-purple-50 dark:hover:bg-purple-900/30 hover:text-purple-700 dark:hover:text-purple-200 rounded-xl flex items-center gap-3 transition-colors group"
               >
-                <span className="w-7 h-7 bg-purple-100 group-hover:bg-purple-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                <span className="w-7 h-7 bg-purple-100 dark:bg-purple-900/40 group-hover:bg-purple-200 dark:group-hover:bg-purple-900/60 rounded-lg flex items-center justify-center shrink-0 transition-colors">
                   <svg className="w-3.5 h-3.5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                   </svg>
@@ -2832,10 +2832,10 @@ export default function ReportsPage() {
                   setMenuPosition(null)
                 }}
                 disabled={exportingId === openMenuId}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="w-7 h-7 bg-slate-100 group-hover:bg-slate-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
-                  <svg className="w-3.5 h-3.5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <span className="w-7 h-7 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                  <svg className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                 </span>
@@ -2849,9 +2849,9 @@ export default function ReportsPage() {
                   if (obraAtual) handleExportByObraNumber(obraAtual)
                 }}
                 disabled={exportingCombinedId === openMenuId}
-                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <span className="w-7 h-7 bg-indigo-100 group-hover:bg-indigo-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                <span className="w-7 h-7 bg-indigo-100 dark:bg-indigo-900/40 group-hover:bg-indigo-200 dark:group-hover:bg-indigo-900/60 rounded-lg flex items-center justify-center shrink-0 transition-colors">
                   <svg className="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
@@ -2862,7 +2862,7 @@ export default function ReportsPage() {
 
             {isAdmin && (
               <>
-                <div className="border-t border-slate-100 mx-2" />
+                <div className="border-t border-slate-100 dark:border-slate-700 mx-2" />
                 <div className="px-2 py-2">
                   <button
                     onClick={() => {
@@ -2872,9 +2872,9 @@ export default function ReportsPage() {
                       setMenuPosition(null)
                     }}
                     disabled={deletingId === openMenuId || deletingBulk}
-                    className="w-full px-3 py-2 text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-2 text-left text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-xl flex items-center gap-3 transition-colors group disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <span className="w-7 h-7 bg-red-100 group-hover:bg-red-200 rounded-lg flex items-center justify-center shrink-0 transition-colors">
+                    <span className="w-7 h-7 bg-red-100 dark:bg-red-900/40 group-hover:bg-red-200 dark:group-hover:bg-red-900/60 rounded-lg flex items-center justify-center shrink-0 transition-colors">
                       <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
@@ -2890,3 +2890,4 @@ export default function ReportsPage() {
     </ProtectedRoute>
   )
 }
+
