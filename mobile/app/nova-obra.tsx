@@ -48,7 +48,7 @@ import type { PlacaInfo } from '../lib/placa-parser';
 import { PhotoWithPlaca } from '../components/PhotoWithPlaca';
 import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 import { useToast } from '../components/Toast';
-import { isCompressorProfile, isLinhaVivaProfile } from '../lib/profile-rules';
+import { isCompressorProfile, isLinhaVivaProfile, isAdminOrSupervisor } from '../lib/profile-rules';
 // Import dinâmico (lazy) para evitar erro no web
 // import { renderPhotoWithPlacaBurnedIn } from '../lib/photo-with-placa';
 
@@ -518,7 +518,7 @@ export default function NovaObra() {
           setEquipe(equipeLogada || '');
           setEquipeExecutora('');
           setTipoServico('Cava em Rocha'); // Fixar serviço
-        } else if (userRole === 'admin') {
+        } else if (isAdminOrSupervisor(userRole)) {
           setIsAdminUser(true);
           setEquipe('');
           // Em modo de edição, não limpar equipeExecutora aqui — loadObraDataAsync vai restaurar da obra salva

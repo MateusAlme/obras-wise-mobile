@@ -12,6 +12,7 @@ import { backupPhoto, getPhotoMetadatasByIds } from '../../lib/photo-backup';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SyncProgressModal, type ObraSyncProgress } from '../../components/SyncProgressModal';
 import { ObraContainer, ServiceCard, ServiceTypeSelector } from '../../components/ServicosComponents';
+import { isAdminOrSupervisor } from '../../lib/profile-rules';
 import type { Servico, SyncStatusServico, TipoServico, FotoInfo as ServicoFotoInfo } from '../../types/servico';
 import { fetchServicosForObra, createServico, markServicoComplete, appendPhotoToServicoLocal } from '../../lib/servico-sync';
 
@@ -83,7 +84,7 @@ export default function Obras() {
   const isSmallScreen = width < 380;
   const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
   const isCompressor = userRole === 'compressor';
-  const isAdmin = userRole === 'admin';
+  const isAdmin = isAdminOrSupervisor(userRole);
 
   // Estado para modal de progresso de sincronização
   const [syncModalVisible, setSyncModalVisible] = useState(false);
@@ -287,7 +288,7 @@ export default function Obras() {
         .from('obras')
         .select('*');
 
-      if (roleAtual !== 'admin') {
+      if (!isAdminOrSupervisor(roleAtual)) {
         query = query.eq('equipe', equipe);
       }
 
@@ -336,7 +337,7 @@ export default function Obras() {
       const beforeCount = obrasLocais.length;
       obrasLocais = obrasLocais.filter((obra) => {
         if (!obra.serverId || obra.locallyModified || obra.synced === false) return true;
-        const noEscopeDestaConsulta = roleAtual === 'admin' || obra.equipe === equipe;
+        const noEscopeDestaConsulta = isAdminOrSupervisor(roleAtual) || obra.equipe === equipe;
         if (!noEscopeDestaConsulta) return true;
         return serverIds.has(obra.serverId) || serverIds.has(obra.id);
       });
@@ -399,7 +400,7 @@ export default function Obras() {
       const equipe = await AsyncStorage.getItem('@equipe_logada');
       const role = (await AsyncStorage.getItem('@user_role')) || userRole || 'equipe';
       const roleIsCompressor = role === 'compressor';
-      const roleIsAdmin = role === 'admin';
+      const roleIsAdmin = isAdminOrSupervisor(role);
       if (role !== userRole) {
         setUserRole(role);
       }
@@ -462,7 +463,7 @@ export default function Obras() {
   const loadPendingObras = async () => {
     try {
       const role = (await AsyncStorage.getItem('@user_role')) || userRole || 'equipe';
-      const roleIsAdmin = role === 'admin';
+      const roleIsAdmin = isAdminOrSupervisor(role);
       const roleIsCompressor = role === 'compressor';
       const equipeAtual = (await AsyncStorage.getItem('@equipe_logada')) || equipeLogada;
       const pendentes = await getPendingObras();

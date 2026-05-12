@@ -28,6 +28,11 @@ export const isLinhaVivaProfile = (role?: string | null, equipe?: string | null)
   );
 };
 
+export const isAdminOrSupervisor = (role?: string | null): boolean => {
+  const roleKey = normalizeProfileText(role);
+  return roleKey === 'admin' || roleKey.startsWith('sup');
+};
+
 export const getAllowedServiceTypesForProfile = (
   role?: string | null,
   equipe?: string | null

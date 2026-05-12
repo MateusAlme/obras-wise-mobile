@@ -20,6 +20,7 @@ import {
   getAllowedServiceTypesForProfile,
   isObraVisibleForProfile,
   isServiceTypeAllowedForProfile,
+  isAdminOrSupervisor,
 } from '../lib/profile-rules';
 
 type ObraListItem = {
@@ -772,7 +773,7 @@ export default function ObraBooksPage() {
       ]);
 
       const userRole = role || 'equipe';
-      const isAdmin = userRole === 'admin';
+      const isAdmin = isAdminOrSupervisor(userRole);
       setSessionRole(userRole);
       setSessionEquipe(equipe || '');
 

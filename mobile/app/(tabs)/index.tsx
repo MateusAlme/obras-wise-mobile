@@ -15,6 +15,7 @@ import {
   getAllowedServiceTypesForProfile,
   isCompressorProfile,
   isObraVisibleForProfile,
+  isAdminOrSupervisor,
 } from '../../lib/profile-rules';
 
 export default function Dashboard() {
@@ -29,7 +30,7 @@ export default function Dashboard() {
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
   const isCompressor = getAllowedServiceTypesForProfile(userRole, equipeLogada)?.[0] === 'Cava em Rocha';
-  const isAdmin = userRole === 'admin';
+  const isAdmin = isAdminOrSupervisor(userRole);
   const isSmallScreen = width < 380;
   const horizontalPadding = width < 360 ? 14 : width < 430 ? 18 : 22;
 
@@ -81,7 +82,7 @@ export default function Dashboard() {
       setEquipeLogada(equipeAtual);
       setUserRole(roleAtual);
 
-      if (!equipeAtual && roleAtual !== 'admin') {
+      if (!equipeAtual && !isAdminOrSupervisor(roleAtual)) {
         setTotalObras(0);
         setPendingObras([]);
         return;
@@ -102,7 +103,7 @@ export default function Dashboard() {
     try {
       const equipe = equipeParam || equipeLogada;
       const role = roleParam || userRole;
-      if (!equipe && role !== 'admin') {
+      if (!equipe && !isAdminOrSupervisor(role)) {
         setTotalObras(0);
         return;
       }
@@ -110,7 +111,7 @@ export default function Dashboard() {
       // Buscar apenas o campo 'obra' para contar obras únicas (agrupadas por número)
       let query = supabase.from('obras').select('obra');
 
-      if (role !== 'admin') {
+      if (!isAdminOrSupervisor(role)) {
         query = query.eq('equipe', equipe);
       }
 
@@ -139,7 +140,7 @@ export default function Dashboard() {
     try {
       const equipe = equipeParam || equipeLogada;
       const role = roleParam || userRole;
-      if (!equipe && role !== 'admin') {
+      if (!equipe && !isAdminOrSupervisor(role)) {
         setPendingObras([]);
         return;
       }
@@ -150,7 +151,7 @@ export default function Dashboard() {
         return status === 'pending' || status === 'failed';
       });
       const pendentesDaEquipe = obrasSincronizaveis.filter((obra) => {
-        if (role !== 'admin') {
+        if (!isAdminOrSupervisor(role)) {
           const mesmaEquipe = obra.equipe === equipe;
           if (!mesmaEquipe) return false;
         }

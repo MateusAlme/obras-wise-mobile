@@ -14,6 +14,7 @@ import {
   getAllowedServiceTypesForProfile,
   isCompressorProfile,
   isServiceTypeAllowedForProfile,
+  isAdminOrSupervisor,
 } from '../lib/profile-rules';
 
 // ─── Paleta ──────────────────────────────────────────────────────────────────
@@ -255,7 +256,7 @@ export default function NovaObraRapida() {
         status: 'rascunho',
         origem: 'offline',
         created_at: new Date().toISOString(),
-        creator_role: isCompressorProfile(userRole, equipe) ? 'compressor' : (userRole === 'admin' ? 'admin' : 'equipe'),
+        creator_role: isCompressorProfile(userRole, equipe) ? 'compressor' : (isAdminOrSupervisor(userRole) ? 'admin' : 'equipe'),
         photos_uploaded: false,
         ...EMPTY_ARRAYS,
       };
