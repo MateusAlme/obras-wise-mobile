@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert, TextInput, useWindowDimensions } from 'react-native';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -1107,247 +1107,224 @@ export default function Obras() {
     ]);
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 + insets.bottom }]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-      <View style={[styles.content, { paddingHorizontal: horizontalPadding }]}>
-        {/* Banner de Equipe Logada */}
-        {equipeLogada && (
-          <View style={styles.equipeBanner}>
-            <View style={styles.equipeInfo}>
-              <Text style={styles.equipeLabel}>Equipe logada:</Text>
-              <Text style={styles.equipeNome}>{equipeLogada}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.logoutButton}
-              onPress={handleLogout}
-            >
-              <Text style={styles.logoutButtonText}>Sair</Text>
+  const renderObraGrupo = useCallback(({ item: grupo }: { item: GroupedObra }) => {
+    const obra = grupo.principal;
+    const obraIds = grupo.itens.map((item) => item.id);
+
+    const servicosDb = obraIds.flatMap((id) => servicosPorObra[id] || []);
+    const servicosDbUnicos = servicosDb.filter((servico, index, lista) =>
+      lista.findIndex((item) => item.id === servico.id) === index
+    );
+    const legacyServicos = grupo.itens.map((item) => ({
+      ...(item as any),
+      id: `legacy-${item.id}-servico`,
+      obra_id: item.id,
+      tipo_servico: (item.tipo_servico || 'Documentação') as TipoServico,
+      responsavel: item.responsavel,
+      status: item.status === 'finalizada' ? 'completo' : 'rascunho',
+      sync_status: toSyncStatusServico(item),
+      created_at: item.created_at,
+      updated_at: item.created_at,
+      fotos_antes: (item as any).fotos_antes || [],
+      fotos_durante: (item as any).fotos_durante || [],
+      fotos_depois: (item as any).fotos_depois || [],
+    } as Servico));
+    const legacyServicosUnicos = legacyServicos.filter((servico, index, lista) =>
+      lista.findIndex((item) => item.id === servico.id) === index
+    );
+    const servicosRender = [...servicosDbUnicos, ...legacyServicosUnicos];
+
+    let displayStatus: 'em_aberto' | 'rascunho' | 'finalizada' = obra.status || 'em_aberto';
+    if (servicosDbUnicos.length > 0) {
+      displayStatus = servicosDbUnicos.every((s) => s.status === 'completo') ? 'finalizada' : 'em_aberto';
+    }
+
+    return (
+      <View style={styles.obraGroupItem}>
+        <ObraContainer
+          obraId={grupo.groupKey}
+          obraData={formatarData(obra.data)}
+          obraTitle={grupo.obraNumero}
+          responsavel={obra.responsavel}
+          equipe={obra.equipe}
+          status={displayStatus}
+          servicos={servicosRender}
+          isExpanded={false}
+          onToggleExpand={() => handleOpenObraBooksPage(grupo)}
+          onAddService={() => handleOpenObraBooksPage(grupo)}
+        />
+        {renderStatusBadge(obra)}
+        {obra.origem === 'offline' && !obra.serverId && (
+          <View style={styles.cardFooter}>
+            <TouchableOpacity style={styles.syncObraButton} onPress={() => handleSyncSingleObra(obra)}>
+              <Text style={styles.syncObraButtonText}>Sincronizar obra</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.deleteObraButton} onPress={() => handleDeleteObra(obra)}>
+              <Text style={styles.deleteObraButtonText}>Remover rascunho</Text>
             </TouchableOpacity>
           </View>
-        )}
-
-        <View style={[styles.header, isSmallScreen && styles.headerSmall]}>
-          <View style={styles.headerTop}>
-            <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>Obras</Text>
-            <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>{subtitleText}</Text>
-          </View>
-          {!isOnline && (
-            <View style={[styles.offlinePill, isSmallScreen && styles.offlinePillSmall]}>
-              <Text style={styles.offlineHint}>Modo Offline</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
-          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
-            <Text style={styles.metricLabel}>{isAdmin ? 'Total geral' : 'Total da equipe'}</Text>
-            <Text style={styles.metricValue}>{combinedObras.length}</Text>
-          </View>
-          <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
-            <Text style={styles.metricLabel}>Pendentes</Text>
-            <Text style={[styles.metricValue, manualSyncPendingCount > 0 && styles.metricValueAlert]}>
-              {manualSyncPendingCount}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchPrefix}>Buscar</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar por obra, responsavel ou equipe"
-            value={searchTerm}
-            onChangeText={setSearchTerm}
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-        </View>
-
-        {/* Banner de status de fotos */}
-        {(photoStats.failed > 0 || photoStats.pending > 0 || photoStats.uploading > 0) ? (
-          <View style={[
-            styles.photoSyncBanner,
-            photoStats.failed > 0 ? styles.photoSyncBannerFailed
-              : photoStats.uploading > 0 ? styles.photoSyncBannerUploading
-              : styles.photoSyncBannerPending,
-          ]}>
-            <View style={styles.photoSyncBannerInfo}>
-              {photoStats.uploading > 0 ? (
-                <Text style={styles.photoSyncBannerTitle}>
-                  Enviando {photoStats.uploading} foto(s)...
-                </Text>
-              ) : photoStats.failed > 0 ? (
-                <>
-                  <Text style={styles.photoSyncBannerTitle}>
-                    {photoStats.failed} foto(s) com falha no envio
-                  </Text>
-                  <Text style={styles.photoSyncBannerSubtitle}>
-                    Toque em "Tentar novamente" para reenviar
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.photoSyncBannerTitle}>
-                    {photoStats.pending} foto(s) aguardando envio
-                  </Text>
-                  <Text style={styles.photoSyncBannerSubtitle}>
-                    {isOnline ? 'Conectado — toque para enviar agora' : 'Aguardando conexao com a internet'}
-                  </Text>
-                </>
-              )}
-            </View>
-            {photoStats.uploading === 0 && (
-              <TouchableOpacity
-                style={[
-                  styles.photoSyncBannerButton,
-                  (!isOnline || syncingPhotos) && styles.photoSyncBannerButtonDisabled,
-                ]}
-                onPress={handleSyncPhotos}
-                disabled={!isOnline || syncingPhotos}
-              >
-                {syncingPhotos ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.photoSyncBannerButtonText}>
-                    {photoStats.failed > 0 ? 'Tentar novamente' : 'Enviar'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        ) : (combinedObras.length > 0 && !hasOfflineSyncIssues) ? (
-          <View style={styles.photoSyncBannerAll}>
-            <Text style={styles.photoSyncBannerAllText}>Todas as fotos sincronizadas</Text>
-          </View>
-        ) : null}
-
-        {showManualSyncButton && (
-          <View style={styles.syncBanner}>
-            <View style={styles.syncBannerInfo}>
-              <Text style={styles.syncBannerTitle}>
-                {manualSyncPendingCount} item(ns) aguardando sincronizacao
-              </Text>
-              <Text style={styles.syncBannerSubtitle}>
-                {isOnline ? 'Envie agora para liberar espaco.' : 'Conecte-se para finalizar o envio.'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.syncBannerButton,
-                (!isOnline || syncingPending) && styles.syncBannerButtonDisabled,
-              ]}
-              onPress={handleManualSync}
-              disabled={!isOnline || syncingPending}
-            >
-              {syncingPending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.syncBannerButtonText}>
-                  Sincronizar ({manualSyncPendingCount})
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {loading && combinedObras.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.emptyText}>Carregando obras...</Text>
-          </View>
-        ) : combinedObras.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Nenhuma obra cadastrada</Text>
-            <Text style={styles.cardText}>
-              Clique no botao "+" acima ou no Dashboard para cadastrar sua primeira obra.
-            </Text>
-          </View>
-        ) : groupedFilteredObras.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Nenhum resultado</Text>
-            <Text style={styles.cardText}>
-              Ajuste o termo de busca para encontrar uma obra.
-            </Text>
-          </View>
-        ) : (
-          groupedFilteredObras.map((grupo) => {
-            const obra = grupo.principal;
-            const obraIds = grupo.itens.map((item) => item.id);
-
-            const servicosDb = obraIds.flatMap((id) => servicosPorObra[id] || []);
-            const servicosDbUnicos = servicosDb.filter((servico, index, lista) => {
-              return lista.findIndex((item) => item.id === servico.id) === index;
-            });
-            const legacyServicos = grupo.itens
-              .map((item) => ({
-                ...(item as any), // inclui todos os campos de fotos da obra
-                id: `legacy-${item.id}-servico`,
-                obra_id: item.id,
-                tipo_servico: (item.tipo_servico || 'Documentação') as TipoServico,
-                responsavel: item.responsavel,
-                status: item.status === 'finalizada' ? 'completo' : 'rascunho',
-                sync_status: toSyncStatusServico(item),
-                created_at: item.created_at,
-                updated_at: item.created_at,
-                fotos_antes: (item as any).fotos_antes || [],
-                fotos_durante: (item as any).fotos_durante || [],
-                fotos_depois: (item as any).fotos_depois || [],
-              } as Servico));
-
-            const legacyServicosUnicos = legacyServicos.filter((servico, index, lista) => {
-              return lista.findIndex((item) => item.id === servico.id) === index;
-            });
-
-            const servicosRender = [...servicosDbUnicos, ...legacyServicosUnicos];
-
-            // Calcular status da obra baseado nos serviços novos
-            // Se há serviços DB, considera-los. Se não, usa status original.
-            let displayStatus: 'em_aberto' | 'rascunho' | 'finalizada' = obra.status || 'em_aberto';
-            if (servicosDbUnicos.length > 0) {
-              // Há serviços novos: calcular status baseado neles
-              const todosCompletos = servicosDbUnicos.every((s) => s.status === 'completo');
-              displayStatus = todosCompletos ? 'finalizada' : 'em_aberto';
-            }
-
-            return (
-              <View key={grupo.groupKey} style={{ marginBottom: 12 }}>
-                <ObraContainer
-                  obraId={grupo.groupKey}
-                  obraData={formatarData(obra.data)}
-                  obraTitle={grupo.obraNumero}
-                  responsavel={obra.responsavel}
-                  equipe={obra.equipe}
-                  status={displayStatus}
-                  servicos={servicosRender}
-                  isExpanded={false}
-                  onToggleExpand={() => handleOpenObraBooksPage(grupo)}
-                  onAddService={() => handleOpenObraBooksPage(grupo)}
-                />
-
-                {renderStatusBadge(obra)}
-
-                {obra.origem === 'offline' && !obra.serverId && (
-                  <View style={styles.cardFooter}>
-                    <TouchableOpacity style={styles.syncObraButton} onPress={() => handleSyncSingleObra(obra)}>
-                      <Text style={styles.syncObraButtonText}>Sincronizar obra</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.deleteObraButton} onPress={() => handleDeleteObra(obra)}>
-                      <Text style={styles.deleteObraButtonText}>Remover rascunho</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            );
-          })
         )}
       </View>
-      </ScrollView>
+    );
+  }, [servicosPorObra, handleOpenObraBooksPage, handleSyncSingleObra, handleDeleteObra, renderStatusBadge, toSyncStatusServico, formatarData]);
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <FlatList
+        style={styles.container}
+        contentContainerStyle={[
+          styles.content,
+          { paddingHorizontal: horizontalPadding, paddingBottom: 120 + insets.bottom },
+        ]}
+        data={groupedFilteredObras}
+        keyExtractor={(item) => item.groupKey}
+        renderItem={renderObraGrupo}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={8}
+        windowSize={10}
+        initialNumToRender={10}
+        ListHeaderComponent={
+          <View>
+            {equipeLogada && (
+              <View style={styles.equipeBanner}>
+                <View style={styles.equipeInfo}>
+                  <Text style={styles.equipeLabel}>Equipe logada:</Text>
+                  <Text style={styles.equipeNome}>{equipeLogada}</Text>
+                </View>
+                <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+                  <Text style={styles.logoutButtonText}>Sair</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={[styles.header, isSmallScreen && styles.headerSmall]}>
+              <View style={styles.headerTop}>
+                <Text style={[styles.title, isSmallScreen && styles.titleSmall]}>Obras</Text>
+                <Text style={[styles.subtitle, isSmallScreen && styles.subtitleSmall]}>{subtitleText}</Text>
+              </View>
+              {!isOnline && (
+                <View style={[styles.offlinePill, isSmallScreen && styles.offlinePillSmall]}>
+                  <Text style={styles.offlineHint}>Modo Offline</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={[styles.metricsRow, isSmallScreen && styles.metricsRowStacked]}>
+              <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+                <Text style={styles.metricLabel}>{isAdmin ? 'Total geral' : 'Total da equipe'}</Text>
+                <Text style={styles.metricValue}>{combinedObras.length}</Text>
+              </View>
+              <View style={[styles.metricCard, isSmallScreen && styles.metricCardStacked]}>
+                <Text style={styles.metricLabel}>Pendentes</Text>
+                <Text style={[styles.metricValue, manualSyncPendingCount > 0 && styles.metricValueAlert]}>
+                  {manualSyncPendingCount}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.searchContainer}>
+              <Text style={styles.searchPrefix}>Buscar</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar por obra, responsavel ou equipe"
+                value={searchTerm}
+                onChangeText={setSearchTerm}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            </View>
+
+            {(photoStats.failed > 0 || photoStats.pending > 0 || photoStats.uploading > 0) ? (
+              <View style={[
+                styles.photoSyncBanner,
+                photoStats.failed > 0 ? styles.photoSyncBannerFailed
+                  : photoStats.uploading > 0 ? styles.photoSyncBannerUploading
+                  : styles.photoSyncBannerPending,
+              ]}>
+                <View style={styles.photoSyncBannerInfo}>
+                  {photoStats.uploading > 0 ? (
+                    <Text style={styles.photoSyncBannerTitle}>Enviando {photoStats.uploading} foto(s)...</Text>
+                  ) : photoStats.failed > 0 ? (
+                    <>
+                      <Text style={styles.photoSyncBannerTitle}>{photoStats.failed} foto(s) com falha no envio</Text>
+                      <Text style={styles.photoSyncBannerSubtitle}>Toque em "Tentar novamente" para reenviar</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.photoSyncBannerTitle}>{photoStats.pending} foto(s) aguardando envio</Text>
+                      <Text style={styles.photoSyncBannerSubtitle}>
+                        {isOnline ? 'Conectado — toque para enviar agora' : 'Aguardando conexao com a internet'}
+                      </Text>
+                    </>
+                  )}
+                </View>
+                {photoStats.uploading === 0 && (
+                  <TouchableOpacity
+                    style={[styles.photoSyncBannerButton, (!isOnline || syncingPhotos) && styles.photoSyncBannerButtonDisabled]}
+                    onPress={handleSyncPhotos}
+                    disabled={!isOnline || syncingPhotos}
+                  >
+                    {syncingPhotos ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.photoSyncBannerButtonText}>
+                        {photoStats.failed > 0 ? 'Tentar novamente' : 'Enviar'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (combinedObras.length > 0 && !hasOfflineSyncIssues) ? (
+              <View style={styles.photoSyncBannerAll}>
+                <Text style={styles.photoSyncBannerAllText}>Todas as fotos sincronizadas</Text>
+              </View>
+            ) : null}
+
+            {showManualSyncButton && (
+              <View style={styles.syncBanner}>
+                <View style={styles.syncBannerInfo}>
+                  <Text style={styles.syncBannerTitle}>{manualSyncPendingCount} item(ns) aguardando sincronizacao</Text>
+                  <Text style={styles.syncBannerSubtitle}>
+                    {isOnline ? 'Envie agora para liberar espaco.' : 'Conecte-se para finalizar o envio.'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.syncBannerButton, (!isOnline || syncingPending) && styles.syncBannerButtonDisabled]}
+                  onPress={handleManualSync}
+                  disabled={!isOnline || syncingPending}
+                >
+                  {syncingPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.syncBannerButtonText}>Sincronizar ({manualSyncPendingCount})</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        }
+        ListEmptyComponent={
+          <View style={styles.card}>
+            {loading && combinedObras.length === 0 ? (
+              <Text style={styles.emptyText}>Carregando obras...</Text>
+            ) : combinedObras.length === 0 ? (
+              <>
+                <Text style={styles.cardTitle}>Nenhuma obra cadastrada</Text>
+                <Text style={styles.cardText}>
+                  Acesse o Dashboard para cadastrar sua primeira obra.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.cardTitle}>Nenhum resultado</Text>
+                <Text style={styles.cardText}>Ajuste o termo de busca para encontrar uma obra.</Text>
+              </>
+            )}
+          </View>
+        }
+      />
 
       <ServiceTypeSelector
         visible={serviceSelectorVisible}
@@ -1411,11 +1388,11 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#eef2f6',
   },
-  scrollContent: {
-    paddingBottom: 110,
-  },
   content: {
     paddingVertical: 18,
+  },
+  obraGroupItem: {
+    marginBottom: 12,
   },
   header: {
     flexDirection: 'row',
