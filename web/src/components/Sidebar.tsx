@@ -1,6 +1,7 @@
 'use client'
 
 import { useAuth } from '@/contexts/AuthContext'
+import { useTheme } from '@/contexts/ThemeContext'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
@@ -19,6 +20,7 @@ export default function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const { profile, signOut, isAdmin } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const pathname = usePathname()
   const isCompact = collapsed && !isMobileOpen
 
@@ -72,12 +74,12 @@ export default function Sidebar({
   return (
     <aside
       id="app-sidebar"
-      className={`fixed top-0 left-0 z-50 h-screen w-72 flex flex-col bg-white border-r border-slate-200/80 shadow-xl transition-all duration-300 ${
+      className={`fixed top-0 left-0 z-50 h-screen w-72 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200/80 dark:border-slate-700/60 shadow-xl transition-all duration-300 ${
         collapsed ? 'lg:w-20' : 'lg:w-72'
       } ${isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
     >
       {/* Logo */}
-      <div className="relative h-16 flex items-center px-4 border-b border-slate-200">
+      <div className="relative h-16 flex items-center px-4 border-b border-slate-200 dark:border-slate-700">
         <Link
           href="/dashboard"
           className={`flex w-full items-center justify-center py-1 transition-opacity hover:opacity-90 ${
@@ -109,7 +111,7 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onMobileClose}
-          className="absolute right-4 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 lg:hidden"
+          className="absolute right-4 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 lg:hidden"
           aria-label="Fechar menu"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,7 +123,7 @@ export default function Sidebar({
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-3">
         {!isCompact && (
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 mb-3">Menu</p>
+          <p className="text-[10px] font-bold text-slate-400 dark:text-slate-600 uppercase tracking-widest px-3 mb-3">Menu</p>
         )}
         <div className="space-y-1">
           {filteredNavItems.map((item) => {
@@ -133,7 +135,7 @@ export default function Sidebar({
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
                   isActive
                     ? 'bg-gradient-to-r from-primary to-primary-dark text-white shadow-lg shadow-primary/25'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
                 title={isCompact ? item.name : undefined}
                 onClick={onMobileClose}
@@ -143,8 +145,8 @@ export default function Sidebar({
                 </div>
                 {!isCompact && (
                   <div className="flex-1 min-w-0">
-                    <div className={`font-semibold text-sm truncate ${isActive ? 'text-white' : 'text-slate-800'}`}>{item.name}</div>
-                    <div className={`text-xs truncate ${isActive ? 'text-white/75' : 'text-slate-400'}`}>
+                    <div className={`font-semibold text-sm truncate ${isActive ? 'text-white' : 'text-slate-800 dark:text-slate-200'}`}>{item.name}</div>
+                    <div className={`text-xs truncate ${isActive ? 'text-white/75' : 'text-slate-400 dark:text-slate-500'}`}>
                       {item.description}
                     </div>
                   </div>
@@ -158,13 +160,40 @@ export default function Sidebar({
         </div>
       </nav>
 
+      {/* Theme Toggle */}
+      <div className="px-3 pb-2">
+        <button
+          onClick={toggleTheme}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium
+            ${isCompact ? 'justify-center' : ''}
+            text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200`}
+          title={theme === 'dark' ? 'Mudar para claro' : 'Mudar para escuro'}
+        >
+          {theme === 'dark' ? (
+            <>
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              {!isCompact && <span>Tema claro</span>}
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+              {!isCompact && <span>Tema escuro</span>}
+            </>
+          )}
+        </button>
+      </div>
+
       {/* User Profile */}
-      <div className="border-t border-slate-100 p-3">
+      <div className="border-t border-slate-100 dark:border-slate-700 p-3">
         {!isCompact ? (
           <div className="space-y-0.5">
             <Link
               href="/profile"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 transition-colors group"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
               onClick={onMobileClose}
             >
               <div className="relative w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 ring-2 ring-slate-100 group-hover:ring-primary/30 transition-all">
@@ -177,7 +206,7 @@ export default function Sidebar({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-900 truncate leading-none mb-0.5">
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate leading-none mb-0.5">
                   {profile?.full_name || profile?.email?.split('@')[0]}
                 </p>
                 <p className="text-[11px] text-slate-400 truncate font-medium">
@@ -230,10 +259,10 @@ export default function Sidebar({
       {/* Toggle Button */}
       <button
         onClick={onToggleCollapsed}
-        className="absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md transition-all hover:scale-110 hover:shadow-lg lg:flex"
+        className="absolute -right-3 top-20 hidden h-6 w-6 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-md transition-all hover:scale-110 hover:shadow-lg lg:flex"
       >
         <svg
-          className={`h-4 w-4 text-slate-600 transition-transform ${collapsed ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-slate-600 dark:text-slate-400 transition-transform ${collapsed ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"

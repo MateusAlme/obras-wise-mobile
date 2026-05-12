@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
+import PageHeader from '@/components/PageHeader'
 
 interface TeamCredential {
   id: string
@@ -322,23 +323,26 @@ export default function TeamsPage() {
     <ProtectedRoute requireAdmin>
       <AppShell>
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight mb-2">Gerenciar Equipes</h1>
-            <p className="text-sm sm:text-base text-slate-600">
-              Criar, editar e gerenciar equipes do sistema
-            </p>
-          </div>
-          <button
-            onClick={openModal}
-            className="px-6 py-3.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl hover:shadow-xl hover:scale-105 transition-all flex items-center gap-3 font-bold text-lg shadow-lg shadow-primary/30"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        <PageHeader
+          icon={
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            Nova Equipe
-          </button>
-        </div>
+          }
+          title="Gerenciar Equipes"
+          subtitle="Criar, editar e gerenciar equipes do sistema"
+          actions={
+            <button
+              onClick={openModal}
+              className="px-5 py-2.5 bg-gradient-to-r from-primary to-primary-dark text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all flex items-center gap-2 font-semibold text-sm shadow-md shadow-primary/30"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Nova Equipe
+            </button>
+          }
+        />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

@@ -14,7 +14,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
       <Sidebar
         collapsed={collapsed}
         onToggleCollapsed={() => setCollapsed((prev) => !prev)}
@@ -36,7 +36,7 @@ export default function AppShell({ children }: AppShellProps) {
           collapsed ? 'lg:ml-20' : 'lg:ml-72'
         }`}
       >
-        <header className="lg:hidden sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-slate-200">
+        <header className="lg:hidden sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-3 px-4 py-3">
             <button
               type="button"
@@ -44,7 +44,7 @@ export default function AppShell({ children }: AppShellProps) {
               aria-expanded={mobileOpen}
               aria-controls="app-sidebar"
               onClick={() => setMobileOpen(true)}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
@@ -60,7 +60,7 @@ export default function AppShell({ children }: AppShellProps) {
                 className="h-8 w-auto"
                 priority
               />
-              <span className="text-sm font-semibold text-slate-800">Teccel Engenharia</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">Teccel Engenharia</span>
             </Link>
           </div>
         </header>

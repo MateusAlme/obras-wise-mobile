@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase, type Obra, type FotoInfo, getObraStatus } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AppShell from '@/components/AppShell'
+import PageHeader from '@/components/PageHeader'
 import { generatePDF, generateCombinedPDF } from '@/lib/pdf-generator'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -1248,12 +1249,15 @@ export default function ReportsPage() {
     <ProtectedRoute>
       <AppShell>
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight mb-2">Relatórios</h1>
-            <p className="text-sm sm:text-base text-slate-600">
-              Visualize e exporte relatórios detalhados das obras
-            </p>
-          </div>
+          <PageHeader
+            icon={
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            }
+            title="Relatórios"
+            subtitle="Visualize e exporte relatórios detalhados das obras"
+          />
 
           {/* Filtros */}
           <div className="mb-8 bg-white p-6 rounded-2xl shadow-lg border border-slate-200">
