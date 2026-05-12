@@ -70,6 +70,15 @@ const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; li
   { key: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Transformador - Conexões Secundárias (Retirado)', color: 'red', lightColor: 'red' },
   { key: 'fotos_apr', label: 'Fotos APR', color: 'violet', lightColor: 'violet' },
   { key: 'fotos_impedimento', label: 'Fotos do Impedimento', color: 'orange', lightColor: 'orange' },
+  { key: 'doc_cadastro_medidor', label: 'Cadastro de Medidor', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_laudo_transformador', label: 'Laudo de Transformador', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_laudo_regulador', label: 'Laudo de Regulador', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_laudo_religador', label: 'Laudo de Religador', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_fvbt', label: 'FVBT', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_termo_desistencia_lpt', label: 'Termo de Desistência LPT', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_autorizacao_passagem', label: 'Autorização de Passagem', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_materiais_previsto', label: 'Materiais Previsto', color: 'slate', lightColor: 'slate' },
+  { key: 'doc_materiais_realizado', label: 'Materiais Realizado', color: 'slate', lightColor: 'slate' },
 ]
 
 const TIPOS_SERVICO_BASE = [
@@ -136,6 +145,11 @@ function getSectionsForBook(tipoServico: string) {
     ],
     'APR': ['fotos_apr'],
     'Registro de Impedimento': ['fotos_impedimento'],
+    'Documentação': [
+      'doc_cadastro_medidor', 'doc_laudo_transformador', 'doc_laudo_regulador',
+      'doc_laudo_religador', 'doc_fvbt', 'doc_termo_desistencia_lpt',
+      'doc_autorizacao_passagem', 'doc_materiais_previsto', 'doc_materiais_realizado',
+    ],
   }
 
   const keys = keyMap[tipoServico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois']
