@@ -1007,7 +1007,18 @@ export default function Obras() {
       return;
     }
 
-    const pendingObra = pendingObrasState.find((item) => item.id === obra.id) || pendingObrasState.find((item) => item.obra === obra.obra);
+    let pendingObra: PendingObra | undefined =
+      pendingObrasState.find((item) => item.id === obra.id) ||
+      pendingObrasState.find((item) => item.obra === obra.obra);
+
+    if (!pendingObra) {
+      // Fallback: busca direta no storage (captura partial/syncing filtrados do estado)
+      const allPending = await getPendingObras();
+      pendingObra =
+        allPending.find((item) => item.id === obra.id) ||
+        allPending.find((item) => item.obra === obra.obra);
+    }
+
     if (!pendingObra) {
       Alert.alert('Não encontrado', 'Não foi possível localizar o rascunho para sincronização.');
       return;

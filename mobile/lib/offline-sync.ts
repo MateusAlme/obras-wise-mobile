@@ -886,13 +886,13 @@ export const syncLocalObra = async (
             logger.sync(`✅ Obra totalmente sincronizada - ID local: ${obraId}, serverId: ${finalId}`);
           }
         } else {
-          // Fallback: apenas marcar como sincronizada (mantém IDs)
+          // Fallback: marcar como sincronizada e atualizar serverId/origem mesmo sem dados frescos
           logger.warn(`⚠️ Não foi possível buscar dados atualizados, marcando apenas como sincronizada`);
           localObras[index].synced = !hasPendingPhotos;
           localObras[index].locallyModified = hasPendingPhotos;
           localObras[index].sync_status = hasPendingPhotos ? 'partial' : undefined;
-          // ✅ Ainda assim, guardar o serverId se disponível
-          if (finalId && finalId !== obraId) {
+          localObras[index].origem = 'online';
+          if (finalId) {
             (localObras[index] as any).serverId = finalId;
           }
         }
