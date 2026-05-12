@@ -108,6 +108,9 @@ export interface Obra {
   doc_apr?: FotoInfo[]
   doc_fvbt?: FotoInfo[]
   doc_termo_desistencia_lpt?: FotoInfo[]
+  doc_autorizacao_passagem?: FotoInfo[]
+  doc_materiais_previsto?: FotoInfo[]
+  doc_materiais_realizado?: FotoInfo[]
   user_id: string
   created_at: string
 }
