@@ -1158,15 +1158,6 @@ export default function Obras() {
           </View>
         </View>
 
-        {/* Botão Nova Obra */}
-        <TouchableOpacity
-          style={styles.novaObraButton}
-          onPress={() => router.push('/nova-obra')}
-        >
-          <Text style={styles.novaObraButtonIcon}>+</Text>
-          <Text style={styles.novaObraButtonLabel}>Nova Obra</Text>
-        </TouchableOpacity>
-
         <View style={styles.searchContainer}>
           <Text style={styles.searchPrefix}>Buscar</Text>
           <TextInput
@@ -1548,34 +1539,6 @@ const styles = StyleSheet.create({
   },
   headerTop: {
     marginBottom: 4,
-  },
-  novaObraButton: {
-    backgroundColor: '#dc3545',
-    borderRadius: 14,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    shadowColor: '#dc3545',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.22,
-    shadowRadius: 7,
-    elevation: 5,
-  },
-  novaObraButtonIcon: {
-    fontSize: 24,
-    marginRight: 8,
-    color: '#fff',
-    fontWeight: '700',
-  },
-  novaObraButtonLabel: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '800',
-    textAlign: 'center',
-    flexShrink: 1,
   },
   syncManualButton: {
     backgroundColor: '#2563eb',

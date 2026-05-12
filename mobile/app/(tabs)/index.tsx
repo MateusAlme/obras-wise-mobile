@@ -305,15 +305,6 @@ export default function Dashboard() {
           )}
         </View>
 
-        {/* Ver Histórico */}
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => router.push('/(tabs)/obras')}
-        >
-          <Text style={[styles.secondaryButtonText, isSmallScreen && styles.secondaryButtonTextSmall]}>
-            Ver Histórico de Obras →
-          </Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -526,25 +517,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonTextSmall: {
     fontSize: 16,
-  },
-  secondaryButton: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 2,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-  },
-  secondaryButtonText: {
-    color: '#374151',
-    fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  secondaryButtonTextSmall: {
-    fontSize: 14,
   },
   statusCard: {
     backgroundColor: '#fff',
