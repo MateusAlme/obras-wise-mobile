@@ -346,7 +346,7 @@ export default function TeamsPage() {
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 hover:shadow-xl transition-shadow">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-4">
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -354,11 +354,11 @@ export default function TeamsPage() {
                 </svg>
               </div>
             </div>
-            <h3 className="text-slate-600 text-sm font-semibold uppercase tracking-wide mb-1">Total de Equipes</h3>
-            <p className="text-4xl font-bold text-slate-900">{teams.length}</p>
+            <h3 className="text-slate-600 dark:text-slate-400 text-sm font-semibold uppercase tracking-wide mb-1">Total de Equipes</h3>
+            <p className="text-4xl font-bold text-slate-900 dark:text-white">{teams.length}</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 hover:shadow-xl transition-shadow">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-4">
               <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -366,11 +366,11 @@ export default function TeamsPage() {
                 </svg>
               </div>
             </div>
-            <h3 className="text-slate-600 text-sm font-semibold uppercase tracking-wide mb-1">Equipes Ativas</h3>
+            <h3 className="text-slate-600 dark:text-slate-400 text-sm font-semibold uppercase tracking-wide mb-1">Equipes Ativas</h3>
             <p className="text-4xl font-bold text-green-600">{activeTeams}</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 hover:shadow-xl transition-shadow">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 hover:shadow-xl transition-shadow">
             <div className="flex items-center justify-between mb-4">
               <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-8 h-8 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -378,13 +378,13 @@ export default function TeamsPage() {
                 </svg>
               </div>
             </div>
-            <h3 className="text-slate-600 text-sm font-semibold uppercase tracking-wide mb-1">Equipes Inativas</h3>
-            <p className="text-4xl font-bold text-slate-600">{inactiveTeams}</p>
+            <h3 className="text-slate-600 dark:text-slate-400 text-sm font-semibold uppercase tracking-wide mb-1">Equipes Inativas</h3>
+            <p className="text-4xl font-bold text-slate-600 dark:text-slate-300">{inactiveTeams}</p>
           </div>
         </div>
 
         {/* Search Bar */}
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 mb-6">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-6 mb-6">
           <div className="relative">
             <svg className="absolute left-4 top-1/2 transform -translate-y-1/2 w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -394,39 +394,39 @@ export default function TeamsPage() {
               placeholder="Buscar equipe..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-14 pr-4 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              className="w-full pl-14 pr-4 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
             />
           </div>
         </div>
 
         {/* Teams Table */}
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full">
-              <thead className="bg-slate-50 border-b-2 border-slate-200">
+              <thead className="bg-slate-50 dark:bg-slate-700/50 border-b-2 border-slate-200 dark:border-slate-700">
                 <tr>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">Equipe</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">Tipo</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">Total de Obras</th>
-                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 uppercase tracking-wider">Criado em</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Equipe</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Tipo</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Total de Obras</th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Criado em</th>
                   <th className="px-6 py-4 text-center text-sm font-bold text-slate-700 uppercase tracking-wider">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                 {filteredTeams.map((team) => {
                   const stats = teamStats.find((s) => s.equipe_codigo === team.equipe_codigo)
                   const totalObras = stats?.total_obras || 0
                   const badge = getRoleBadge(team.role)
 
                   return (
-                    <tr key={team.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={team.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-dark rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md">
                             {team.equipe_codigo.substring(0, 2)}
                           </div>
-                          <div className="text-base font-bold text-slate-900">{team.equipe_codigo}</div>
+                          <div className="text-base font-bold text-slate-900 dark:text-white">{team.equipe_codigo}</div>
                         </div>
                       </td>
                       <td className="px-6 py-5">
@@ -448,10 +448,10 @@ export default function TeamsPage() {
                         )}
                       </td>
                       <td className="px-6 py-5">
-                        <span className="text-base font-bold text-slate-900">{totalObras}</span>
+                        <span className="text-base font-bold text-slate-900 dark:text-white">{totalObras}</span>
                       </td>
                       <td className="px-6 py-5">
-                        <span className="text-sm text-slate-600">
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
                           {new Date(team.created_at).toLocaleDateString('pt-BR')}
                         </span>
                       </td>
@@ -460,7 +460,7 @@ export default function TeamsPage() {
                           {/* Editar nome + tipo */}
                           <button
                             onClick={() => openEditModal(team)}
-                            className="p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                            className="p-2.5 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
                             title="Editar Equipe"
                           >
                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -525,9 +525,9 @@ export default function TeamsPage() {
         {/* Modal - Nova Equipe */}
         {showModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-slate-900">Nova Equipe</h2>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Nova Equipe</h2>
                 <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -537,13 +537,13 @@ export default function TeamsPage() {
 
               <form onSubmit={handleCreateTeam} className="space-y-5">
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Código da Equipe</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Código da Equipe</label>
                   <input
                     type="text"
                     required
                     value={teamCode}
                     onChange={(e) => setTeamCode(e.target.value.toUpperCase())}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     placeholder="Ex: CNT 01"
                     autoComplete="off"
                     autoCorrect="off"
@@ -552,11 +552,11 @@ export default function TeamsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Tipo de Acesso Mobile</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Tipo de Acesso Mobile</label>
                   <select
                     value={teamRole}
                     onChange={(e) => setTeamRole(normalizeTeamRole(e.target.value))}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     {ROLE_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -565,25 +565,25 @@ export default function TeamsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Senha</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Senha</label>
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     placeholder="Mínimo 6 caracteres"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Confirmar Senha</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Confirmar Senha</label>
                   <input
                     type="password"
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     placeholder="Digite a senha novamente"
                   />
                 </div>
@@ -595,7 +595,7 @@ export default function TeamsPage() {
                 )}
 
                 <div className="flex gap-4 pt-2">
-                  <button type="button" onClick={closeModal} className="flex-1 px-6 py-4 border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 transition-colors font-bold text-lg">
+                  <button type="button" onClick={closeModal} className="flex-1 px-6 py-4 border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-bold text-lg">
                     Cancelar
                   </button>
                   <button type="submit" className="flex-1 px-6 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl hover:shadow-xl transition-all font-bold text-lg">
@@ -610,9 +610,9 @@ export default function TeamsPage() {
         {/* Modal - Editar Equipe (nome + tipo) */}
         {showEditModal && editingTeamData && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-slate-900">Editar Equipe</h2>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Editar Equipe</h2>
                 <button onClick={closeEditModal} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -622,13 +622,13 @@ export default function TeamsPage() {
 
               <form onSubmit={handleEditTeam} className="space-y-5">
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Código da Equipe</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Código da Equipe</label>
                   <input
                     type="text"
                     required
                     value={editTeamCode}
                     onChange={(e) => setEditTeamCode(e.target.value.toUpperCase())}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
@@ -636,11 +636,11 @@ export default function TeamsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Tipo de Acesso Mobile</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Tipo de Acesso Mobile</label>
                   <select
                     value={editTeamRole}
                     onChange={(e) => setEditTeamRole(normalizeTeamRole(e.target.value))}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 bg-white"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   >
                     {ROLE_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -655,7 +655,7 @@ export default function TeamsPage() {
                 )}
 
                 <div className="flex gap-4 pt-2">
-                  <button type="button" onClick={closeEditModal} className="flex-1 px-6 py-4 border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 transition-colors font-bold text-lg">
+                  <button type="button" onClick={closeEditModal} className="flex-1 px-6 py-4 border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-bold text-lg">
                     Cancelar
                   </button>
                   <button type="submit" className="flex-1 px-6 py-4 bg-gradient-to-r from-primary to-primary-dark text-white rounded-2xl hover:shadow-xl transition-all font-bold text-lg">
@@ -670,9 +670,9 @@ export default function TeamsPage() {
         {/* Modal - Alterar Senha */}
         {showPasswordModal && editingTeam && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-            <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
+            <div className="bg-white dark:bg-slate-800 rounded-3xl max-w-lg w-full p-8 shadow-2xl animate-slideUp">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-slate-900">Alterar Senha</h2>
+                <h2 className="text-3xl font-bold text-slate-900 dark:text-white">Alterar Senha</h2>
                 <button onClick={closePasswordModal} className="text-slate-400 hover:text-slate-600 transition-colors">
                   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -680,33 +680,33 @@ export default function TeamsPage() {
                 </button>
               </div>
 
-              <div className="mb-6 p-4 bg-slate-50 rounded-2xl">
-                <p className="text-base text-slate-600">
-                  Equipe: <span className="font-bold text-slate-900">{editingTeam.equipe_codigo}</span>
+              <div className="mb-6 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl">
+                <p className="text-base text-slate-600 dark:text-slate-400">
+                  Equipe: <span className="font-bold text-slate-900 dark:text-white">{editingTeam.equipe_codigo}</span>
                 </p>
               </div>
 
               <form onSubmit={handleChangePassword} className="space-y-5">
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Nova Senha</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Nova Senha</label>
                   <input
                     type="password"
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     placeholder="Mínimo 6 caracteres"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-base font-bold text-slate-900 mb-3">Confirmar Nova Senha</label>
+                  <label className="block text-base font-bold text-slate-900 dark:text-slate-100 mb-3">Confirmar Nova Senha</label>
                   <input
                     type="password"
                     required
                     value={confirmPasswordPwd}
                     onChange={(e) => setConfirmPasswordPwd(e.target.value)}
-                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 rounded-2xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full px-5 py-4 text-lg border-2 border-slate-200 dark:border-slate-600 rounded-2xl bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     placeholder="Digite a senha novamente"
                   />
                 </div>
@@ -718,7 +718,7 @@ export default function TeamsPage() {
                 )}
 
                 <div className="flex gap-4 pt-2">
-                  <button type="button" onClick={closePasswordModal} className="flex-1 px-6 py-4 border-2 border-slate-300 text-slate-700 rounded-2xl hover:bg-slate-50 transition-colors font-bold text-lg">
+                  <button type="button" onClick={closePasswordModal} className="flex-1 px-6 py-4 border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-bold text-lg">
                     Cancelar
                   </button>
                   <button type="submit" className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-2xl hover:shadow-xl transition-all font-bold text-lg">
