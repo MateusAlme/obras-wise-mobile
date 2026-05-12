@@ -141,6 +141,7 @@ export default function NovaObraRapida() {
   const [equipeExecutora, setEquipeExecutora] = useState('');
   const [equipesAdmin, setEquipesAdmin] = useState<string[]>([]);
   const [showEquipeModal, setShowEquipeModal] = useState(false);
+  const [equipeBusca, setEquipeBusca] = useState('');
 
   const [showDateModal, setShowDateModal] = useState(false);
   const [showTipoModal, setShowTipoModal] = useState(false);
@@ -590,43 +591,94 @@ export default function NovaObraRapida() {
       </Modal>
 
       {/* ══ Modal: Equipe de Lançamento (admin/supervisor) ══ */}
-      <Modal visible={showEquipeModal} animationType="slide" transparent statusBarTranslucent>
-        <TouchableOpacity style={s.modalOverlay} onPress={() => setShowEquipeModal(false)} activeOpacity={1}>
-          <View style={s.modalBox}>
+      <Modal
+        visible={showEquipeModal}
+        animationType="slide"
+        transparent
+        statusBarTranslucent
+        onRequestClose={() => { setShowEquipeModal(false); setEquipeBusca(''); }}
+      >
+        <TouchableOpacity
+          style={s.modalOverlay}
+          onPress={() => { setShowEquipeModal(false); setEquipeBusca(''); }}
+          activeOpacity={1}
+        >
+          <TouchableOpacity activeOpacity={1} style={s.modalBox}>
             <View style={s.modalHandle} />
             <View style={s.modalHeader}>
               <Text style={s.modalTitle}>Equipe de Lançamento</Text>
-              <TouchableOpacity style={s.modalCloseBtn} onPress={() => setShowEquipeModal(false)}>
+              <TouchableOpacity style={s.modalCloseBtn} onPress={() => { setShowEquipeModal(false); setEquipeBusca(''); }}>
                 <Ionicons name="close" size={18} color={C.slate700} />
               </TouchableOpacity>
             </View>
+
+            {/* Busca */}
+            <View style={s.equipeSearchBox}>
+              <Ionicons name="search-outline" size={16} color={C.slate400} />
+              <TextInput
+                style={s.equipeSearchInput}
+                placeholder="Buscar equipe..."
+                placeholderTextColor={C.slate400}
+                value={equipeBusca}
+                onChangeText={setEquipeBusca}
+                autoCapitalize="characters"
+                returnKeyType="done"
+              />
+              {equipeBusca.length > 0 && (
+                <TouchableOpacity onPress={() => setEquipeBusca('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={C.slate300} />
+                </TouchableOpacity>
+              )}
+            </View>
+
             <ScrollView
               style={s.tipoList}
               contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 56, 88) }}
-              showsVerticalScrollIndicator={true}
+              showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
-              {equipesAdmin.map((item, idx) => {
-                const selected = equipeExecutora === item;
-                return (
-                  <TouchableOpacity
-                    key={item}
-                    style={[
-                      s.tipoItem,
-                      idx === equipesAdmin.length - 1 && { borderBottomWidth: 0 },
-                      selected && s.tipoItemSelected,
-                    ]}
-                    onPress={() => { setEquipeExecutora(item); setShowEquipeModal(false); }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[s.tipoItemDot, selected && s.selectDotRed]} />
-                    <Text style={[s.tipoItemText, selected && s.tipoItemTextSelected]}>{item}</Text>
-                    {selected && <Ionicons name="checkmark" size={18} color={C.red} />}
-                  </TouchableOpacity>
-                );
-              })}
+              {(() => {
+                const busca = equipeBusca.trim().toUpperCase();
+                const filtradas = equipesAdmin.filter(e => e.toUpperCase().includes(busca));
+                if (filtradas.length === 0) {
+                  return (
+                    <Text style={{ textAlign: 'center', color: C.slate400, paddingVertical: 24, fontSize: 14 }}>
+                      Nenhuma equipe encontrada
+                    </Text>
+                  );
+                }
+                const grupos: Record<string, string[]> = {};
+                for (const e of filtradas) {
+                  const prefixo = (e.match(/^[A-Za-z]+/) || [''])[0].toUpperCase();
+                  if (!grupos[prefixo]) grupos[prefixo] = [];
+                  grupos[prefixo].push(e);
+                }
+                return Object.keys(grupos).sort().map((grupo) => (
+                  <View key={grupo}>
+                    <View style={s.equipeGrupoHeader}>
+                      <Text style={s.equipeGrupoLabel}>{grupo}</Text>
+                    </View>
+                    {grupos[grupo].map((item, idx) => {
+                      const selected = equipeExecutora === item;
+                      const isLast = idx === grupos[grupo].length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={item}
+                          style={[s.tipoItem, isLast && { borderBottomWidth: 0 }, selected && s.tipoItemSelected]}
+                          onPress={() => { setEquipeExecutora(item); setShowEquipeModal(false); setEquipeBusca(''); }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[s.tipoItemDot, selected && s.selectDotRed]} />
+                          <Text style={[s.tipoItemText, selected && s.tipoItemTextSelected]}>{item}</Text>
+                          {selected && <Ionicons name="checkmark-circle" size={18} color={C.red} />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ));
+              })()}
             </ScrollView>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
@@ -805,4 +857,22 @@ const s = StyleSheet.create({
 
   // utilidade
   selectDotRed: { backgroundColor: C.red },
+
+  // Equipe search
+  equipeSearchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: C.slate100, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 9,
+    marginBottom: 12,
+  },
+  equipeSearchInput: {
+    flex: 1, fontSize: 14, color: C.slate900, padding: 0,
+  },
+  equipeGrupoHeader: {
+    paddingTop: 14, paddingBottom: 4, paddingHorizontal: 4,
+  },
+  equipeGrupoLabel: {
+    fontSize: 11, fontWeight: '700', color: C.slate400,
+    letterSpacing: 0.8, textTransform: 'uppercase',
+  },
 });
