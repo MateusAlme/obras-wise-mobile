@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { saveObraLocal, getLocalObras } from '../lib/offline-sync';
 import { createServico } from '../lib/servico-sync';
+import { supabase } from '../lib/supabase';
 import { TipoServico } from '../types/servico';
 import {
   getAllowedServiceTypesForProfile,
@@ -136,6 +137,11 @@ export default function NovaObraRapida() {
   const [equipe, setEquipe] = useState('');
   const [userRole, setUserRole] = useState('equipe');
 
+  const [isAdminUser, setIsAdminUser] = useState(false);
+  const [equipeExecutora, setEquipeExecutora] = useState('');
+  const [equipesAdmin, setEquipesAdmin] = useState<string[]>([]);
+  const [showEquipeModal, setShowEquipeModal] = useState(false);
+
   const [showDateModal, setShowDateModal] = useState(false);
   const [showTipoModal, setShowTipoModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -165,6 +171,25 @@ export default function NovaObraRapida() {
       const nextRole = role || 'equipe';
       setEquipe(nextEquipe);
       setUserRole(nextRole);
+
+      if (isAdminOrSupervisor(nextRole)) {
+        setIsAdminUser(true);
+        try {
+          const cached = await AsyncStorage.getItem('@equipes_cache');
+          if (cached) setEquipesAdmin(JSON.parse(cached));
+          const { data: equipesData } = await supabase
+            .from('equipe_credenciais')
+            .select('equipe_codigo')
+            .eq('ativo', true);
+          if (equipesData && equipesData.length > 0) {
+            const lista = Array.from(new Set(
+              equipesData.map((x: any) => String(x.equipe_codigo || '').trim()).filter(Boolean)
+            )).sort() as string[];
+            setEquipesAdmin(lista);
+            await AsyncStorage.setItem('@equipes_cache', JSON.stringify(lista));
+          }
+        } catch { /* usa cache ou lista vazia */ }
+      }
 
       const allowed = getAllowedServiceTypesForProfile(nextRole, nextEquipe);
       if (allowed?.length === 1) {
@@ -213,6 +238,7 @@ export default function NovaObraRapida() {
     }
 
     if (!responsavel.trim()) { Alert.alert('Campo obrigatório', 'Informe o nome do encarregado.'); return; }
+    if (isAdminUser && !equipeExecutora) { Alert.alert('Campo obrigatório', 'Selecione a equipe do lançamento.'); return; }
     if (!tipoServico) { Alert.alert('Campo obrigatório', 'Selecione o tipo de serviço.'); return; }
     if (!isServiceTypeAllowedForProfile(tipoServico, userRole, equipe)) {
       Alert.alert('Serviço não permitido', 'Este perfil não pode criar esse tipo de serviço.');
@@ -251,7 +277,7 @@ export default function NovaObraRapida() {
         obra: num,
         data: toIsoDate(selectedDate),
         responsavel: responsavel.trim(),
-        equipe: equipe || '',
+        equipe: isAdminUser ? (equipeExecutora || '') : (equipe || ''),
         tipo_servico: tipoServico,
         status: 'rascunho',
         origem: 'offline',
@@ -274,7 +300,7 @@ export default function NovaObraRapida() {
     } finally {
       setSaving(false);
     }
-  }, [obraNumero, responsavel, tipoServico, selectedDate, equipe, userRole, router]);
+  }, [obraNumero, responsavel, tipoServico, selectedDate, equipe, equipeExecutora, isAdminUser, userRole, router]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
@@ -402,11 +428,34 @@ export default function NovaObraRapida() {
         </View>
 
         {/* ── Equipe ── */}
-        {!!equipe && (
-          <View style={s.equipeChip}>
-            <Ionicons name="people" size={14} color={C.slate500} />
-            <Text style={s.equipeText}>Equipe: <Text style={{ fontWeight: '700' }}>{equipe}</Text></Text>
+        {isAdminUser ? (
+          <View style={[s.card, { marginBottom: 12 }]}>
+            <View style={s.fieldGroup}>
+              <Text style={s.label}>
+                <Ionicons name="people" size={13} color={C.slate500} /> {'  '}Equipe de Lançamento *
+              </Text>
+              <TouchableOpacity
+                style={[s.selectBtn, equipeExecutora && s.selectBtnFilled]}
+                onPress={() => setShowEquipeModal(true)}
+                activeOpacity={0.75}
+              >
+                <View style={s.selectBtnLeft}>
+                  <View style={[s.selectDot, { backgroundColor: equipeExecutora ? C.red : C.slate300 }]} />
+                  <Text style={[s.selectBtnText, !equipeExecutora && { color: C.slate400 }]}>
+                    {equipeExecutora || 'Selecionar equipe...'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={C.slate400} />
+              </TouchableOpacity>
+            </View>
           </View>
+        ) : (
+          !!equipe && (
+            <View style={s.equipeChip}>
+              <Ionicons name="people" size={14} color={C.slate500} />
+              <Text style={s.equipeText}>Equipe: <Text style={{ fontWeight: '700' }}>{equipe}</Text></Text>
+            </View>
+          )
         )}
 
         {/* ── Botão Iniciar ── */}
@@ -538,6 +587,47 @@ export default function NovaObraRapida() {
 
           </View>
         </View>
+      </Modal>
+
+      {/* ══ Modal: Equipe de Lançamento (admin/supervisor) ══ */}
+      <Modal visible={showEquipeModal} animationType="slide" transparent statusBarTranslucent>
+        <TouchableOpacity style={s.modalOverlay} onPress={() => setShowEquipeModal(false)} activeOpacity={1}>
+          <View style={s.modalBox}>
+            <View style={s.modalHandle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Equipe de Lançamento</Text>
+              <TouchableOpacity style={s.modalCloseBtn} onPress={() => setShowEquipeModal(false)}>
+                <Ionicons name="close" size={18} color={C.slate700} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={s.tipoList}
+              contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 56, 88) }}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
+              {equipesAdmin.map((item, idx) => {
+                const selected = equipeExecutora === item;
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    style={[
+                      s.tipoItem,
+                      idx === equipesAdmin.length - 1 && { borderBottomWidth: 0 },
+                      selected && s.tipoItemSelected,
+                    ]}
+                    onPress={() => { setEquipeExecutora(item); setShowEquipeModal(false); }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[s.tipoItemDot, selected && s.selectDotRed]} />
+                    <Text style={[s.tipoItemText, selected && s.tipoItemTextSelected]}>{item}</Text>
+                    {selected && <Ionicons name="checkmark" size={18} color={C.red} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
       </Modal>
 
     </SafeAreaView>
