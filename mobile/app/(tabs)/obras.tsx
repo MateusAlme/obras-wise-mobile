@@ -65,6 +65,7 @@ type GroupedObra = {
 };
 
 const HISTORY_CACHE_KEY = '@obras_history_cache';
+const FIX_OBRAS_DONE_KEY = '@fix_origem_v1';
 
 export default function Obras() {
   const router = useRouter();
@@ -344,24 +345,24 @@ export default function Obras() {
    */
   const autoFixObraFields = async () => {
     try {
-      let localObras = await getLocalObras();
-      console.log(`📊 Debug: Total de obras locais: ${localObras.length}`);
+      // Migração de uma única vez — evita N queries Supabase por obra a cada foco
+      const done = await AsyncStorage.getItem(FIX_OBRAS_DONE_KEY);
+      if (done) return;
 
+      const localObras = await getLocalObras();
       const obrasComCamposFaltando = localObras.filter(
         obra => obra.synced && (!obra.origem || !obra.status)
       );
 
-      if (obrasComCamposFaltando.length === 0) return;
+      // Marca como concluída antes de rodar para não repetir mesmo em caso de erro parcial
+      await AsyncStorage.setItem(FIX_OBRAS_DONE_KEY, '1');
 
-      console.log(`🔧 Auto-correção: ${obrasComCamposFaltando.length} obra(s) precisa(m) correção`);
+      if (obrasComCamposFaltando.length === 0) return;
 
       const { fixObraOrigemStatus } = await import('../../lib/fix-origem-status');
       const resultado = await fixObraOrigemStatus();
-
-      console.log(`📊 Resultado: total=${resultado.total}, corrigidas=${resultado.corrigidas}, erros=${resultado.erros}`);
-
       if (resultado.corrigidas > 0) {
-        console.log(`✅ ${resultado.corrigidas} obra(s) corrigida(s) automaticamente`);
+        console.log(`✅ auto-fix: ${resultado.corrigidas} obra(s) corrigida(s)`);
       }
     } catch (error) {
       console.error('Erro na auto-correção:', error);
@@ -400,14 +401,9 @@ export default function Obras() {
         return;
       }
 
-      console.log('📱 Carregando obras do AsyncStorage...');
-      let localObras = await getLocalObras();
-
-      // Sempre tentar sincronizar com Supabase quando online
-      // (migrateObrasDeSupabase verifica conectividade internamente e pula se offline)
-      console.log(`🔄 Sincronizando obras do Supabase para ${roleIsAdmin ? 'todas as equipes' : `"${equipe}"`}...`);
+      // Sincroniza com Supabase (verifica conectividade internamente)
       await migrateObrasDeSupabase(equipe || '', role);
-      localObras = await getLocalObras();
+      const localObras = await getLocalObras();
 
       // Auto-corrigir campos faltando
       await autoFixObraFields();
