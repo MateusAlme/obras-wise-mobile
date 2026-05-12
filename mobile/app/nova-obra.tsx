@@ -39,7 +39,7 @@ import {
   backupPhoto,
   getPhotosByObra,
   getPhotosByObraWithFallback,
-  getAllPhotoMetadata,
+  getPhotoMetadatasByIds,
   updatePhotosObraId,
 } from '../lib/photo-backup';
 import { processObraPhotos, addToUploadQueue } from '../lib/photo-queue';
@@ -4137,9 +4137,10 @@ export default function NovaObra() {
         return;
       }
 
-      // Todas as fotos foram uploadadas - obter URLs
+      // Todas as fotos foram uploadadas - obter URLs apenas dos IDs desta operação
       console.log('📸 Obtendo metadados das fotos...');
-      const allPhotos = await getAllPhotoMetadata();
+      const uniquePhotoIds = [...new Set(allPhotoIds.filter((id): id is string => typeof id === 'string' && !!id))];
+      const allPhotos = await getPhotoMetadatasByIds(uniquePhotoIds);
       console.log(`✅ ${allPhotos.length} foto(s) com metadados carregados`);
 
       const fotosAntesUploaded = allPhotos.filter(p =>

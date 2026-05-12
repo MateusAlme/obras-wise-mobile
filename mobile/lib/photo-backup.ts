@@ -589,11 +589,44 @@ export const getPhotosByObraWithFallback = async (
 };
 
 /**
- * Obtém metadatas de fotos a partir dos IDs
+ * Obtém metadatas de fotos a partir dos IDs.
+ * Escaneia a chave ativa primeiro (pequena); só abre a chave archived se ainda faltarem IDs.
+ * Early-exit assim que todos os IDs forem encontrados — evita parsear 10-50MB desnecessariamente.
  */
 export const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoMetadata[]> => {
-  const allMetadata = await getAllPhotoMetadata();
-  return allMetadata.filter(p => photoIds.includes(p.id));
+  const remaining = new Set(photoIds.filter(Boolean));
+  if (remaining.size === 0) return [];
+
+  const results: PhotoMetadata[] = [];
+
+  try {
+    const pairs = await AsyncStorage.multiGet([PHOTO_METADATA_KEY, PHOTO_METADATA_ARCHIVED_KEY]);
+    const activeRaw = pairs[0][1];
+    const archivedRaw = pairs[1][1];
+
+    if (activeRaw) {
+      for (const m of JSON.parse(activeRaw) as PhotoMetadata[]) {
+        if (remaining.has(m.id)) {
+          results.push(m);
+          remaining.delete(m.id);
+        }
+      }
+    }
+
+    if (remaining.size > 0 && archivedRaw) {
+      for (const m of JSON.parse(archivedRaw) as PhotoMetadata[]) {
+        if (remaining.has(m.id)) {
+          results.push(m);
+          remaining.delete(m.id);
+          if (remaining.size === 0) break;
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Erro ao obter metadatas por IDs:', error);
+  }
+
+  return results;
 };
 
 /**
