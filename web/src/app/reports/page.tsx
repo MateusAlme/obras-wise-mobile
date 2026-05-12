@@ -433,7 +433,7 @@ export default function ReportsPage() {
           ...servico,
           id: `servico:${servico.id}`,
           obra: parentObra?.obra || base.obra || servico.obra_id,
-          equipe: parentObra?.equipe || base.equipe || '',
+          equipe: servico.equipe || parentObra?.equipe || base.equipe || '',
           responsavel: servico.responsavel || parentObra?.responsavel || base.responsavel || '',
           data: parentObra?.data || base.data || servico.created_at,
           tipo_servico: servico.tipo_servico,
