@@ -2127,7 +2127,7 @@ export default function ObraDetailPage() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <div className="flex flex-wrap items-center gap-3 mb-2">
-                  <h1 className="inline-flex rounded-xl border border-blue-200 dark:border-blue-500 bg-white dark:bg-blue-800/40 px-3 py-1.5 text-2xl sm:text-3xl lg:text-4xl font-black text-blue-700 dark:text-blue-100 tracking-tight shadow-sm">
+                  <h1 className="inline-flex rounded-xl border border-blue-200 dark:border-slate-500 bg-white dark:bg-slate-700 px-3 py-1.5 text-2xl sm:text-3xl lg:text-4xl font-black text-blue-700 dark:text-white tracking-tight shadow-sm">
                     {obra.obra || obra.placa || 'Sem número'}
                   </h1>
                   {obra.data_fechamento ? (
