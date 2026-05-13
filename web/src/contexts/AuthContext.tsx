@@ -32,16 +32,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
+  const isInvalidRefreshTokenError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error || '')
+    return message.includes('Invalid Refresh Token') || message.includes('Refresh Token Not Found')
+  }
+
+  const clearInvalidSession = async () => {
+    try {
+      await supabase.auth.signOut({ scope: 'local' })
+    } catch {
+      // Se o refresh token local já está inválido, o próprio signOut pode falhar.
+    }
+
+    if (typeof window !== 'undefined') {
+      Object.keys(window.localStorage)
+        .filter((key) => key.startsWith('sb-') && key.includes('auth-token'))
+        .forEach((key) => window.localStorage.removeItem(key))
+    }
+
+    setUser(null)
+    setProfile(null)
+    setLoading(false)
+    router.replace('/login')
+  }
+
   useEffect(() => {
     // Verificar sessão atual
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        loadProfile(session.user.id)
-      } else {
+    supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (error) throw error
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          loadProfile(session.user.id)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch((error) => {
+        if (isInvalidRefreshTokenError(error)) {
+          void clearInvalidSession()
+          return
+        }
+        console.error('Error loading session:', error)
         setLoading(false)
-      }
-    })
+      })
 
     // Escutar mudanças de autenticação
     const {
@@ -56,7 +90,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => subscription.unsubscribe()
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isInvalidRefreshTokenError(event.reason)) {
+        event.preventDefault()
+        void clearInvalidSession()
+      }
+    }
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+
+    return () => {
+      subscription.unsubscribe()
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+    }
   }, [])
 
   const loadProfile = async (userId: string) => {
@@ -90,7 +136,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (error) {
+      if (!isInvalidRefreshTokenError(error)) throw error
+      await supabase.auth.signOut({ scope: 'local' })
+    }
     setUser(null)
     setProfile(null)
     router.push('/login')
