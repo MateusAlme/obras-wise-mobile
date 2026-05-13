@@ -509,7 +509,7 @@ export default function ServicoDetailPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="flex flex-wrap items-center gap-3 mb-2">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 tracking-tight">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-slate-900 dark:text-white tracking-tight">
                   {parentObra?.obra || 'Sem número'}
                 </h1>
                 {isConcluido ? (
@@ -530,9 +530,9 @@ export default function ServicoDetailPage() {
                 <span className="px-3 py-1 bg-red-600 text-white text-sm font-semibold rounded-full">
                   {parentObra?.equipe || '-'}
                 </span>
-                <span className="text-gray-500 text-sm">{servico.tipo_servico}</span>
+                <span className="text-gray-500 dark:text-slate-400 text-sm">{servico.tipo_servico}</span>
                 {parentObra?.data && (
-                  <span className="text-gray-500 text-sm">
+                  <span className="text-gray-500 dark:text-slate-400 text-sm">
                     · {format(new Date(parentObra.data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                   </span>
                 )}
@@ -545,7 +545,7 @@ export default function ServicoDetailPage() {
                   <button
                     onClick={handleReabrirServico}
                     disabled={finalizando}
-                    className="px-4 py-2.5 bg-white border border-gray-300 hover:border-gray-400 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                    className="px-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 hover:border-gray-400 text-sm font-semibold text-gray-700 dark:text-slate-200 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
@@ -568,7 +568,7 @@ export default function ServicoDetailPage() {
               {isAdmin && (
                 <button
                   onClick={openEdit}
-                  className="px-4 py-2.5 bg-white border border-gray-200 hover:border-indigo-400 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                  className="px-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-indigo-400 text-sm font-semibold text-gray-700 dark:text-slate-200 rounded-lg shadow-sm transition-colors flex items-center gap-2"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -579,7 +579,7 @@ export default function ServicoDetailPage() {
               <button
                 onClick={handleExportPdf}
                 disabled={exportingPdf}
-                className="px-4 py-2.5 bg-white border border-gray-200 hover:border-blue-500 text-sm font-semibold text-gray-700 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="px-4 py-2.5 bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 hover:border-blue-500 text-sm font-semibold text-gray-700 dark:text-slate-200 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {exportingPdf ? 'Gerando PDF...' : 'Exportar PDF'}
               </button>
@@ -591,16 +591,16 @@ export default function ServicoDetailPage() {
 
         {/* Info Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Responsável</div>
-            <div className="text-sm font-semibold text-gray-900">{servico.responsavel || '—'}</div>
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Responsável</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-white">{servico.responsavel || '—'}</div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Tipo de Serviço</div>
-            <div className="text-sm font-semibold text-gray-900">{servico.tipo_servico}</div>
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Tipo de Serviço</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-white">{servico.tipo_servico}</div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Status</div>
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Status</div>
             <div>
               {isConcluido ? (
                 <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">Concluído</span>
@@ -611,9 +611,9 @@ export default function ServicoDetailPage() {
               )}
             </div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-            <div className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Data</div>
-            <div className="text-sm font-semibold text-gray-900">
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700">
+            <div className="text-xs font-medium text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-1">Data</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-white">
               {format(new Date(servico.created_at), 'dd/MM/yyyy', { locale: ptBR })}
             </div>
           </div>
@@ -634,8 +634,8 @@ export default function ServicoDetailPage() {
                   ] as const
                   const numero = poste?.numero ?? posteIndex + 1
                   return (
-                    <div key={`poste_${poste?.id || posteIndex}`} className="rounded-2xl border border-gray-200 bg-white p-4">
-                      <h3 className="text-base font-semibold text-slate-800 mb-3">Poste P{numero}</h3>
+                    <div key={`poste_${poste?.id || posteIndex}`} className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
+                      <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mb-3">Poste P{numero}</h3>
                       {sections.map((section) => (
                         <PhotoGallery
                           key={`${posteIndex}_${section.key}`}
@@ -676,10 +676,10 @@ export default function ServicoDetailPage() {
         {/* Edit Modal */}
         {showEditModal && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-                <h3 className="text-lg font-bold text-gray-900">Editar Serviço</h3>
-                <button onClick={() => setShowEditModal(false)} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Editar Serviço</h3>
+                <button onClick={() => setShowEditModal(false)} className="p-2 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -690,29 +690,29 @@ export default function ServicoDetailPage() {
                   <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{editError}</div>
                 )}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Tipo de Serviço</label>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Tipo de Serviço</label>
                   <input
                     type="text"
                     value={editForm.tipo_servico}
                     onChange={e => setEditForm(f => ({ ...f, tipo_servico: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Responsável</label>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Responsável</label>
                   <input
                     type="text"
                     value={editForm.responsavel}
                     onChange={e => setEditForm(f => ({ ...f, responsavel: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Status</label>
                   <select
                     value={editForm.status}
                     onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   >
                     <option value="rascunho">Rascunho</option>
                     <option value="em_progresso">Em Progresso</option>
