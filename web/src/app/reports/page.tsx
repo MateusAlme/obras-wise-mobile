@@ -579,6 +579,11 @@ export default function ReportsPage() {
   }
 
   function getTotalPhotosCount(obra: Obra): number {
+    const row = obra as any
+    if (row.source_table === 'servicos' && row.tipo_servico) {
+      const sections = getSectionsForBook(row.tipo_servico)
+      return sections.reduce((acc, s) => acc + countPhotoRefs(row[s.key]), 0)
+    }
     return getRawPhotoCount(obra)
   }
 
