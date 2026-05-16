@@ -373,39 +373,38 @@ export default function ReportsPage() {
     }
   }, [])
 
+  async function fetchAllRows(table: 'obras' | 'servicos') {
+    const PAGE_SIZE = 1000
+    let allRows: any[] = []
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from(table)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+      if (error) throw error
+      allRows = allRows.concat(data || [])
+      if (!data || data.length < PAGE_SIZE) break
+      from += PAGE_SIZE
+    }
+    return allRows
+  }
+
   async function loadObras() {
     try {
-      const [obrasResult, servicosResult] = await Promise.allSettled([
-        supabase
-          .from('obras')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('servicos')
-          .select('*')
-          .order('created_at', { ascending: false }),
+      const [obrasData, servicosData] = await Promise.all([
+        fetchAllRows('obras'),
+        fetchAllRows('servicos').catch((err) => {
+          console.warn('[reports] Erro ao carregar servicos:', err)
+          return [] as any[]
+        }),
       ])
-
-      if (obrasResult.status !== 'fulfilled') {
-        throw obrasResult.reason
-      }
-
-      const obrasData = obrasResult.value.data || []
-      const obrasError = obrasResult.value.error
-      if (obrasError) throw obrasError
 
       const obrasBase = obrasData.map((obra) => ({
         ...obra,
         source_table: 'obras' as const,
       })) as ReportBook[]
-
-      const servicosData = servicosResult.status === 'fulfilled' ? servicosResult.value.data || [] : []
-      const servicosError = servicosResult.status === 'fulfilled' ? servicosResult.value.error : servicosResult.reason
-      if (servicosError) {
-        console.warn('[reports] Erro ao carregar servicos:', servicosError)
-      } else {
-        console.log(`[reports] ${servicosData.length} serviço(s) carregado(s) da tabela servicos`)
-      }
 
       const obrasById = new Map(obrasBase.map((obra) => [obra.id, obra]))
       const servicosNormalizados = servicosData.map((servico: any) => {
@@ -447,11 +446,10 @@ export default function ReportsPage() {
         } as ReportBook
       })
 
-      // Ocultar linhas da tabela obras que já possuem serviços na tabela servicos.
-      // Nesse caso, os serviços são a fonte canônica dos dados (fotos, status, etc).
-      const obraIdsComServicos = new Set(servicosNormalizados.map((s) => s.parent_obra_id).filter(Boolean))
-      const obrasParaExibir = obrasBase.filter((obra) => !obraIdsComServicos.has(obra.id))
-      setObras(mergeDuplicateReportBooks([...obrasParaExibir, ...servicosNormalizados]))
+      // Sempre exibir todas as obras da tabela obras como linhas pai.
+      // Obras antigas (sem serviços) aparecem sozinhas; obras novas aparecem com filhos da tabela servicos.
+      // Serviços sem obra pai registrada aparecem como linhas órfãs.
+      setObras(mergeDuplicateReportBooks([...obrasBase, ...servicosNormalizados]))
     } catch (error) {
       console.error('Erro ao carregar obras:', error)
     } finally {

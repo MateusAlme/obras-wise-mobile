@@ -737,6 +737,47 @@ export default function ObraBooksPage() {
     };
   }, []);
 
+  // Carrega equipes disponíveis uma única vez (admin/supervisor). Cache-first, Supabase em background.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchEquipes = async () => {
+      const role = await AsyncStorage.getItem('@user_role');
+      if (!isAdminOrSupervisor(role || 'equipe')) return;
+      try {
+        const cached = await AsyncStorage.getItem('@equipes_cache');
+        if (cached && !cancelled) setEquipesDisponiveis(JSON.parse(cached));
+        const { data: equipesData } = await supabase
+          .from('equipe_credenciais')
+          .select('equipe_codigo')
+          .eq('ativo', true);
+        if (!cancelled && equipesData && equipesData.length > 0) {
+          const lista = Array.from(new Set(
+            equipesData.map((x: any) => String(x.equipe_codigo || '').trim()).filter(Boolean)
+          )).sort() as string[];
+          setEquipesDisponiveis(lista);
+          await AsyncStorage.setItem('@equipes_cache', JSON.stringify(lista));
+        }
+      } catch { /* usa cache */ }
+    };
+    fetchEquipes();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Memo: equipes filtradas e agrupadas para o picker (evita IIFE no render)
+  const equipePickerGrupos = useMemo<Record<string, string[]>>(() => {
+    const busca = equipePickerSearch.trim().toUpperCase();
+    const filtradas = busca
+      ? equipesDisponiveis.filter(e => e.toUpperCase().includes(busca))
+      : equipesDisponiveis;
+    const grupos: Record<string, string[]> = {};
+    for (const e of filtradas) {
+      const prefixo = (e.match(/^[A-Za-z]+/) || [''])[0].toUpperCase();
+      if (!grupos[prefixo]) grupos[prefixo] = [];
+      grupos[prefixo].push(e);
+    }
+    return grupos;
+  }, [equipesDisponiveis, equipePickerSearch]);
+
   const getSyncedObraId = (obra: ObraListItem) => obra.serverId || (isUuid(obra.id) ? obra.id : null);
 
   const loadServicosForItems = async (items: ObraListItem[]) => {
@@ -780,24 +821,6 @@ export default function ObraBooksPage() {
       const isAdmin = isAdminOrSupervisor(userRole);
       setSessionRole(userRole);
       setSessionEquipe(equipe || '');
-
-      if (isAdmin) {
-        try {
-          const cached = await AsyncStorage.getItem('@equipes_cache');
-          if (cached) setEquipesDisponiveis(JSON.parse(cached));
-          const { data: equipesData } = await supabase
-            .from('equipe_credenciais')
-            .select('equipe_codigo')
-            .eq('ativo', true);
-          if (equipesData && equipesData.length > 0) {
-            const lista = Array.from(new Set(
-              equipesData.map((x: any) => String(x.equipe_codigo || '').trim()).filter(Boolean)
-            )).sort() as string[];
-            setEquipesDisponiveis(lista);
-            await AsyncStorage.setItem('@equipes_cache', JSON.stringify(lista));
-          }
-        } catch { /* usa cache */ }
-      }
 
       const pendingFiltered: ObraListItem[] = pending
         .filter((obra) => {
@@ -2661,59 +2684,46 @@ export default function ObraBooksPage() {
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
-                {(() => {
-                  const busca = equipePickerSearch.trim().toUpperCase();
-                  const filtradas = equipesDisponiveis.filter(e => e.toUpperCase().includes(busca));
-                  if (filtradas.length === 0) {
-                    return (
-                      <Text style={{ textAlign: 'center', color: '#94A3B8', paddingVertical: 24, fontSize: 14 }}>
-                        Nenhuma equipe encontrada
-                      </Text>
-                    );
-                  }
-                  const grupos: Record<string, string[]> = {};
-                  for (const e of filtradas) {
-                    const prefixo = (e.match(/^[A-Za-z]+/) || [''])[0].toUpperCase();
-                    if (!grupos[prefixo]) grupos[prefixo] = [];
-                    grupos[prefixo].push(e);
-                  }
-                  return Object.keys(grupos).sort().map((grupo) => (
-                    <View key={grupo}>
-                      <View style={styles.equipeGrupoHeader}>
-                        <Text style={styles.equipeGrupoLabel}>{grupo}</Text>
-                      </View>
-                      {grupos[grupo].map((item, idx) => {
-                        const selected = equipeForService === item;
-                        const isLast = idx === grupos[grupo].length - 1;
-                        return (
-                          <TouchableOpacity
-                            key={item}
-                            style={[
-                              styles.equipePickerItem,
-                              !isLast && styles.equipePickerItemBorder,
-                              selected && styles.equipePickerItemSelected,
-                            ]}
-                            onPress={() => {
-                              setEquipeForService(item);
-                              setEquipePickerVisible(false);
-                              setEquipePickerSearch('');
-                              setServiceSelectorVisible(true);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <View style={[styles.equipePickerDot, selected && styles.equipePickerDotSelected]}>
-                              {selected && <View style={styles.equipePickerDotInner} />}
-                            </View>
-                            <Text style={[styles.equipePickerItemText, selected && styles.equipePickerItemTextSelected]}>
-                              {item}
-                            </Text>
-                            {selected && <Ionicons name="checkmark-circle" size={18} color="#2563EB" />}
-                          </TouchableOpacity>
-                        );
-                      })}
+                {Object.keys(equipePickerGrupos).length === 0 ? (
+                  <Text style={{ textAlign: 'center', color: '#94A3B8', paddingVertical: 24, fontSize: 14 }}>
+                    Nenhuma equipe encontrada
+                  </Text>
+                ) : Object.keys(equipePickerGrupos).sort().map((grupo) => (
+                  <View key={grupo}>
+                    <View style={styles.equipeGrupoHeader}>
+                      <Text style={styles.equipeGrupoLabel}>{grupo}</Text>
                     </View>
-                  ));
-                })()}
+                    {equipePickerGrupos[grupo].map((item, idx) => {
+                      const selected = equipeForService === item;
+                      const isLast = idx === equipePickerGrupos[grupo].length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={item}
+                          style={[
+                            styles.equipePickerItem,
+                            !isLast && styles.equipePickerItemBorder,
+                            selected && styles.equipePickerItemSelected,
+                          ]}
+                          onPress={() => {
+                            setEquipeForService(item);
+                            setEquipePickerVisible(false);
+                            setEquipePickerSearch('');
+                            setServiceSelectorVisible(true);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.equipePickerDot, selected && styles.equipePickerDotSelected]}>
+                            {selected && <View style={styles.equipePickerDotInner} />}
+                          </View>
+                          <Text style={[styles.equipePickerItemText, selected && styles.equipePickerItemTextSelected]}>
+                            {item}
+                          </Text>
+                          {selected && <Ionicons name="checkmark-circle" size={18} color="#2563EB" />}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ))}
               </ScrollView>
               <TouchableOpacity
                 style={{ marginTop: 12, paddingVertical: 10, alignItems: 'center' }}

@@ -36,6 +36,7 @@ export default function DashboardPage() {
         .from('obras')
         .select('*')
         .order('created_at', { ascending: false })
+        .limit(10000)
 
       if (error) throw error
       setObras(data || [])

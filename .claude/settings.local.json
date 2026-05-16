@@ -103,7 +103,13 @@
       "Bash(npm run android:*)",
       "Bash(npx madge:*)",
       "Bash(git:*)",
-      "Bash(del \"d:\\\\Projetos - Teccel Engenharia\\\\obras-wise-mobile\\\\mobile\\\\app\\\\cava-rocha.tsx\")"
+      "Bash(del \"d:\\\\Projetos - Teccel Engenharia\\\\obras-wise-mobile\\\\mobile\\\\app\\\\cava-rocha.tsx\")",
+      "Bash(ls ~/obras-wise-mobile/web/src/app/reports/ 2>/dev/null && echo \"EXISTS\" || echo \"NOT FOUND\")",
+      "Read(//home/mateusalmeida/obras-wise-mobile/web/src/app/reports/**)",
+      "Bash(ls ~/obras-wise-mobile/web/src/app/ 2>/dev/null | head -20 || echo \"DIR NOT FOUND\")",
+      "Read(//home/mateusalmeida/obras-wise-mobile/web/src/app/**)",
+      "Bash(cp \"/run/media/mateusalmeida/C654305454304987/Projetos - Teccel Engenharia/obras-wise-mobile/web/src/app/reports/page.tsx\" ~/obras-wise-mobile/web/src/app/reports/page.tsx)",
+      "Bash(cp \"/run/media/mateusalmeida/C654305454304987/Projetos - Teccel Engenharia/obras-wise-mobile/web/src/app/dashboard/page.tsx\" ~/obras-wise-mobile/web/src/app/dashboard/page.tsx)"
     ],
     "deny": [],
     "ask": []
