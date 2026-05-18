@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from './supabase';
 import { Alert } from 'react-native';
-import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata, pruneArchivedPhotoMetadata } from './photo-backup';
+import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata, getPhotoMetadatasByIds as getStoredPhotoMetadatasByIds, pruneArchivedPhotoMetadata } from './photo-backup';
 import { processObraPhotos, UploadProgress } from './photo-queue';
 import { captureError } from './sentry';
 import { logger } from '../utils/logger';
@@ -1547,8 +1547,7 @@ export const updatePendingObraStatus = async (
  * IMPORTANTE: Busca TODAS as fotos (uploaded ou não) para poder sincronizar corretamente
  */
 const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoMetadata[]> => {
-  const allMetadata = await getAllPhotoMetadata();  // Busca TODAS, não só pendentes
-  const found = allMetadata.filter(p => photoIds.includes(p.id));
+  const found = await getStoredPhotoMetadatasByIds(photoIds);
 
   // Log para debug se não encontrou todas as fotos
   if (photoIds.length > 0 && found.length !== photoIds.length) {
@@ -1925,7 +1924,7 @@ export const syncObra = async (
     logger.sync(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
     logger.sync(`   - fotos_depois: ${obra.fotos_depois?.length || 0} IDs`);
 
-    const _allSyncMeta = await getAllPhotoMetadata();
+    const _allSyncMeta = await getStoredPhotoMetadatasByIds(referencedPhotoIds);
     const _metaById = new Map<string, PhotoMetadata>(_allSyncMeta.map(m => [m.id, m]));
     const _metaByObraType = new Map<string, PhotoMetadata[]>();
     for (const m of _allSyncMeta) {
@@ -2304,18 +2303,15 @@ export const syncObra = async (
         .from('obras')
         .select('*')
         .eq('id', idToUpdate)
-        .single();
+        .maybeSingle();
 
       if (fetchError) {
-        logger.error(`❌ [syncObra] Não foi possível buscar obra ${idToUpdate} para atualização:`, fetchError);
-
-        if (shouldUpdateByEdit) {
-          // Em edição explícita, manter comportamento conservador para evitar duplicatas.
-          throw new Error(`Não foi possível encontrar obra ${idToUpdate} no servidor para atualização. Verifique se a obra ainda existe.`);
-        }
-
-        // Se veio apenas de serverId (possivelmente stale), continua para INSERT.
-        logger.warn(`⚠️ [syncObra] serverId ${idToUpdate} inválido/stale. Continuando com INSERT para não sobrescrever book incorreto.`);
+        logger.error(`❌ [syncObra] Erro ao buscar obra ${idToUpdate}:`, fetchError);
+        // Qualquer erro de rede/permissão: continua para INSERT em vez de travar sync.
+        logger.warn(`⚠️ [syncObra] Continuando com INSERT após erro de fetch.`);
+      } else if (!existingObra) {
+        // maybeSingle() retornou null sem erro — obra não existe mais no servidor.
+        logger.warn(`⚠️ [syncObra] obra ${idToUpdate} não encontrada no servidor (deletada ou migrada). Continuando com INSERT.`);
       }
 
       if (existingObra) {
@@ -2443,7 +2439,7 @@ export const syncObra = async (
 
       // Se não encontrou obra válida para update, segue fluxo de INSERT.
       if (!fetchError) {
-        logger.warn(`⚠️ [syncObra] Obra ${idToUpdate} não encontrada para update. Continuando com INSERT.`);
+        logger.warn(`⚠️ [syncObra] Obra ${idToUpdate} não encontrada no servidor. Verificando duplicata antes de inserir novamente.`);
       }
     }
 
