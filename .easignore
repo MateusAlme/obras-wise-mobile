@@ -1,0 +1,10 @@
+# Ignora tudo que não é o app mobile
+web/
+docs/
+scripts/
+photo-server/
+supabase/
+.claude/
+
+# node_modules são reinstalados pelo EAS
+mobile/node_modules/
