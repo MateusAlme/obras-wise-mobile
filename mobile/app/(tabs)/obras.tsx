@@ -78,6 +78,7 @@ export default function Obras() {
   const [isOnline, setIsOnline] = useState(true);
   const [syncingPending, setSyncingPending] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [equipeLogada, setEquipeLogada] = useState<string>('');
   const [userRole, setUserRole] = useState<string>('equipe');
   const insets = useSafeAreaInsets();
@@ -155,15 +156,20 @@ export default function Obras() {
     return [...pendentes, ...sincronizadas];
   }, [pendingObrasState, onlineObras, equipeLogada, isCompressor, isAdmin]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchTerm(searchTerm), 180);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
   const filteredObras = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const term = debouncedSearchTerm.trim().toLowerCase();
     if (!term) return combinedObras;
 
     return combinedObras.filter((obra) => {
       const texto = `${obra.obra} ${obra.responsavel} ${obra.equipe} ${obra.tipo_servico}`.toLowerCase();
       return texto.includes(term);
     });
-  }, [combinedObras, searchTerm]);
+  }, [combinedObras, debouncedSearchTerm]);
 
   const groupObrasByNumero = useCallback((lista: ObraListItem[]): GroupedObra[] => {
     const groups = new Map<string, GroupedObra>();
@@ -509,21 +515,19 @@ export default function Obras() {
     reloadAllObras().finally(() => setRefreshing(false));
   };
 
-  const formatarData = (data: string) => {
+  const formatarData = useCallback((data: string) => {
     try {
-      // Se a data está no formato YYYY-MM-DD, tratamos como data local
       if (/^\d{4}-\d{2}-\d{2}$/.test(data)) {
         const [ano, mes, dia] = data.split('-').map(Number);
         const date = new Date(ano, mes - 1, dia);
         return date.toLocaleDateString('pt-BR');
       }
-      // Para outros formatos (ISO com timezone), usa o construtor padrão
       const date = new Date(data);
       return date.toLocaleDateString('pt-BR');
     } catch {
       return data;
     }
-  };
+  }, []);
 
   // FUNÇÃO REMOVIDA: calcularFotosPendentes
   // Fotos agora são opcionais - obras parciais são permitidas
@@ -533,15 +537,9 @@ export default function Obras() {
     ? `${groupedFilteredObras.length} de ${groupedCombinedObras.length} obra(s) cadastrada(s)`
     : `${groupedFilteredObras.length} de ${groupedCombinedObras.length} obra(s) disponiveis offline`;
 
-  const renderStatusBadge = (obra: ObraListItem) => {
-    if (obra.origem !== 'offline') {
-      return null;
-    }
-
-    // ✅ CORREÇÃO: Não mostrar badge se já foi sincronizada (tem serverId)
-    if (obra.serverId && obra.synced !== false) {
-      return null;
-    }
+  const renderStatusBadge = useCallback((obra: ObraListItem) => {
+    if (obra.origem !== 'offline') return null;
+    if (obra.serverId && obra.synced !== false) return null;
 
     const badgeStyle =
       obra.sync_status === 'failed'
@@ -569,7 +567,7 @@ export default function Obras() {
         ) : null}
       </View>
     );
-  };
+  }, []);
 
   // ========== HELPERS PARA CONSOLIDAR CÓDIGO REPETITIVO ==========
 
@@ -650,7 +648,7 @@ export default function Obras() {
     }
   };
 
-  const handleOpenObraBooksPage = (grupo: GroupedObra) => {
+  const handleOpenObraBooksPage = useCallback((grupo: GroupedObra) => {
     try {
       router.push({
         pathname: '/obra-books',
@@ -659,15 +657,15 @@ export default function Obras() {
     } catch (error) {
       console.error('Erro ao abrir página de books da obra:', error);
     }
-  };
+  }, [router]);
 
-  const toSyncStatusServico = (obra: ObraListItem): SyncStatusServico => {
+  const toSyncStatusServico = useCallback((obra: ObraListItem): SyncStatusServico => {
     if (obra.sync_status === 'syncing') return 'syncing';
     if (obra.sync_status === 'failed') return 'error';
     if (obra.sync_status === 'partial') return 'error';
     if (obra.serverId && obra.synced !== false) return 'synced';
     return 'offline';
-  };
+  }, []);
 
   const loadServicosForObra = async (obraId: string) => {
     try {
@@ -691,11 +689,16 @@ export default function Obras() {
     }
   };
 
-  const handleAddService = (obraId: string, groupKey?: string) => {
+  const handleAddService = useCallback((obraId: string, groupKey?: string) => {
     setSelectedObraIdForService(obraId);
     setSelectedObraGroupKeyForService(groupKey || null);
     setServiceSelectorVisible(true);
-  };
+  }, []);
+
+  const handleCloseServiceSelector = useCallback(() => {
+    setServiceSelectorVisible(false);
+    setSelectedObraIdForService(null);
+  }, []);
 
   const handleCreateServiceForObra = async (tipo: TipoServico) => {
     if (!selectedObraIdForService) return;
@@ -1347,10 +1350,7 @@ export default function Obras() {
 
       <ServiceTypeSelector
         visible={serviceSelectorVisible}
-        onClose={() => {
-          setServiceSelectorVisible(false);
-          setSelectedObraIdForService(null);
-        }}
+        onClose={handleCloseServiceSelector}
         onSelect={handleCreateServiceForObra}
       />
 

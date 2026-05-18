@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import {
   PhotoMetadata,
-  getAllPhotoMetadata,
+  getPhotoMetadatasByIds,
   getPendingPhotos,
   markPhotoAsUploaded,
   markPhotoAsLost,
@@ -235,8 +235,9 @@ const normalizeQueueState = async (queue: UploadQueueItem[]): Promise<UploadQueu
   if (queue.length === 0) return queue;
 
   const now = Date.now();
-  const allMetadata = await getAllPhotoMetadata();
-  const metadataById = new Map(allMetadata.map((item) => [item.id, item]));
+  const photoIds = queue.map((item) => item.photoId);
+  const metadata = await getPhotoMetadatasByIds(photoIds);
+  const metadataById = new Map(metadata.map((item) => [item.id, item]));
   let changed = false;
   const normalized: UploadQueueItem[] = [];
 
@@ -720,7 +721,7 @@ export const processObraPhotos = async (
     let failedCount = 0;
     let completedCount = 0;
 
-    const BATCH_SIZE = 3;
+    const BATCH_SIZE = 2;
     for (let i = 0; i < obraPhotos.length; i += BATCH_SIZE) {
       const batch = obraPhotos.slice(i, i + BATCH_SIZE);
 
@@ -826,7 +827,8 @@ export const retryFailedUploads = async (
       return { success: 0, failed: 0 };
     }
 
-    const allMetadata = await getAllPhotoMetadata();
+    const failedIds = failed.map((item) => item.photoId);
+    const allMetadata = await getPhotoMetadatasByIds(failedIds);
     let successCount = 0;
     let failedCount = 0;
 
