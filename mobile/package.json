@@ -1,6 +1,6 @@
 {
   "name": "obras-teccel-mobile",
-  "version": "1.0.0",
+  "version": "2.2.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eas-cli": "^18.13.1",
     "typescript": "~5.9.2"
   },
   "private": true

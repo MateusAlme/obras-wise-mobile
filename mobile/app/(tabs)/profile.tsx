@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { useState, useEffect } from 'react';
 import { getStorageStats, cleanupUploadedPhotos } from '../../lib/photo-backup';
 import { syncAllPendingObras, checkInternetConnection, cleanupAllDuplicates } from '../../lib/offline-sync';
@@ -370,7 +371,7 @@ export default function Profile() {
           </Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>Versão 1.0.0</Text>
+        <Text style={styles.version}>Versão {Constants.expoConfig?.version ?? '2.2.0'}</Text>
       </View>
     </ScrollView>
   );
