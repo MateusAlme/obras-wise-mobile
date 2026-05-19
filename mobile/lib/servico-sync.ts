@@ -153,7 +153,11 @@ const shouldKeepLocalNestedField = (field: string, localValue: any, remoteValue:
   const localCount = getNestedFieldPhotoCount(field, localValue);
   const remoteCount = getNestedFieldPhotoCount(field, remoteValue);
   if (localCount === 0 && remoteCount === 0) return false;
-  if (localCount >= remoteCount) return true;
+  // Usa > em vez de >= para que, quando local e remoto têm o mesmo número de fotos,
+  // o remoto (que já tem URLs públicas após sync) seja mantido. Isso evita que a versão
+  // local com {id, uri} sobrescreva a versão remota com URLs após cleanupUploadedPhotos
+  // apagar os arquivos locais, o que causava perda permanente de fotos sincronizadas.
+  if (localCount > remoteCount) return true;
 
   if (field === 'checklist_seccionamentos_data') {
     const localByTipo = getChecklistSeccionamentosCountByTipo(localValue);
@@ -1960,17 +1964,40 @@ export async function syncAllPendingServicos(): Promise<{ success: number; faile
           if (servico.sync_status !== 'synced') continue;
           // Don't re-queue if error_message already set — photos are lost, user must retake
           if ((servico as any).error_message) continue;
-          const hasPendingUri = (Object.keys(servico as any) as string[]).some((k) => {
-            if (!(k.startsWith('fotos_') || k.startsWith('doc_'))) return false;
-            const arr = (servico as any)[k];
-            if (!Array.isArray(arr)) return false;
-            return arr.some((item: any) => {
-              if (!item || typeof item !== 'object') return false;
-              const url = item.url ?? item.supabaseUrl ?? item.uploadUrl;
-              if (url && String(url).startsWith('http')) return false;
-              return !!(item.uri || item.id);
+          const hasLocalUri = (item: any): boolean => {
+            if (!item || typeof item !== 'object') return false;
+            const url = item.url ?? item.supabaseUrl ?? item.uploadUrl;
+            if (url && String(url).startsWith('http')) return false;
+            return !!(item.uri || item.id);
+          };
+          const hasPendingUri = (() => {
+            // Verifica campos fotos_* e doc_* de nível raiz
+            const topLevel = (Object.keys(servico as any) as string[]).some((k) => {
+              if (!(k.startsWith('fotos_') || k.startsWith('doc_'))) return false;
+              const arr = (servico as any)[k];
+              if (!Array.isArray(arr)) return false;
+              return arr.some(hasLocalUri);
             });
-          });
+            if (topLevel) return true;
+            // Verifica campos aninhados (checklist_postes_data, postes_data, etc.)
+            const checklistPostes = (servico as any).checklist_postes_data;
+            if (Array.isArray(checklistPostes)) {
+              for (const poste of checklistPostes) {
+                for (const field of ['posteInteiro', 'descricao', 'engaste', 'conexao1', 'conexao2', 'maiorEsforco', 'menorEsforco']) {
+                  if (Array.isArray(poste?.[field]) && poste[field].some(hasLocalUri)) return true;
+                }
+              }
+            }
+            const postesData = (servico as any).postes_data;
+            if (Array.isArray(postesData)) {
+              for (const poste of postesData) {
+                for (const field of ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_medicao']) {
+                  if (Array.isArray(poste?.[field]) && poste[field].some(hasLocalUri)) return true;
+                }
+              }
+            }
+            return false;
+          })();
 
           if (hasPendingUri) {
             servico.sync_status = 'offline';
