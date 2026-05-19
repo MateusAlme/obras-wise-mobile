@@ -139,9 +139,20 @@ const getChecklistSeccionamentosCountByTipo = (value: unknown): Record<string, n
 };
 
 const shouldKeepLocalNestedField = (field: string, localValue: any, remoteValue: any): boolean => {
+  const localLength = Array.isArray(localValue) ? localValue.length : 0;
+  const remoteLength = Array.isArray(remoteValue) ? remoteValue.length : 0;
+
+  // Sem itens locais — nada a preservar
+  if (localLength === 0) return false;
+
+  // Servidor retornou menos itens (ou nenhum) — preserva local
+  // Isso cobre o caso de postes registrados sem fotos ainda
+  if (localLength > remoteLength) return true;
+
+  // Mesmo número de itens — decide por contagem de fotos
   const localCount = getNestedFieldPhotoCount(field, localValue);
   const remoteCount = getNestedFieldPhotoCount(field, remoteValue);
-  if (localCount === 0) return false;
+  if (localCount === 0 && remoteCount === 0) return false;
   if (localCount >= remoteCount) return true;
 
   if (field === 'checklist_seccionamentos_data') {
@@ -1517,7 +1528,6 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
       client_pk: clientPk,
       obra_id: servicoLocal.obra_id,
       obra_numero: servicoLocal.obra_numero,
-      equipe: servicoLocal.equipe,
       tipo_servico: servicoLocal.tipo_servico,
       responsavel: servicoLocal.responsavel,
       status: servicoLocal.status,
@@ -1532,7 +1542,7 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
       dados_adicionais: servicoLocal.dados_adicionais ?? {},
     };
 
-    let result;
+    let result: any = null;
     let payloadToPersist: Record<string, any> = { ...payload };
     let insertedNow = false;
 
@@ -2849,4 +2859,3 @@ export async function remapServicosObraId(oldObraId: string, newObraId: string):
     return 0;
   }
 }
-
