@@ -1411,6 +1411,29 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
   currentlySyncingIds.set(servicoLocal.id, Date.now());
   const originalId = servicoLocal.id;
 
+  // Re-lê o serviço do AsyncStorage para capturar fotos adicionadas em paralelo
+  // (ex.: createServico dispara syncServico em background enquanto o usuário já está
+  // tirando a primeira foto — appendPhotoToServicoLocal salva no storage mas o objeto
+  // passado como parâmetro ainda está vazio, perdendo fotos_abertura, fotos_altimetria, etc.)
+  try {
+    const freshKey = `${LOCAL_SERVICOS_KEY}:${servicoLocal.obra_id}`;
+    const freshRaw = await AsyncStorage.getItem(freshKey);
+    if (freshRaw) {
+      const freshServicos: ServicoLocal[] = JSON.parse(freshRaw);
+      const fresh = freshServicos.find((s) => s.id === servicoLocal.id);
+      if (fresh) {
+        // Mescla: o fresh pode ter fotos novas que o parâmetro não tem
+        const freshPhotoCount = getServicoPhotoCount(fresh);
+        const paramPhotoCount = getServicoPhotoCount(servicoLocal);
+        if (freshPhotoCount > paramPhotoCount) {
+          servicoLocal = { ...servicoLocal, ...fresh };
+        }
+      }
+    }
+  } catch {
+    // não crítico: continua com o objeto passado como parâmetro
+  }
+
   // Declara fora do try para que o catch possa acessar ao restaurar snapshot
   const obraId = servicoLocal.obra_id;
   const fotosDocKeys = (Object.keys(servicoLocal) as string[]).filter(
