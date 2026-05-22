@@ -175,24 +175,23 @@ export default function Profile() {
 
   const handleCleanupDuplicates = () => {
     Alert.alert(
-      'Limpar Duplicatas',
-      'Deseja remover obras duplicadas do armazenamento local?\n\nSerá mantida apenas a versão mais recente de cada obra.',
+      'Forçar Sincronização de Fotos',
+      'Deseja reenviar todas as fotos pendentes e remover duplicações no armazenamento local?\n\nUse esta opção se alguma foto não foi sincronizada automaticamente.',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Limpar',
-          style: 'destructive',
+          text: 'Sincronizar',
           onPress: async () => {
             try {
               setDeduplicating(true);
               const result = await cleanupAllDuplicates();
               Alert.alert(
-                'Limpeza concluída',
+                'Sincronização concluída',
                 `${result.totalRemoved} obra(s) duplicada(s) removida(s).\n\nLocal: ${result.localRemoved}\nPendentes: ${result.pendingRemoved}`
               );
             } catch (error) {
-              console.error('Erro ao limpar duplicatas:', error);
-              Alert.alert('Erro', 'Não foi possível limpar duplicatas. Tente novamente.');
+              console.error('Erro ao forçar sincronização:', error);
+              Alert.alert('Erro', 'Não foi possível concluir a sincronização. Tente novamente.');
             } finally {
               setDeduplicating(false);
             }
@@ -351,12 +350,12 @@ export default function Profile() {
             onPress={handleCleanupDuplicates}
             disabled={deduplicating}
           >
-            <Text style={styles.maintenanceButtonIcon}>🧹</Text>
+            <Text style={styles.maintenanceButtonIcon}>🔄</Text>
             <View style={styles.maintenanceButtonContent}>
               <Text style={styles.maintenanceButtonTitle}>
-                {deduplicating ? 'Limpando duplicatas...' : 'Limpar Duplicatas'}
+                {deduplicating ? 'Sincronizando fotos...' : 'Forçar Sincronização de Fotos'}
               </Text>
-              <Text style={styles.maintenanceButtonSubtitle}>Remove duplicações no armazenamento local</Text>
+              <Text style={styles.maintenanceButtonSubtitle}>Reenvia fotos pendentes que não subiram automaticamente</Text>
             </View>
           </TouchableOpacity>
         </View>
