@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { getAddressFromCoords, latLongToUTM, formatUTM, type Address, type UTMCoordinates } from '../lib/geocoding';
 
@@ -78,7 +79,7 @@ export function PlacaObraOverlay({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.container}>
         {/* Foto de fundo */}
-        <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="contain" />
+        <Image source={{ uri: photoUri }} style={styles.photo} resizeMode="contain" {...(Platform.OS === 'android' ? { resizeMethod: 'resize' as const } : {})} />
 
         {/* Sobreposição escura */}
         <View style={styles.overlay} />
@@ -115,7 +116,7 @@ export function PlacaObraOverlay({
                 {/* Tipo de Serviço */}
                 <View style={styles.row}>
                   <Text style={styles.label}>Serviço:</Text>
-                  <Text style={styles.value}>{tipoServico}</Text>
+                  <Text style={styles.value}>{String(tipoServico ?? 'N/A')}</Text>
                 </View>
 
                 {/* Equipe */}

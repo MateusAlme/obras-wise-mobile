@@ -12,7 +12,9 @@ import {
   Animated,
   PanResponder,
   Dimensions,
+  InteractionManager,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -138,7 +140,7 @@ export interface ObraContainerProps {
   onAddService: (obraId: string) => void;
 }
 
-export const ObraContainer: React.FC<ObraContainerProps> = ({
+const ObraContainerComponent: React.FC<ObraContainerProps> = ({
   obraId,
   obraData,
   obraTitle,
@@ -265,6 +267,8 @@ export const ObraContainer: React.FC<ObraContainerProps> = ({
     </View>
   );
 };
+
+export const ObraContainer = React.memo(ObraContainerComponent);
 
 // ==================== ServiceCard ====================
 /**
@@ -740,7 +744,46 @@ const getRenderablePhotoCount = (items: unknown[]): number => {
   }, 0);
 };
 
-export const ServiceCard: React.FC<ServiceCardProps> = ({
+const LazyThumbnailImage: React.FC<{ uri: string; index: number }> = React.memo(({ uri, index }) => {
+  const [shouldLoad, setShouldLoad] = useState(index < 4);
+
+  useEffect(() => {
+    if (index < 4) {
+      setShouldLoad(true);
+      return;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => setShouldLoad(true), Math.min(index * 80, 1200));
+    });
+
+    return () => {
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
+  }, [index]);
+
+  if (!shouldLoad) {
+    return (
+      <View style={[styles.photoImage, { backgroundColor: colors.bgTertiary, justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="image-outline" size={22} color={colors.textTertiary} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      style={styles.photoImage}
+      resizeMode="cover"
+      fadeDuration={120}
+      {...(Platform.OS === 'android' ? { resizeMethod: 'resize' as const } : {})}
+    />
+  );
+});
+
+const ServiceCardComponent: React.FC<ServiceCardProps> = ({
   service,
   isExpanded,
   onToggleExpand,
@@ -1191,6 +1234,8 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
   );
 };
 
+export const ServiceCard = React.memo(ServiceCardComponent);
+
 // ==================== PhotoViewerModal ====================
 interface PhotoViewerModalProps {
   photos: FotoInfo[];
@@ -1524,11 +1569,7 @@ const PhotoCategoryTile: React.FC<PhotoCategoryTileProps> = ({
             return (
               <TouchableOpacity key={idx} style={styles.photoThumbnail} onPress={() => openViewer(idx)} activeOpacity={0.85}>
                 {uri ? (
-                  <Image
-                    source={{ uri }}
-                    style={styles.photoImage}
-                    resizeMode="cover"
-                  />
+                  <LazyThumbnailImage uri={uri} index={idx} />
                 ) : (
                   <View style={[styles.photoImage, { backgroundColor: colors.bgTertiary, justifyContent: 'center', alignItems: 'center' }]}>
                     <Ionicons name="image" size={24} color={colors.textTertiary} />
@@ -1607,7 +1648,7 @@ const TIPOS_SERVICO: TipoServico[] = [
   'Teste',
 ];
 
-export const ServiceTypeSelector: React.FC<ServiceTypeSelectorProps> = ({
+const ServiceTypeSelectorComponent: React.FC<ServiceTypeSelectorProps> = ({
   visible,
   onClose,
   onSelect,
@@ -1668,6 +1709,8 @@ export const ServiceTypeSelector: React.FC<ServiceTypeSelectorProps> = ({
     </Modal>
   );
 };
+
+export const ServiceTypeSelector = React.memo(ServiceTypeSelectorComponent);
 
 // ==================== STYLES ====================
 const styles = StyleSheet.create({

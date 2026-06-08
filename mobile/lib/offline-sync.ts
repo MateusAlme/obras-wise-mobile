@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import { supabase } from './supabase';
-import { Alert } from 'react-native';
-import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata, getPhotoMetadatasByIds as getStoredPhotoMetadatasByIds, pruneArchivedPhotoMetadata } from './photo-backup';
+import { Alert, InteractionManager } from 'react-native';
+import { backupPhoto, PhotoMetadata, getPendingPhotos, updatePhotosObraId, getAllPhotoMetadata, getPhotoMetadatasByIds as getStoredPhotoMetadatasByIds, pruneArchivedPhotoMetadata, markPhotoAsLost } from './photo-backup';
 import { processObraPhotos, UploadProgress } from './photo-queue';
 import { captureError } from './sentry';
 import { logger } from '../utils/logger';
@@ -1679,7 +1679,10 @@ const convertPhotosToData = (metadata: PhotoMetadata[]) => {
  * Converte arrays de IDs de fotos em arrays de objetos com URLs
  * Usado para converter fotos dentro de estruturas JSONB do checklist
  */
-const convertPhotoIdsToUrls = async (photoIds: any[]): Promise<any[]> => {
+const convertPhotoIdsToUrls = (
+  photoIds: any[],
+  metaById: Map<string, PhotoMetadata>,
+): any[] => {
   if (!photoIds || !Array.isArray(photoIds) || photoIds.length === 0) {
     return [];
   }
@@ -1720,13 +1723,19 @@ const convertPhotoIdsToUrls = async (photoIds: any[]): Promise<any[]> => {
       continue;
     }
 
-    const metadataList = await getPhotoMetadatasByIds([photoId]);
-    const metadata = metadataList.find(m => m.uploaded && m.uploadUrl);
+    const metadata = metaById.get(photoId);
 
-    if (metadata?.uploadUrl) {
+    if (metadata?.uploaded && metadata.uploadUrl) {
       result.push(toPhotoPayload(metadata.uploadUrl, item, metadata));
+      continue;
+    }
+
+    // Zombie: marcado como uploaded mas sem URL — marca como perdida pra parar o loop infinito de sync
+    if (metadata?.uploaded && !metadata.uploadUrl) {
+      logger.warn(`[convertPhotoIdsToUrls] Foto zombie ${photoId} (uploaded sem URL) — marcando como perdida`);
+      markPhotoAsLost(photoId, 'Foto zombie: uploaded=true sem uploadUrl').catch(() => {});
     } else {
-      logger.warn(`[WARN] [convertPhotoIdsToUrls] Foto ${photoId} não tem URL, será ignorada`);
+      logger.warn(`[convertPhotoIdsToUrls] Foto ${photoId} não tem URL, será ignorada`);
     }
   }
 
@@ -1736,19 +1745,22 @@ const convertPhotoIdsToUrls = async (photoIds: any[]): Promise<any[]> => {
 /**
  * Converte estruturas do checklist_postes_data para ter URLs nas fotos
  */
-const convertChecklistPostesData = async (postesData: any[]): Promise<any[]> => {
+const convertChecklistPostesData = (
+  postesData: any[],
+  metaById: Map<string, PhotoMetadata>,
+): any[] => {
   if (!postesData || !Array.isArray(postesData)) return postesData;
 
   const result = [];
   for (const poste of postesData) {
     result.push({
       ...poste,
-      posteInteiro: await convertPhotoIdsToUrls(poste.posteInteiro || []),
-      engaste: await convertPhotoIdsToUrls(poste.engaste || []),
-      conexao1: await convertPhotoIdsToUrls(poste.conexao1 || []),
-      conexao2: await convertPhotoIdsToUrls(poste.conexao2 || []),
-      maiorEsforco: await convertPhotoIdsToUrls(poste.maiorEsforco || []),
-      menorEsforco: await convertPhotoIdsToUrls(poste.menorEsforco || []),
+      posteInteiro: convertPhotoIdsToUrls(poste.posteInteiro || [], metaById),
+      engaste: convertPhotoIdsToUrls(poste.engaste || [], metaById),
+      conexao1: convertPhotoIdsToUrls(poste.conexao1 || [], metaById),
+      conexao2: convertPhotoIdsToUrls(poste.conexao2 || [], metaById),
+      maiorEsforco: convertPhotoIdsToUrls(poste.maiorEsforco || [], metaById),
+      menorEsforco: convertPhotoIdsToUrls(poste.menorEsforco || [], metaById),
     });
   }
   return result;
@@ -1757,14 +1769,17 @@ const convertChecklistPostesData = async (postesData: any[]): Promise<any[]> => 
 /**
  * Converte estruturas do checklist_seccionamentos_data para ter URLs nas fotos
  */
-const convertChecklistSeccionamentosData = async (secData: any[]): Promise<any[]> => {
+const convertChecklistSeccionamentosData = (
+  secData: any[],
+  metaById: Map<string, PhotoMetadata>,
+): any[] => {
   if (!secData || !Array.isArray(secData)) return secData;
 
   const result = [];
   for (const sec of secData) {
     result.push({
       ...sec,
-      fotos: await convertPhotoIdsToUrls(sec.fotos || []),
+      fotos: convertPhotoIdsToUrls(sec.fotos || [], metaById),
     });
   }
   return result;
@@ -1773,14 +1788,17 @@ const convertChecklistSeccionamentosData = async (secData: any[]): Promise<any[]
 /**
  * Converte estruturas do checklist_aterramentos_cerca_data para ter URLs nas fotos
  */
-const convertChecklistAterramentosData = async (aterrData: any[]): Promise<any[]> => {
+const convertChecklistAterramentosData = (
+  aterrData: any[],
+  metaById: Map<string, PhotoMetadata>,
+): any[] => {
   if (!aterrData || !Array.isArray(aterrData)) return aterrData;
 
   const result = [];
   for (const aterr of aterrData) {
     result.push({
       ...aterr,
-      fotos: await convertPhotoIdsToUrls(aterr.fotos || []),
+      fotos: convertPhotoIdsToUrls(aterr.fotos || [], metaById),
     });
   }
   return result;
@@ -1789,15 +1807,18 @@ const convertChecklistAterramentosData = async (aterrData: any[]): Promise<any[]
 /**
  * Converte estruturas do checklist_hastes_termometros_data para ter URLs nas fotos
  */
-const convertChecklistHastesTermometrosData = async (hastesData: any[]): Promise<any[]> => {
+const convertChecklistHastesTermometrosData = (
+  hastesData: any[],
+  metaById: Map<string, PhotoMetadata>,
+): any[] => {
   if (!hastesData || !Array.isArray(hastesData)) return hastesData;
 
   const result = [];
   for (const ponto of hastesData) {
     result.push({
       ...ponto,
-      fotoHaste: await convertPhotoIdsToUrls(ponto.fotoHaste || []),
-      fotoTermometro: await convertPhotoIdsToUrls(ponto.fotoTermometro || []),
+      fotoHaste: convertPhotoIdsToUrls(ponto.fotoHaste || [], metaById),
+      fotoTermometro: convertPhotoIdsToUrls(ponto.fotoTermometro || [], metaById),
     });
   }
   return result;
@@ -1806,17 +1827,20 @@ const convertChecklistHastesTermometrosData = async (hastesData: any[]): Promise
 /**
  * Converte estruturas de postes_data para ter URLs nas fotos (Linha Viva, Cava, Book, Fundação)
  */
-const convertPostesData = async (postesData: any[]): Promise<any[]> => {
+const convertPostesData = (
+  postesData: any[],
+  metaById: Map<string, PhotoMetadata>,
+): any[] => {
   if (!postesData || !Array.isArray(postesData)) return postesData;
 
   const result = [];
   for (const poste of postesData) {
     result.push({
       ...poste,
-      fotos_antes: await convertPhotoIdsToUrls(poste?.fotos_antes || []),
-      fotos_durante: await convertPhotoIdsToUrls(poste?.fotos_durante || []),
-      fotos_depois: await convertPhotoIdsToUrls(poste?.fotos_depois || []),
-      fotos_medicao: await convertPhotoIdsToUrls(poste?.fotos_medicao || []),
+      fotos_antes: convertPhotoIdsToUrls(poste?.fotos_antes || [], metaById),
+      fotos_durante: convertPhotoIdsToUrls(poste?.fotos_durante || [], metaById),
+      fotos_depois: convertPhotoIdsToUrls(poste?.fotos_depois || [], metaById),
+      fotos_medicao: convertPhotoIdsToUrls(poste?.fotos_medicao || [], metaById),
     });
   }
   return result;
@@ -1909,16 +1933,8 @@ export const syncObra = async (
       // Não lança erro - continua com as fotos que subiram com sucesso
     }
 
-    // ✅ CRÍTICO: Converter estruturas JSONB do checklist APÓS upload das fotos
-    // Isso garante que as URLs públicas já estejam disponíveis no metadata
-    logger.sync(`🔄 [syncObra] Convertendo estruturas JSONB com URLs das fotos...`);
-    const checklistPostesDataConverted = await convertChecklistPostesData((obra as any).checklist_postes_data);
-    const checklistSeccionamentosDataConverted = await convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data);
-    const checklistAterramentosDataConverted = await convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data);
-    const checklistHastesTermometrosDataConverted = await convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data);
-    const postesDataConverted = await convertPostesData((obra as any).postes_data);
-
     // Obter URLs das fotos uploadadas — LEITURA ÚNICA + MAP (57x mais rápido) ⚡
+    // Carregado ANTES das conversões JSONB para evitar centenas de getAllPhotoMetadata() em loop
     logger.sync(`📥 [syncObra] Obtendo metadados das fotos uploadadas (leitura única)...`);
     logger.sync(`   - fotos_antes: ${obra.fotos_antes?.length || 0} IDs`);
     logger.sync(`   - fotos_durante: ${obra.fotos_durante?.length || 0} IDs`);
@@ -1932,6 +1948,16 @@ export const syncObra = async (
       const arr = _metaByObraType.get(key);
       if (arr) arr.push(m); else _metaByObraType.set(key, [m]);
     }
+
+    // ✅ CRÍTICO: Converter estruturas JSONB do checklist APÓS upload das fotos
+    // Isso garante que as URLs públicas já estejam disponíveis no metadata.
+    // Usa _metaById pré-carregado — síncrono e sem awaits em loop.
+    logger.sync(`🔄 [syncObra] Convertendo estruturas JSONB com URLs das fotos...`);
+    const checklistPostesDataConverted = convertChecklistPostesData((obra as any).checklist_postes_data, _metaById);
+    const checklistSeccionamentosDataConverted = convertChecklistSeccionamentosData((obra as any).checklist_seccionamentos_data, _metaById);
+    const checklistAterramentosDataConverted = convertChecklistAterramentosData((obra as any).checklist_aterramentos_cerca_data, _metaById);
+    const checklistHastesTermometrosDataConverted = convertChecklistHastesTermometrosData((obra as any).checklist_hastes_termometros_data, _metaById);
+    const postesDataConverted = convertPostesData((obra as any).postes_data, _metaById);
 
     // Cria um PhotoMetadata sintético para entradas que já são objetos com URL
     // (fotos já enviadas ao Supabase e relidas do banco como {url, lat, lon, ...})
@@ -3124,21 +3150,25 @@ export const startAutoSync = (onSyncComplete?: (result: { success: number; faile
       if (autoSyncDebounceTimer !== null) {
         clearTimeout(autoSyncDebounceTimer);
       }
-      autoSyncDebounceTimer = setTimeout(async () => {
+      autoSyncDebounceTimer = setTimeout(() => {
         autoSyncDebounceTimer = null;
-        // Poda diária da chave archived (fire-and-forget, nunca bloqueia o sync)
-        pruneArchivedPhotoMetadata().catch(() => {});
-        const result = await syncAllPendingObras();
-        // Após obras, sincronizar serviços pendentes (tabela servicos)
-        try {
-          const { syncAllPendingServicos } = await import('./servico-sync');
-          await syncAllPendingServicos();
-        } catch (servicoSyncErr) {
-          logger.warn('[startAutoSync] Erro ao sincronizar serviços:', servicoSyncErr);
-        }
-        if (result.success > 0 || result.failed > 0) {
-          onSyncComplete?.(result);
-        }
+        // runAfterInteractions: aguarda animações/navegação pendentes antes de
+        // disparar o sync, mantendo a UI responsiva enquanto o usuário interage.
+        InteractionManager.runAfterInteractions(async () => {
+          // Poda diária da chave archived (fire-and-forget, nunca bloqueia o sync)
+          pruneArchivedPhotoMetadata().catch(() => {});
+          const result = await syncAllPendingObras();
+          // Após obras, sincronizar serviços pendentes (tabela servicos)
+          try {
+            const { syncAllPendingServicos } = await import('./servico-sync');
+            await syncAllPendingServicos();
+          } catch (servicoSyncErr) {
+            logger.warn('[startAutoSync] Erro ao sincronizar serviços:', servicoSyncErr);
+          }
+          if (result.success > 0 || result.failed > 0) {
+            onSyncComplete?.(result);
+          }
+        });
       }, 3000); // 3 segundos para estabilidade da rede
     }
   });

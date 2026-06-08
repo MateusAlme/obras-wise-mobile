@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as utm from 'utm';
 import { captureError } from './sentry';
 import { savePhotoToGallery } from './save-to-gallery';
+import { clearOldPhotoCache } from './memory-monitor';
 import { logger } from '../utils/logger';
 
 
@@ -29,7 +30,19 @@ const ensureEnoughStorageForBackup = async (uri: string): Promise<void> => {
       (originalSize * 2) + STORAGE_SAFETY_MARGIN_BYTES
     );
 
-    const freeDiskBytes = await FileSystem.getFreeDiskStorageAsync();
+    let freeDiskBytes = await FileSystem.getFreeDiskStorageAsync();
+    if (freeDiskBytes < estimatedRequiredBytes) {
+      // Antes de desistir, tenta liberar espaço removendo cache de fotos antigas.
+      // Em celular de campo lotado isso evita falha silenciosa de captura.
+      try {
+        const removed = await clearOldPhotoCache(7);
+        if (removed > 0) {
+          freeDiskBytes = await FileSystem.getFreeDiskStorageAsync();
+        }
+      } catch (cacheErr) {
+        logger.warn('Falha ao limpar cache de fotos para liberar espaço:', cacheErr);
+      }
+    }
     if (freeDiskBytes < estimatedRequiredBytes) {
       const freeMb = Math.floor(freeDiskBytes / 1024 / 1024);
       const requiredMb = Math.floor(estimatedRequiredBytes / 1024 / 1024);
@@ -291,7 +304,7 @@ export const backupPhoto = async (
     // Isso garante que a foto existe mesmo que o sync falhe, o app seja apagado ou o
     // armazenamento interno seja corrompido. Fire-and-forget: falha silenciosa.
     if (!isPdf && source === 'camera') {
-      savePhotoToGallery(backupPath, 'Obras Teccel').catch((galleryErr) => {
+      savePhotoToGallery(compressedPath, 'Obras Teccel').catch((galleryErr) => {
         logger.warn('[backupPhoto] Falha ao salvar na galeria (não crítico):', galleryErr);
       });
     }
@@ -338,40 +351,56 @@ export const backupPhoto = async (
 };
 
 /**
+ * Mutex em memória: serializa as mutações read-modify-write da chave ativa de metadata
+ * (savePhotoMetadata / removePhotoMetadata) para evitar perda de escritas quando duas
+ * capturas ocorrem em paralelo. Cada operação encadeia na anterior.
+ */
+let metadataMutex: Promise<void> = Promise.resolve();
+
+const runExclusiveMetadata = <T>(task: () => Promise<T>): Promise<T> => {
+  const result = metadataMutex.then(task);
+  // Mantém a cadeia viva mesmo se a task rejeitar, sem propagar o erro para a próxima.
+  metadataMutex = result.then(() => undefined, () => undefined);
+  return result;
+};
+
+/**
  * Salva metadata de uma foto nova (pendente de upload) na chave ativa.
  * Fotos já enviadas são movidas para a chave archived em markPhotoAsUploaded.
  */
-const savePhotoMetadata = async (metadata: PhotoMetadata): Promise<void> => {
-  try {
-    const raw = await AsyncStorage.getItem(PHOTO_METADATA_KEY);
-    const allMetadata: PhotoMetadata[] = raw ? JSON.parse(raw) : [];
-    const index = allMetadata.findIndex(m => m.id === metadata.id);
-    if (index !== -1) {
-      allMetadata[index] = metadata;
-    } else {
-      allMetadata.push(metadata);
+const savePhotoMetadata = (metadata: PhotoMetadata): Promise<void> =>
+  runExclusiveMetadata(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(PHOTO_METADATA_KEY);
+      const allMetadata: PhotoMetadata[] = raw ? JSON.parse(raw) : [];
+      const index = allMetadata.findIndex(m => m.id === metadata.id);
+      if (index !== -1) {
+        allMetadata[index] = metadata;
+      } else {
+        allMetadata.push(metadata);
+      }
+      await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(allMetadata));
+    } catch (error) {
+      logger.error('Erro ao salvar metadata da foto:', error);
+      throw error;
     }
-    await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(allMetadata));
-  } catch (error) {
-    logger.error('Erro ao salvar metadata da foto:', error);
-    throw error;
-  }
-};
+  });
 
-const removePhotoMetadata = async (photoId: string): Promise<void> => {
-  try {
-    const results = await AsyncStorage.multiGet([PHOTO_METADATA_KEY, PHOTO_METADATA_ARCHIVED_KEY]);
-    const active: PhotoMetadata[] = results[0][1] ? JSON.parse(results[0][1]) : [];
-    const archived: PhotoMetadata[] = results[1][1] ? JSON.parse(results[1][1]) : [];
-    const nextActive = active.filter((m) => m.id !== photoId);
-    const nextArchived = archived.filter((m) => m.id !== photoId);
+const removePhotoMetadata = (photoId: string): Promise<void> =>
+  runExclusiveMetadata(async () => {
+    try {
+      const results = await AsyncStorage.multiGet([PHOTO_METADATA_KEY, PHOTO_METADATA_ARCHIVED_KEY]);
+      const active: PhotoMetadata[] = results[0][1] ? JSON.parse(results[0][1]) : [];
+      const archived: PhotoMetadata[] = results[1][1] ? JSON.parse(results[1][1]) : [];
+      const nextActive = active.filter((m) => m.id !== photoId);
+      const nextArchived = archived.filter((m) => m.id !== photoId);
 
-    await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(nextActive));
-    await AsyncStorage.setItem(PHOTO_METADATA_ARCHIVED_KEY, JSON.stringify(nextArchived));
-  } catch (error) {
-    logger.warn('[removePhotoMetadata] Falha ao remover metadata durante rollback:', error);
-  }
-};
+      await AsyncStorage.setItem(PHOTO_METADATA_KEY, JSON.stringify(nextActive));
+      await AsyncStorage.setItem(PHOTO_METADATA_ARCHIVED_KEY, JSON.stringify(nextArchived));
+    } catch (error) {
+      logger.warn('[removePhotoMetadata] Falha ao remover metadata durante rollback:', error);
+    }
+  });
 
 /**
  * Obtém todas as metadatas de fotos (ativas + arquivadas).
@@ -627,6 +656,59 @@ export const getPhotoMetadatasByIds = async (photoIds: string[]): Promise<PhotoM
   }
 
   return results;
+};
+
+export const getPhotoMetadataFallbackCandidatesByUri = async (failedUri: string): Promise<string[]> => {
+  if (!failedUri || !failedUri.startsWith('file://')) return [];
+
+  const normalized = failedUri.trim();
+  const fileName = normalized.split('?')[0].split('/').pop() || '';
+  const baseFromCompressed = fileName.replace(/_compressed\.[a-z0-9]+$/i, '');
+
+  const buildCandidates = (photo: PhotoMetadata): string[] => [
+    photo.compressedPath,
+    photo.backupPath,
+    photo.originalUri,
+    photo.uploadUrl,
+    photo.supabaseUrl,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => value.trim())
+    .filter((value) => value !== normalized);
+
+  const findCandidate = (metadata: PhotoMetadata[]): string[] => {
+    const fromExactPath = metadata.find((photo) =>
+      [photo.compressedPath, photo.backupPath, photo.originalUri]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .some((value) => value.trim() === normalized)
+    );
+    if (fromExactPath) {
+      const candidates = buildCandidates(fromExactPath);
+      if (candidates.length > 0) return candidates;
+    }
+
+    if (!baseFromCompressed) return [];
+    const fromId = metadata.find((photo) =>
+      photo.id === baseFromCompressed ||
+      photo.compressedPath?.includes(baseFromCompressed) ||
+      photo.backupPath?.includes(baseFromCompressed)
+    );
+
+    return fromId ? buildCandidates(fromId) : [];
+  };
+
+  try {
+    const pairs = await AsyncStorage.multiGet([PHOTO_METADATA_KEY, PHOTO_METADATA_ARCHIVED_KEY]);
+    const active: PhotoMetadata[] = pairs[0][1] ? JSON.parse(pairs[0][1]) : [];
+    const activeCandidates = findCandidate(active);
+    if (activeCandidates.length > 0) return activeCandidates;
+
+    const archived: PhotoMetadata[] = pairs[1][1] ? JSON.parse(pairs[1][1]) : [];
+    return findCandidate(archived);
+  } catch (error) {
+    logger.warn('[getPhotoMetadataFallbackCandidatesByUri] Falha ao buscar fallback:', error);
+    return [];
+  }
 };
 
 /**

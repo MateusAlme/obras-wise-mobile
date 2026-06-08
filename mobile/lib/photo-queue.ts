@@ -56,6 +56,66 @@ export interface UploadProgress {
   currentPhotoId?: string;
 }
 
+// Chunked storage para a fila de upload — evita o erro "Row too big" do SQLite Android
+// (limite ~2MB por linha) quando a equipe fica offline acumulando centenas de fotos.
+const UPLOAD_QUEUE_CHUNK_KEY = '@photo_upload_queue_c';
+const UPLOAD_QUEUE_CHUNK_COUNT = '@photo_upload_queue_n';
+const QUEUE_CHUNK_MAX_BYTES = 1_400_000; // 1.4MB por chunk, bem abaixo do limite de 2MB
+
+/** Lê a fila independente do formato (chave única legada ou chunks). */
+async function readQueueRaw(): Promise<UploadQueueItem[]> {
+  const nRaw = await AsyncStorage.getItem(UPLOAD_QUEUE_CHUNK_COUNT);
+  if (nRaw) {
+    const n = parseInt(nRaw, 10);
+    if (n > 0) {
+      const keys = Array.from({ length: n }, (_, i) => `${UPLOAD_QUEUE_CHUNK_KEY}${i}`);
+      const pairs = await AsyncStorage.multiGet(keys);
+      const all: UploadQueueItem[] = [];
+      for (const [, chunk] of pairs) {
+        if (chunk) all.push(...(JSON.parse(chunk) as UploadQueueItem[]));
+      }
+      return all;
+    }
+  }
+  const raw = await AsyncStorage.getItem(UPLOAD_QUEUE_KEY);
+  return raw ? (JSON.parse(raw) as UploadQueueItem[]) : [];
+}
+
+/** Escreve a fila, dividindo em chunks se ultrapassar o limite seguro. */
+async function writeQueueRaw(queue: UploadQueueItem[]): Promise<void> {
+  const json = JSON.stringify(queue);
+  if (json.length <= QUEUE_CHUNK_MAX_BYTES) {
+    const nRaw = await AsyncStorage.getItem(UPLOAD_QUEUE_CHUNK_COUNT);
+    if (nRaw) {
+      const oldN = parseInt(nRaw, 10);
+      const toRemove = [UPLOAD_QUEUE_CHUNK_COUNT, ...Array.from({ length: oldN }, (_, i) => `${UPLOAD_QUEUE_CHUNK_KEY}${i}`)];
+      await AsyncStorage.multiRemove(toRemove);
+    }
+    await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, json);
+    return;
+  }
+  const chunks: UploadQueueItem[][] = [[]];
+  let used = 0;
+  for (const item of queue) {
+    const s = JSON.stringify(item);
+    if (used + s.length > QUEUE_CHUNK_MAX_BYTES && chunks[chunks.length - 1].length > 0) {
+      chunks.push([]);
+      used = 0;
+    }
+    chunks[chunks.length - 1].push(item);
+    used += s.length;
+  }
+  const nRaw = await AsyncStorage.getItem(UPLOAD_QUEUE_CHUNK_COUNT);
+  const oldN = nRaw ? parseInt(nRaw, 10) : 0;
+  const writes: [string, string][] = [
+    [UPLOAD_QUEUE_CHUNK_COUNT, String(chunks.length)],
+    ...chunks.map((c, i) => [`${UPLOAD_QUEUE_CHUNK_KEY}${i}`, JSON.stringify(c)] as [string, string]),
+  ];
+  await AsyncStorage.multiSet(writes);
+  const toRemove = [UPLOAD_QUEUE_KEY, ...Array.from({ length: Math.max(0, oldN - chunks.length) }, (_, i) => `${UPLOAD_QUEUE_CHUNK_KEY}${chunks.length + i}`)];
+  await AsyncStorage.multiRemove(toRemove);
+}
+
 const NETWORK_ERROR_PATTERNS = [
   'unable to resolve host',
   'no address associated with hostname',
@@ -211,7 +271,7 @@ export const addToUploadQueue = async (photoId: string, obraId: string): Promise
     };
 
     queue.push(newItem);
-    await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(queue));
+    await writeQueueRaw(queue);
   } catch (error) {
     logger.error('Erro ao adicionar foto à fila:', error);
     throw error;
@@ -223,8 +283,7 @@ export const addToUploadQueue = async (photoId: string, obraId: string): Promise
  */
 export const getUploadQueue = async (): Promise<UploadQueueItem[]> => {
   try {
-    const data = await AsyncStorage.getItem(UPLOAD_QUEUE_KEY);
-    return data ? JSON.parse(data) : [];
+    return await readQueueRaw();
   } catch (error) {
     logger.error('Erro ao obter fila de upload:', error);
     return [];
@@ -276,7 +335,7 @@ const normalizeQueueState = async (queue: UploadQueueItem[]): Promise<UploadQueu
   }
 
   if (changed) {
-    await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(normalized));
+    await writeQueueRaw(normalized);
   }
 
   return normalized;
@@ -303,7 +362,7 @@ const updateQueueItemStatus = async (
         delete item.error;
       }
 
-      await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(queue));
+      await writeQueueRaw(queue);
     }
   } catch (error) {
     logger.error('Erro ao atualizar status na fila:', error);
@@ -317,7 +376,7 @@ const removeFromQueue = async (photoId: string): Promise<void> => {
   try {
     const queue = await getUploadQueue();
     const filtered = queue.filter(item => item.photoId !== photoId);
-    await AsyncStorage.setItem(UPLOAD_QUEUE_KEY, JSON.stringify(filtered));
+    await writeQueueRaw(filtered);
   } catch (error) {
     logger.error('Erro ao remover da fila:', error);
   }

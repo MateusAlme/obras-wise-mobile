@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Text, Image, StyleSheet, Dimensions, TouchableOpacity, Platform } from 'react-native';
 import { latLongToUTM, formatUTM } from '../lib/geocoding';
-import { getAllPhotoMetadata } from '../lib/photo-backup';
+import { getPhotoMetadataFallbackCandidatesByUri } from '../lib/photo-backup';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -21,7 +21,16 @@ interface PhotoWithPlacaProps {
   recoverButtonLabel?: string;
 }
 
-export function PhotoWithPlaca({
+// Escalonador global de decodificação (compartilhado entre todas as instâncias):
+// distribui o mount das <Image> no tempo para não decodificar dezenas de bitmaps
+// no mesmo frame — principal causa de freeze/OOM em telas com muitas fotos
+// (ex.: nova-obra com vários postes). Reseta quando todas as pendências carregam.
+let staggerCounter = 0;
+let staggerPending = 0;
+const STAGGER_STEP_MS = 50;
+const STAGGER_MAX_MS = 1500;
+
+function PhotoWithPlacaComponent({
   uri,
   obraNumero,
   tipoServico,
@@ -39,9 +48,50 @@ export function PhotoWithPlaca({
   const [currentUri, setCurrentUri] = useState(uri);
   const [imageError, setImageError] = useState(false);
   const [recoveringPhoto, setRecoveringPhoto] = useState(false);
+  // Carga escalonada: a imagem só decodifica quando o escalonador liberar a vez.
+  const [shouldLoad, setShouldLoad] = useState(false);
   const fallbackTriedForUriRef = useRef<string | null>(null);
   const fallbackCandidatesRef = useRef<string[]>([]);
   const lastFailedUriRef = useRef<string>(uri);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Carga escalonada: cada instância pega uma "vez" no escalonador global e só
+  // decodifica a imagem após um atraso proporcional à sua ordem de montagem,
+  // espalhando os decodes no tempo em vez de todos no mesmo frame.
+  // Usa setTimeout puro (sem InteractionManager) para GARANTIR que toda imagem
+  // carregue em no máximo STAGGER_MAX_MS — InteractionManager pode ser "starved"
+  // em telas muito interativas e deixar imagens presas no placeholder cinza.
+  useEffect(() => {
+    const order = staggerCounter++;
+    staggerPending++;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      staggerPending--;
+      if (staggerPending <= 0) {
+        staggerPending = 0;
+        staggerCounter = 0;
+      }
+    };
+
+    const timer = setTimeout(() => {
+      if (mountedRef.current) setShouldLoad(true);
+      release();
+    }, Math.min(order * STAGGER_STEP_MS, STAGGER_MAX_MS));
+
+    return () => {
+      clearTimeout(timer);
+      release();
+    };
+  }, []);
 
   useEffect(() => {
     setCurrentUri(uri);
@@ -65,59 +115,7 @@ export function PhotoWithPlaca({
 
   const resolveFallbackCandidatesFromMetadata = async (failedUri: string): Promise<string[]> => {
     try {
-      if (!failedUri || !failedUri.startsWith('file://')) return [];
-
-      const normalized = failedUri.trim();
-      const allMetadata = await getAllPhotoMetadata();
-
-      const fromExactPath = allMetadata.find((photo) =>
-        [photo.compressedPath, photo.backupPath, photo.originalUri]
-          .filter((value): value is string => typeof value === 'string' && value.length > 0)
-          .some((value) => value.trim() === normalized)
-      );
-      if (fromExactPath) {
-        const candidates = [
-          fromExactPath.compressedPath,
-          fromExactPath.backupPath,
-          fromExactPath.originalUri,
-          fromExactPath.uploadUrl,
-          fromExactPath.supabaseUrl,
-        ]
-          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-          .map((value) => value.trim())
-          .filter((value) => value !== normalized);
-        if (candidates.length > 0) return candidates;
-      }
-
-      const fileName = normalized.split('?')[0].split('/').pop() || '';
-      const baseFromCompressed = fileName.replace(/_compressed\.[a-z0-9]+$/i, '');
-
-      const fromId = allMetadata.find((photo) => {
-        if (!photo?.id) return false;
-        if (photo.id === baseFromCompressed) return true;
-        if (!fileName) return false;
-        return (
-          String(photo.compressedPath || '').includes(fileName) ||
-          String(photo.backupPath || '').includes(fileName) ||
-          String(photo.originalUri || '').includes(fileName)
-        );
-      });
-
-      if (fromId) {
-        const candidates = [
-          fromId.compressedPath,
-          fromId.backupPath,
-          fromId.originalUri,
-          fromId.uploadUrl,
-          fromId.supabaseUrl,
-        ]
-          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-          .map((value) => value.trim())
-          .filter((value) => value !== normalized);
-        if (candidates.length > 0) return candidates;
-      }
-
-      return [];
+      return await getPhotoMetadataFallbackCandidatesByUri(failedUri);
     } catch {
       return [];
     }
@@ -184,6 +182,11 @@ export function PhotoWithPlaca({
     );
   }
 
+  // Ainda na fila de carga escalonada: mostra placeholder leve sem decodificar a imagem.
+  if (!shouldLoad) {
+    return <View style={[styles.container, style, styles.loadingPlaceholder]} />;
+  }
+
   // Formatar data/hora atual se nao fornecida
   const displayDateTime = dateTime || new Date().toLocaleString('pt-BR', {
     day: '2-digit',
@@ -208,6 +211,7 @@ export function PhotoWithPlaca({
         source={{ uri: currentUri }}
         style={styles.photo}
         resizeMode="cover"
+        {...(Platform.OS === 'android' ? { resizeMethod: 'resize' as const } : {})}
         onError={(error) => {
           const failedUri = currentUri;
           lastFailedUriRef.current = failedUri;
@@ -220,6 +224,7 @@ export function PhotoWithPlaca({
               if (fallbackCandidatesRef.current.length === 0) {
                 fallbackCandidatesRef.current = await resolveFallbackCandidatesFromMetadata(failedUri);
               }
+              if (!mountedRef.current) return;
 
               const nextCandidate = fallbackCandidatesRef.current.shift();
               if (nextCandidate) {
@@ -296,6 +301,11 @@ export function PhotoWithPlaca({
     </View>
   );
 }
+
+// Memoizado: os props são primitivos/estáveis (uri, obraNumero, equipe, utm...),
+// então evita re-render em cascata quando a tela-pai (ex.: nova-obra) re-renderiza
+// por qualquer mudança de estado. Crítico em telas com dezenas de fotos montadas.
+export const PhotoWithPlaca = React.memo(PhotoWithPlacaComponent);
 
 const styles = StyleSheet.create({
   container: {
@@ -383,6 +393,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  loadingPlaceholder: {
+    backgroundColor: '#e5e7eb',
   },
   errorText: {
     fontSize: 16,

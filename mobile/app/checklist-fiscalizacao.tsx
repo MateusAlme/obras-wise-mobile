@@ -1220,7 +1220,7 @@ export default function ChecklistFiscalizacaoPage() {
         if (!displayUri) return null;
         return (
           <TouchableOpacity key={index} onPress={() => openViewer(photos, index)} activeOpacity={0.8}>
-            <Image source={{ uri: displayUri }} style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]} resizeMode="cover" />
+            <Image source={{ uri: displayUri }} style={[styles.photoThumb, { width: thumbSize, height: thumbSize }]} resizeMode="cover" {...(Platform.OS === 'android' ? { resizeMethod: 'resize' as const } : {})} />
           </TouchableOpacity>
         );
       })}
@@ -1820,7 +1820,7 @@ export default function ChecklistFiscalizacaoPage() {
             <Ionicons name="close-circle" size={40} color="#fff" />
           </TouchableOpacity>
 
-          {viewerUri && <Image source={{ uri: viewerUri }} style={styles.viewerPhoto} resizeMode="contain" />}
+          {viewerUri && <Image source={{ uri: viewerUri }} style={styles.viewerPhoto} resizeMode="contain" {...(Platform.OS === 'android' ? { resizeMethod: 'resize' as const } : {})} />}
 
           {viewerPhotos.length > 1 && (
             <View style={styles.viewerNav}>

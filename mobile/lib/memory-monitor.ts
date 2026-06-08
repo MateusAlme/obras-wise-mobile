@@ -36,16 +36,23 @@ export const getMemoryInfo = async (): Promise<MemoryInfo> => {
       info.storageFree = diskInfo;
     }
 
-    // Estimar tamanho do AsyncStorage
-    const keys = await AsyncStorage.getAllKeys();
-    let totalSize = 0;
-
-    for (const key of keys) {
-      const value = await AsyncStorage.getItem(key);
-      if (value) {
-        totalSize += value.length;
-      }
-    }
+    // Estimar tamanho APENAS das chaves críticas. Em produção há 500+ keys (chunks
+    // de obras, metadata, queue) e carregar todas em multiGet justamente em momentos
+    // de pressão de memória agrava o problema que queremos diagnosticar.
+    const CRITICAL_KEYS = [
+      '@photo_metadata',
+      '@photo_metadata_archived',
+      '@photo_upload_queue',
+      '@obras_pending_sync',
+      '@obras_local',
+      '@obras_local_n',
+    ];
+    const allKeys = await AsyncStorage.getAllKeys();
+    const obrasChunkKeys = allKeys.filter((k) => k.startsWith('@obras_local_c'));
+    const queueChunkKeys = allKeys.filter((k) => k.startsWith('@photo_upload_queue_c'));
+    const keysToMeasure = [...CRITICAL_KEYS, ...obrasChunkKeys, ...queueChunkKeys];
+    const pairs = await AsyncStorage.multiGet(keysToMeasure);
+    const totalSize = pairs.reduce((sum, [, value]) => sum + (value?.length || 0), 0);
 
     info.asyncStorageSize = totalSize;
 
@@ -139,12 +146,8 @@ export const getCrashLogs = async (): Promise<any[]> => {
     const keys = await AsyncStorage.getAllKeys();
     const crashKeys = keys.filter(k => k.startsWith(`${MEMORY_CHECK_KEY}_crash_`));
 
-    const logs = await Promise.all(
-      crashKeys.map(async key => {
-        const data = await AsyncStorage.getItem(key);
-        return data ? JSON.parse(data) : null;
-      })
-    );
+    const pairs = await AsyncStorage.multiGet(crashKeys);
+    const logs = pairs.map(([, data]) => data ? JSON.parse(data) : null);
 
     return logs.filter(Boolean);
 

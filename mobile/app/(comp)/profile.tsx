@@ -114,7 +114,7 @@ export default function CompProfile() {
           <Text style={styles.logoutButtonText}>{loading ? 'Saindo...' : 'Sair da Conta'}</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>Versão {Constants.expoConfig?.version ?? '2.2.0'}</Text>
+        <Text style={styles.version}>Versão {Constants.expoConfig?.version ?? '2.2.1'}</Text>
       </View>
     </ScrollView>
   );

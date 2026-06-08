@@ -151,9 +151,10 @@ async function renderPhotoWithPlacaWeb(
           drawTextLine('Obra:', placaData.obraNumero, true)
           drawTextLine('Data:', placaData.dataHora)
 
-          const servicoTrunc = placaData.tipoServico.length > 20
-            ? placaData.tipoServico.substring(0, 20) + '...'
-            : placaData.tipoServico
+          const servico = String(placaData.tipoServico ?? 'N/A')
+          const servicoTrunc = servico.length > 20
+            ? servico.substring(0, 20) + '...'
+            : servico
           drawTextLine('Serviço:', servicoTrunc)
 
           drawTextLine('Equipe:', placaData.equipe, true)

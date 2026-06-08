@@ -66,6 +66,12 @@ type GroupedObra = {
 };
 
 const HISTORY_CACHE_KEY = '@obras_history_cache';
+// Janela do historico: quantas obras renderizar de inicio e a cada "carregar mais".
+// Mantem o primeiro paint leve em celulares fracos; o resto entra ao rolar.
+const OBRAS_PAGE_SIZE = 30;
+// Quantas obras o admin pre-cacheia por completo (fotos) para uso offline.
+// Baixo de proposito: evita travar celulares fracos e saturar o AsyncStorage.
+const PREFETCH_OBRAS_LIMIT = 10;
 const FIX_OBRAS_DONE_KEY = '@fix_origem_v1';
 
 export default function Obras() {
@@ -93,6 +99,8 @@ export default function Obras() {
   const cancellationTokenRef = useRef<CancellationToken>({ cancelled: false });
   const lastMigrateAtRef = useRef<number>(0);
   const MIGRATE_COOLDOWN_MS = 2 * 60 * 1000;
+  // Numeros de obra ja pre-cacheados nesta sessao (admin) — evita refetch repetido.
+  const prefetchedNumerosRef = useRef<Set<string>>(new Set());
 
   // Estado de status das fotos na fila de upload
   const [photoStats, setPhotoStats] = useState({ pending: 0, uploading: 0, failed: 0 });
@@ -208,6 +216,73 @@ export default function Obras() {
   const groupedCombinedObras = useMemo(() => groupObrasByNumero(combinedObras), [combinedObras, groupObrasByNumero]);
   const groupedFilteredObras = useMemo(() => groupObrasByNumero(filteredObras), [filteredObras, groupObrasByNumero]);
 
+  // Janela de exibicao: renderiza so as primeiras N obras e cresce ao rolar.
+  const [visibleCount, setVisibleCount] = useState(OBRAS_PAGE_SIZE);
+  const visibleGroupedObras = useMemo(
+    () => groupedFilteredObras.slice(0, visibleCount),
+    [groupedFilteredObras, visibleCount]
+  );
+  const hasMoreObras = visibleCount < groupedFilteredObras.length;
+
+  // Volta ao topo da janela quando a busca muda (resultado novo, lista curta).
+  useEffect(() => {
+    setVisibleCount(OBRAS_PAGE_SIZE);
+  }, [debouncedSearchTerm]);
+
+  const handleLoadMoreObras = useCallback(() => {
+    setVisibleCount((atual) =>
+      atual >= groupedFilteredObras.length ? atual : atual + OBRAS_PAGE_SIZE
+    );
+  }, [groupedFilteredObras.length]);
+
+  /**
+   * Pre-cacheia em segundo plano os dados COMPLETOS (fotos/checklist) de algumas
+   * poucas obras para o admin (que so tem a lista leve), deixando-as disponiveis
+   * offline sem abrir uma por uma. Proposital e gentil para nao travar celulares
+   * fracos: limite baixo, uma unica gravacao, e cada numero so baixa uma vez por
+   * sessao. NAO e disparado pela busca — apenas ao carregar/focar a lista.
+   */
+  const prefetchObrasParaOffline = useCallback((numeros: string[]) => {
+    const pendentesNumeros = numeros
+      .map((n) => String(n || '').trim())
+      .filter((n) => n && !prefetchedNumerosRef.current.has(n))
+      .slice(0, PREFETCH_OBRAS_LIMIT);
+    if (pendentesNumeros.length === 0) return;
+
+    // Marca antes de baixar para nao reprocessar os mesmos numeros.
+    pendentesNumeros.forEach((n) => prefetchedNumerosRef.current.add(n));
+
+    // Adiado e sem await — nao bloqueia a UI nem a busca.
+    setTimeout(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('obras')
+          .select('*')
+          .in('obra', pendentesNumeros);
+        if (error || !data || data.length === 0) return;
+
+        const locais = await getLocalObras();
+        const porId = new Map(locais.map((o) => [o.id, o]));
+        for (const row of data as any[]) {
+          porId.set(row.id, {
+            ...row,
+            id: row.id,
+            synced: true,
+            locallyModified: false,
+            serverId: row.id,
+            origem: 'online',
+            last_modified: row.updated_at || row.created_at,
+            created_at: row.created_at,
+          } as LocalObra);
+        }
+        await saveLocalObras(Array.from(porId.values()));
+      } catch (e) {
+        pendentesNumeros.forEach((n) => prefetchedNumerosRef.current.delete(n));
+        console.error('Falha ao pre-cachear obras para offline:', e);
+      }
+    }, 1500);
+  }, []);
+
   // ✅ Filtrar obras pendentes apenas da equipe logada para contadores
   const pendingObrasDaEquipe = useMemo(() => {
     if (isAdmin) return pendingObrasState;
@@ -276,6 +351,17 @@ export default function Obras() {
    * Busca e sincroniza obras do Supabase para AsyncStorage (migração)
    */
   const migrateObrasDeSupabase = async (equipe: string, role?: string) => {
+    const roleAtual = role || userRole;
+
+    // Admin/supervisor veem obras de TODAS as equipes. Baixar tudo com os JSONB
+    // pesados de fotos para o cache offline e inviavel (centenas de MB) e trava
+    // celulares fracos. A lista ja vem leve do servidor (fetchObrasServidor) e o
+    // detalhe e buscado ao abrir a obra (obra-books). Por isso, nao fazemos o
+    // download em massa para esses perfis.
+    if (isAdminOrSupervisor(roleAtual)) {
+      return;
+    }
+
     const online = await checkInternetConnection();
     if (!online) {
       console.log('📴 Offline - pulando busca do Supabase');
@@ -289,26 +375,38 @@ export default function Obras() {
     lastMigrateAtRef.current = now;
 
     try {
-      const roleAtual = role || userRole;
-      let query = supabase
-        .from('obras')
-        .select('*');
+      const PAGE_SIZE = 1000;
 
-      if (!isAdminOrSupervisor(roleAtual)) {
-        query = query.eq('equipe', equipe);
-      }
+      // Recria o query a cada página — o Supabase nao permite reusar o builder apos await.
+      // Sem isso, o admin (que puxa obras de todas as equipes) ficava limitado as 1000
+      // linhas padrao do Supabase e nao via os registros mais antigos.
+      const buildPageQuery = (from: number, to: number) => {
+        let q = supabase.from('obras').select('*');
+        if (!isAdminOrSupervisor(roleAtual)) {
+          q = q.eq('equipe', equipe);
+        }
+        if (roleAtual === 'compressor') {
+          q = q.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
+        }
+        return q.order('created_at', { ascending: false }).range(from, to);
+      };
 
-      if (roleAtual === 'compressor') {
-        query = query.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
-      }
+      const data: any[] = [];
+      let fetchComplete = true;
+      for (let page = 0; ; page++) {
+        const from = page * PAGE_SIZE;
+        const { data: pageData, error } = await buildPageQuery(from, from + PAGE_SIZE - 1);
 
-      query = query.order('created_at', { ascending: false });
+        if (error) {
+          console.error(`❌ [migrate] erro na pagina ${page}:`, error.message || error);
+          if (page === 0) return; // nada carregado — aborta sem mexer no cache local
+          fetchComplete = false; // carregou parte: nao remover locais "ausentes"
+          break;
+        }
 
-      const { data, error } = await query;
-
-      if (error) {
-        console.error('❌ Erro ao buscar obras:', error);
-        return;
+        if (!pageData || pageData.length === 0) break;
+        data.push(...pageData);
+        if (pageData.length < PAGE_SIZE) break; // ultima pagina
       }
 
       let obrasLocais = await getLocalObras();
@@ -336,14 +434,18 @@ export default function Obras() {
         changed = true;
       }
 
-      // Remover obras locais que foram apagadas no banco de dados
+      // Remover obras locais que foram apagadas no banco de dados.
+      // So roda quando a busca veio completa — senao apagaria obras que apenas
+      // nao foram baixadas ainda (ex.: pagina com erro no meio da paginacao).
       const beforeCount = obrasLocais.length;
-      obrasLocais = obrasLocais.filter((obra) => {
-        if (!obra.serverId || obra.locallyModified || obra.synced === false) return true;
-        const noEscopeDestaConsulta = isAdminOrSupervisor(roleAtual) || obra.equipe === equipe;
-        if (!noEscopeDestaConsulta) return true;
-        return serverIds.has(obra.serverId) || serverIds.has(obra.id);
-      });
+      if (fetchComplete) {
+        obrasLocais = obrasLocais.filter((obra) => {
+          if (!obra.serverId || obra.locallyModified || obra.synced === false) return true;
+          const noEscopeDestaConsulta = isAdminOrSupervisor(roleAtual) || obra.equipe === equipe;
+          if (!noEscopeDestaConsulta) return true;
+          return serverIds.has(obra.serverId) || serverIds.has(obra.id);
+        });
+      }
       if (changed || obrasLocais.length < beforeCount) {
         await saveLocalObras(obrasLocais);
       }
@@ -396,6 +498,42 @@ export default function Obras() {
   };
 
   /**
+   * Busca a LISTA de obras direto do servidor com campos leves (sem os JSONB de
+   * fotos). Rapido e sem timeout mesmo para admin, que puxa todas as equipes.
+   * Pagina em lotes de 1000 para nao esbarrar no limite padrao do Supabase.
+   * Retorna null se falhar logo na primeira pagina (cai no cache local).
+   */
+  const fetchObrasServidor = async (
+    equipe: string,
+    roleIsAdmin: boolean,
+    roleIsCompressor: boolean
+  ): Promise<LocalObra[] | null> => {
+    const LEAN_FIELDS = 'id,obra,equipe,responsavel,tipo_servico,status,created_at,data,finalizada_em,creator_role';
+    const PAGE_SIZE = 1000;
+
+    const buildPageQuery = (from: number, to: number) => {
+      let q = supabase.from('obras').select(LEAN_FIELDS);
+      if (!roleIsAdmin) q = q.eq('equipe', equipe);
+      if (roleIsCompressor) q = q.or('tipo_servico.eq.Cava em Rocha,creator_role.eq.compressor');
+      return q.order('created_at', { ascending: false }).range(from, to);
+    };
+
+    const out: LocalObra[] = [];
+    for (let page = 0; ; page++) {
+      const from = page * PAGE_SIZE;
+      const { data, error } = await buildPageQuery(from, from + PAGE_SIZE - 1);
+      if (error) {
+        console.error(`❌ [servidor] erro na pagina ${page}:`, error.message || error);
+        return page === 0 ? null : out;
+      }
+      if (!data || data.length === 0) break;
+      out.push(...(data.map((r: any) => ({ ...r, serverId: r.id, synced: true, origem: 'online' })) as LocalObra[]));
+      if (data.length < PAGE_SIZE) break;
+    }
+    return out;
+  };
+
+  /**
    * Carrega todas as obras para a equipe logada
    */
   const carregarObras = async () => {
@@ -413,16 +551,54 @@ export default function Obras() {
         return;
       }
 
-      // Sincroniza com Supabase (verifica conectividade internamente)
-      await migrateObrasDeSupabase(equipe || '', role);
-      const localObras = await getLocalObras();
+      const online = await checkInternetConnection();
+
+      let baseObras: LocalObra[];
+
+      if (roleIsAdmin) {
+        // ADMIN/SUPERVISOR: lista vem leve do servidor (sem os JSONB de fotos) para
+        // nao travar com obras de todas as equipes. Nao baixamos tudo para o cache.
+        const servidor = online ? await fetchObrasServidor(equipe || '', true, roleIsCompressor) : null;
+        if (servidor) {
+          baseObras = servidor;
+          const locais = await getLocalObras();
+
+          // Salva no cache local as obras leves que ainda nao estao la (sem
+          // sobrescrever as completas ja cacheadas ao abrir). Assim a lista fica
+          // disponivel offline e da para lancar servico offline em qualquer obra.
+          const porId = new Map(locais.map((o) => [o.id, o]));
+          let adicionou = false;
+          for (const o of servidor) {
+            if (!porId.has(o.id)) { porId.set(o.id, o); adicionou = true; }
+          }
+          if (adicionou) {
+            saveLocalObras(Array.from(porId.values())).catch(() => {});
+          }
+
+          // Mantem rascunhos/obras locais ainda nao sincronizadas que nao vieram do servidor.
+          const idsServidor = new Set(baseObras.map((o) => o.id));
+          for (const o of locais) {
+            const naoSincronizada = o.synced === false || o.locallyModified || !o.serverId;
+            if (naoSincronizada && !idsServidor.has(o.id)) baseObras.push(o);
+          }
+        } else {
+          // Offline: usa o que estiver no cache (ex.: indice leve ja salvo).
+          baseObras = await getLocalObras();
+        }
+      } else {
+        // EQUIPE/COMPRESSOR: escopo pequeno (so as proprias obras). Mantemos o fluxo
+        // offline-first original — um unico migrate completo + cache local — sem
+        // download duplo. Aqui o migrate e aguardado para a lista ja vir preenchida.
+        await migrateObrasDeSupabase(equipe || '', role);
+        baseObras = await getLocalObras();
+      }
 
       // Auto-corrigir campos faltando
       await autoFixObraFields();
 
       // Filtrar, ordenar e formatar
       const obrasEquipe = sortObrasByDate(
-        localObras.filter((obra) => {
+        baseObras.filter((obra) => {
           if (!roleIsAdmin && obra.equipe !== equipe) return false;
           if (!roleIsCompressor) return true;
           return isCompressorBook(obra as any);
@@ -435,6 +611,12 @@ export default function Obras() {
 
       setOnlineObras(obrasFormatadas);
       console.log(`✅ ${obrasFormatadas.length} obra(s) carregadas`);
+
+      // Admin: pre-cacheia poucas obras (as mais recentes) em background para offline.
+      if (roleIsAdmin && online) {
+        prefetchObrasParaOffline(obrasFormatadas.map((o) => String(o.obra || '')));
+      }
+
       const indexList = obrasFormatadas.map((obra) =>
         Object.fromEntries(Object.entries(obra).filter(([k]) => !k.startsWith('fotos_') && !k.startsWith('doc_')))
       );
@@ -1198,15 +1380,27 @@ export default function Obras() {
           styles.content,
           { paddingHorizontal: horizontalPadding, paddingBottom: 120 + insets.bottom },
         ]}
-        data={groupedFilteredObras}
+        data={visibleGroupedObras}
         keyExtractor={(item) => item.groupKey}
         renderItem={renderObraGrupo}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardShouldPersistTaps="handled"
         removeClippedSubviews={true}
-        maxToRenderPerBatch={8}
-        windowSize={10}
-        initialNumToRender={10}
+        maxToRenderPerBatch={4}
+        windowSize={7}
+        initialNumToRender={6}
+        updateCellsBatchingPeriod={60}
+        onEndReached={handleLoadMoreObras}
+        onEndReachedThreshold={0.6}
+        ListFooterComponent={
+          hasMoreObras ? (
+            <TouchableOpacity style={styles.loadMoreButton} onPress={handleLoadMoreObras} activeOpacity={0.7}>
+              <Text style={styles.loadMoreText}>
+                Carregar mais ({groupedFilteredObras.length - visibleGroupedObras.length} restantes)
+              </Text>
+            </TouchableOpacity>
+          ) : null
+        }
         ListHeaderComponent={
           <View>
             {equipeLogada && (
@@ -1412,6 +1606,21 @@ const styles = StyleSheet.create({
   },
   obraGroupItem: {
     marginBottom: 12,
+  },
+  loadMoreButton: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  loadMoreText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1d4ed8',
   },
   header: {
     flexDirection: 'row',

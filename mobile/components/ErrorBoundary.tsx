@@ -13,6 +13,7 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  resetKey: number;
 }
 
 /**
@@ -30,10 +31,11 @@ export class ErrorBoundary extends Component<Props, State> {
       hasError: false,
       error: null,
       errorInfo: null,
+      resetKey: 0,
     };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     // Atualizar estado para exibir UI de fallback
     return {
       hasError: true,
@@ -76,32 +78,74 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private async logErrorToStorage(error: Error, errorInfo: ErrorInfo) {
+    // Hardenizado contra OOM: trunca strings grandes e descarta logs antigos
+    // se o parse falhar. Nunca pode lançar — esse é o último ponto de defesa.
+    const MAX_STACK_BYTES = 2_000;
+    const MAX_COMPONENT_STACK_BYTES = 2_000;
+    const MAX_TOTAL_LOGS_BYTES = 30_000;
+
+    const truncate = (value: string | null | undefined, max: number): string => {
+      if (!value) return '';
+      return value.length > max ? `${value.slice(0, max)}…` : value;
+    };
+
+    const errorLog = {
+      timestamp: new Date().toISOString(),
+      message: truncate(error.message, 500),
+      stack: truncate(error.stack, MAX_STACK_BYTES),
+      componentStack: truncate(errorInfo.componentStack, MAX_COMPONENT_STACK_BYTES),
+    };
+
+    let logs: any[] = [];
     try {
-      const errorLog = {
-        timestamp: new Date().toISOString(),
-        message: error.message,
-        stack: error.stack,
-        componentStack: errorInfo.componentStack,
-      };
-
       const existingLogs = await AsyncStorage.getItem('@error_logs');
-      const logs = existingLogs ? JSON.parse(existingLogs) : [];
-      logs.push(errorLog);
+      if (existingLogs) {
+        try {
+          const parsed = JSON.parse(existingLogs);
+          if (Array.isArray(parsed)) logs = parsed;
+        } catch {
+          // JSON corrompido — descarta logs antigos
+          logs = [];
+        }
+      }
+    } catch {
+      logs = [];
+    }
 
-      // Manter apenas os últimos 10 erros
-      const recentLogs = logs.slice(-10);
-      await AsyncStorage.setItem('@error_logs', JSON.stringify(recentLogs));
+    logs.push(errorLog);
+    let recentLogs = logs.slice(-10);
+
+    // Garante que o payload total caiba em MAX_TOTAL_LOGS_BYTES
+    let serialized = '';
+    try {
+      serialized = JSON.stringify(recentLogs);
+      while (serialized.length > MAX_TOTAL_LOGS_BYTES && recentLogs.length > 1) {
+        recentLogs = recentLogs.slice(1);
+        serialized = JSON.stringify(recentLogs);
+      }
+    } catch {
+      // Stringify falhou (memória apertada) — tenta salvar só o erro atual
+      try {
+        serialized = JSON.stringify([errorLog]);
+      } catch {
+        return;
+      }
+    }
+
+    try {
+      await AsyncStorage.setItem('@error_logs', serialized);
     } catch (err) {
       console.error('❌ Falha ao salvar log de erro:', err);
     }
   }
 
   handleReset = () => {
-    this.setState({
+    this.setState((prev) => ({
       hasError: false,
       error: null,
       errorInfo: null,
-    });
+      resetKey: prev.resetKey + 1,
+    }));
   };
 
   render() {
@@ -142,7 +186,7 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
 

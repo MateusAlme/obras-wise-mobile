@@ -110,7 +110,11 @@ const getNestedFieldPhotoCount = (key: string, value: unknown): number => {
       countArrayEntries(poste?.conexao1) +
       countArrayEntries(poste?.conexao2) +
       countArrayEntries(poste?.maiorEsforco) +
-      countArrayEntries(poste?.menorEsforco)
+      countArrayEntries(poste?.menorEsforco) +
+      countArrayEntries(pickFirstArray(poste, ['fotos_antes', 'fotosAntes'])) +
+      countArrayEntries(pickFirstArray(poste, ['fotos_durante', 'fotosDurante'])) +
+      countArrayEntries(pickFirstArray(poste, ['fotos_depois', 'fotosDepois'])) +
+      countArrayEntries(pickFirstArray(poste, ['fotos_medicao', 'fotosMedicao']))
     ), 0);
   }
 
@@ -1535,18 +1539,78 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
       'checklist_aterramentos_cerca_data',
       'checklist_hastes_termometros_data',
     ] as const;
-    
+
+    // Para UPDATE, lê o estado ATUAL do servidor para nunca sobrescrever um campo
+    // aninhado que tenha MAIS (ou igual) fotos do que a versão local. Isso corrige a
+    // perda de fotos quando o local só tem o esqueleto dos postes (ex.: 4 postes sem
+    // fotos sobrescrevendo 50 fotos já sincronizadas no servidor).
+    let remoteNestedCurrent: Record<string, any> = {};
+    let remoteReadOk = false;
+    if (!isNewServico) {
+      try {
+        const { data: remoteRow, error: remoteErr } = await supabase
+          .from('servicos')
+          .select('*')
+          .eq('id', servicoLocal.id)
+          .single();
+        if (!remoteErr && remoteRow) {
+          remoteNestedCurrent = remoteRow as any;
+          remoteReadOk = true;
+        }
+      } catch {
+        // Sem confirmação do servidor: cai no modo conservador abaixo.
+      }
+    }
+
     for (const field of nestedFields) {
       const resolved = (resolvedNestedPhotos as any)[field];
-      const hasData = Array.isArray(resolved) && resolved.length > 0;
-      
-      // Se é novo serviço, sempre enviar (mesmo se vazio)
-      // Se é UPDATE, só enviar se tiver dados (não sobrescrever com vazio)
-      if (isNewServico || hasData) {
+      const hasItems = Array.isArray(resolved) && resolved.length > 0;
+
+      // Novo serviço: sempre envia (mesmo vazio).
+      if (isNewServico) {
         nestedPhotosToSync[field] = resolved;
-      } else if (!isNewServico && hasData === false && resolved !== servicoLocal[field as keyof ServicoLocal]) {
-        logger.warn(`[syncServico] ${field} ficou vazio localmente — NÃO sobrescrevendo servidor para preservar fotos existentes`);
+        continue;
       }
+
+      const localCount = getNestedFieldPhotoCount(field, resolved);
+      const remoteCount = remoteReadOk ? getNestedFieldPhotoCount(field, remoteNestedCurrent[field]) : 0;
+
+      // Servidor tem MAIS fotos que o local → preserva servidor (não sobrescreve).
+      // Cobre o caso catastrófico: local só com esqueleto (0 fotos) sobrescrevendo
+      // 50 fotos já sincronizadas. Em contagem igual o push envia a versão resolvida
+      // (já com URLs públicas), então editar texto/status do poste continua funcionando.
+      if (remoteReadOk && remoteCount > 0 && localCount < remoteCount) {
+        logger.warn(`[syncServico] ${field}: local ${localCount} < servidor ${remoteCount} fotos — PRESERVANDO servidor (não sobrescrevendo)`);
+        continue;
+      }
+
+      // Não conseguimos confirmar o servidor e o local é só esqueleto (sem fotos):
+      // por segurança, não envia (evita zerar fotos existentes).
+      if (!remoteReadOk && hasItems && localCount === 0) {
+        logger.warn(`[syncServico] ${field}: servidor não verificável e local sem fotos — preservando servidor por segurança`);
+        continue;
+      }
+
+      // Local é mais rico (usuário adicionou fotos) ou servidor sem fotos → envia.
+      if (hasItems) {
+        nestedPhotosToSync[field] = resolved;
+      }
+    }
+
+    // Mesma proteção para os campos PLANOS fotos_*/doc_* (transformador, medidor,
+    // aterramento, etc.): nunca envia um campo com MENOS fotos que o servidor —
+    // evita zerar fotos já sincronizadas quando o local ficou só com o esqueleto.
+    const resolvedFotosToSync: Record<string, any[]> = {};
+    for (const [key, value] of Object.entries(resolvedFotos)) {
+      const localLen = Array.isArray(value) ? value.length : 0;
+      if (!isNewServico && remoteReadOk && Array.isArray(remoteNestedCurrent[key])) {
+        const remoteLen = remoteNestedCurrent[key].length;
+        if (remoteLen > 0 && localLen < remoteLen) {
+          logger.warn(`[syncServico] ${key}: local ${localLen} < servidor ${remoteLen} fotos — PRESERVANDO servidor (não sobrescrevendo)`);
+          continue; // omite o campo → servidor mantém o valor atual
+        }
+      }
+      resolvedFotosToSync[key] = value;
     }
 
     // Prepara payload
@@ -1562,8 +1626,9 @@ export async function syncServico(servicoLocal: ServicoLocal): Promise<{
       error_message: lostPhotosMessage,
       created_at: servicoLocal.created_at,
       updated_at: new Date().toISOString(),
-      // Todos os campos fotos_* e doc_* ja resolvidos (uploads feitos)
-      ...resolvedFotos,
+      // Todos os campos fotos_* e doc_* ja resolvidos (uploads feitos), com guarda
+      // para não sobrescrever campos onde o servidor tem mais fotos que o local.
+      ...resolvedFotosToSync,
       // Dados estruturados (nao so fotos) - apenas incluir se tiver dados
       ...nestedPhotosToSync,
       dados_adicionais: servicoLocal.dados_adicionais ?? {},

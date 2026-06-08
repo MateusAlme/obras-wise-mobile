@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import {
   View,
   Text,
@@ -83,6 +83,206 @@ const sanitizeObrasPayload = <T extends Record<string, any>>(payload: T): T => {
   delete sanitized.fotos_transformador_laudo_retirado;
   return sanitized as T;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PosteCard — extraído e memoizado (N5). Cada cartão de poste só re-renderiza
+// quando o SEU poste muda (ou um prop compartilhado), em vez de toda a tela
+// re-renderizar todos os postes a cada tecla. Tipos próprios (estruturalmente
+// compatíveis com os locais da tela) para poder viver no escopo do módulo.
+// ─────────────────────────────────────────────────────────────────────────────
+type PosteFoto = {
+  uri: string;
+  latitude: number | null;
+  longitude: number | null;
+  utmX?: number | null;
+  utmY?: number | null;
+  utmZone?: string | null;
+  photoId?: string;
+};
+type PosteItem = {
+  id: string;
+  numero: number;
+  isAditivo: boolean;
+  fotosAntes: PosteFoto[];
+  fotosDurante: PosteFoto[];
+  fotosDepois: PosteFoto[];
+  fotosMedicao: PosteFoto[];
+};
+type PosteSecao = 'fotosAntes' | 'fotosDurante' | 'fotosDepois' | 'fotosMedicao';
+
+const posteCodigoFmt = (poste: PosteItem): string => {
+  const numeroValido = Number.isFinite(poste.numero) && poste.numero > 0;
+  const prefixo = poste.isAditivo ? 'AD-P' : 'P';
+  return numeroValido ? `${prefixo}${poste.numero}` : `${prefixo}?`;
+};
+
+interface PosteCardProps {
+  poste: PosteItem;
+  index: number;
+  postesLength: number;
+  isServicoBookAterramento: boolean;
+  obra: string;
+  tipoServico: string;
+  equipeDisplay: string;
+  loading: boolean;
+  uploadingPhoto: boolean;
+  setPostesData: React.Dispatch<React.SetStateAction<PosteItem[]>>;
+  onTakePicture: (posteId: string, secao: PosteSecao) => void;
+  onRemoveFoto: (posteId: string, secao: PosteSecao, fotoIndex: number) => void;
+  onOpenFullscreen: (foto: PosteFoto) => void;
+  onRemovePoste: (posteId: string) => void;
+}
+
+function PosteCardComponent({
+  poste,
+  index,
+  postesLength,
+  isServicoBookAterramento,
+  obra,
+  tipoServico,
+  equipeDisplay,
+  loading,
+  uploadingPhoto,
+  setPostesData,
+  onTakePicture,
+  onRemoveFoto,
+  onOpenFullscreen,
+  onRemovePoste,
+}: PosteCardProps) {
+  const secoes = isServicoBookAterramento
+    ? { primeira: 'Vala Aberta', segunda: 'Hastes', terceira: 'Vala Fechada', quarta: 'Medição Terrômetro' as string | null }
+    : { primeira: 'Antes', segunda: 'Durante', terceira: 'Depois', quarta: null as string | null };
+  const identificacaoPoste = posteCodigoFmt(poste);
+  const totalFotosPoste =
+    poste.fotosAntes.length +
+    poste.fotosDurante.length +
+    poste.fotosDepois.length +
+    (isServicoBookAterramento ? poste.fotosMedicao.length : 0);
+  const temAntes = poste.fotosAntes.length > 0;
+  const temDurante = poste.fotosDurante.length > 0;
+  const temDepois = poste.fotosDepois.length > 0;
+  const temMedicao = poste.fotosMedicao.length > 0;
+  const status: 'completo' | 'parcial' | 'pendente' =
+    temAntes && temDurante && temDepois && (!isServicoBookAterramento || temMedicao)
+      ? 'completo'
+      : temAntes || temDurante || temDepois || (isServicoBookAterramento && temMedicao)
+      ? 'parcial'
+      : 'pendente';
+
+  const renderSecao = (label: string | null, secao: PosteSecao, fotos: PosteFoto[]) => (
+    <View style={styles.postePhotoSection}>
+      <Text style={styles.postePhotoLabel}>
+        📸 {label} ({fotos.length}) {fotos.length > 0 && '✓'}
+      </Text>
+      <TouchableOpacity
+        style={styles.photoButtonSmall}
+        onPress={() => onTakePicture(poste.id, secao)}
+        disabled={loading || uploadingPhoto}
+      >
+        <Text style={styles.photoButtonTextSmall}>
+          {fotos.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
+        </Text>
+      </TouchableOpacity>
+      {fotos.length > 0 && (
+        <View style={styles.photoGrid}>
+          {fotos.map((foto, fotoIndex) => (
+            <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
+              <TouchableOpacity onPress={() => onOpenFullscreen(foto)} activeOpacity={0.8}>
+                <PhotoWithPlaca
+                  uri={foto.uri}
+                  obraNumero={obra}
+                  tipoServico={tipoServico}
+                  equipe={equipeDisplay}
+                  latitude={foto.latitude}
+                  longitude={foto.longitude}
+                  utmX={foto.utmX}
+                  utmY={foto.utmY}
+                  utmZone={foto.utmZone}
+                  style={styles.photoThumbnail}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.photoRemoveButton}
+                onPress={() => onRemoveFoto(poste.id, secao, fotoIndex)}
+              >
+                <Text style={styles.photoRemoveText}>×</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={styles.posteCard}>
+      <Text style={styles.posteTitle}>
+        Poste {index + 1}{poste.numero > 0 ? ` - ${identificacaoPoste}` : ''}
+        {status === 'completo' && ' ✓'}
+      </Text>
+
+      <View style={styles.posteNumeroSection}>
+        <Text style={styles.posteNumeroLabel}>🪧 Número do Poste *</Text>
+        <TextInput
+          style={styles.posteNumeroInput}
+          placeholder="Ex: 5, 12, 23..."
+          placeholderTextColor="#999"
+          keyboardType="numeric"
+          value={poste.numero > 0 ? String(poste.numero) : ''}
+          onChangeText={(text) => {
+            const valorNumerico = text.replace(/[^0-9]/g, '');
+            const novoNumero = valorNumerico ? parseInt(valorNumerico, 10) : 0;
+            setPostesData(prevPostes => prevPostes.map(p =>
+              p.id === poste.id ? { ...p, numero: novoNumero } : p
+            ));
+          }}
+        />
+        {!poste.numero && (
+          <Text style={styles.hint}>Informe o número para identificar como P1, P2, etc.</Text>
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={styles.posteAditivoCheckbox}
+        onPress={() => {
+          setPostesData(prevPostes => prevPostes.map(p =>
+            p.id === poste.id ? { ...p, isAditivo: !p.isAditivo } : p
+          ));
+        }}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.checkbox, poste.isAditivo && styles.checkboxChecked]}>
+          {poste.isAditivo && <Text style={styles.checkboxCheck}>✓</Text>}
+        </View>
+        <Text style={styles.posteAditivoLabel}>🔧 Poste Aditivo (não previsto no croqui)</Text>
+      </TouchableOpacity>
+
+      {!!poste.numero && (
+        <Text style={styles.hint}>Identificação: {identificacaoPoste}</Text>
+      )}
+
+      <Text style={styles.hint}>
+        Fotos: {totalFotosPoste} | Status: {status === 'completo' ? 'Completo' : status === 'parcial' ? 'Parcial' : 'Pendente'}
+      </Text>
+
+      {renderSecao(secoes.primeira, 'fotosAntes', poste.fotosAntes)}
+      {renderSecao(secoes.segunda, 'fotosDurante', poste.fotosDurante)}
+      {renderSecao(secoes.terceira, 'fotosDepois', poste.fotosDepois)}
+      {isServicoBookAterramento && renderSecao(secoes.quarta, 'fotosMedicao', poste.fotosMedicao)}
+
+      {postesLength > 1 && (
+        <TouchableOpacity
+          style={styles.posteRemoveButton}
+          onPress={() => onRemovePoste(poste.id)}
+        >
+          <Text style={styles.posteButtonText}>🗑️ Remover Poste</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+const PosteCard = memo(PosteCardComponent);
 
 export default function NovaObra() {
   const router = useRouter();
@@ -487,23 +687,6 @@ export default function NovaObra() {
   const isServicoPostesComFotos = isServicoCavaRocha || isServicoLinhaViva || isServicoBookAterramento || isServicoFundacaoEspecial;
   const isServicoPadrao = !isServicoChave && !isServicoDitais && !isServicoBookAterramento && !isServicoFundacaoEspecial && !isServicoTransformador && !isServicoMedidor && !isServicoChecklist && !isServicoDocumentacao && !isServicoAltimetria && !isServicoVazamento && !isServicoPostesComFotos;
 
-  const getPostePhotoSections = () => {
-    if (isServicoBookAterramento) {
-      return {
-        primeira: 'Vala Aberta',
-        segunda: 'Hastes',
-        terceira: 'Vala Fechada',
-        quarta: 'Medição Terrômetro',
-      };
-    }
-
-    return {
-      primeira: 'Antes',
-      segunda: 'Durante',
-      terceira: 'Depois',
-      quarta: null,
-    } as const;
-  };
 
   // Carregar equipe da sessão automaticamente
   useEffect(() => {
@@ -2030,18 +2213,6 @@ export default function NovaObra() {
     });
   };
 
-  const getPosteStatus = (poste: Poste): 'completo' | 'parcial' | 'pendente' => {
-    const temAntes = poste.fotosAntes.length > 0;
-    const temDurante = poste.fotosDurante.length > 0;
-    const temDepois = poste.fotosDepois.length > 0;
-    const temMedicao = poste.fotosMedicao.length > 0;
-    const exigeMedicao = isServicoBookAterramento;
-
-    if (temAntes && temDurante && temDepois && (!exigeMedicao || temMedicao)) return 'completo';
-    if (temAntes || temDurante || temDepois || (exigeMedicao && temMedicao)) return 'parcial';
-    return 'pendente';
-  };
-
   const takePicturePoste = async (
     posteId: string,
     secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois' | 'fotosMedicao'
@@ -2952,6 +3123,31 @@ export default function NovaObra() {
     setSelectedPhotoForView(foto);
     setPhotoModalVisible(true);
   };
+
+  // Callbacks estáveis para o PosteCard memoizado (N3/N5). Usam o padrão "latest-ref":
+  // a identidade é estável (useCallback []), mas sempre chamam a versão mais recente
+  // dos handlers — sem closures defasados e sem alterar a lógica de captura.
+  const posteHandlersRef = useRef({ takePicturePoste, removeFotoPoste, removerPoste, openPhotoFullscreen });
+  posteHandlersRef.current = { takePicturePoste, removeFotoPoste, removerPoste, openPhotoFullscreen };
+
+  const onPosteTakePicture = useCallback(
+    (posteId: string, secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois' | 'fotosMedicao') =>
+      posteHandlersRef.current.takePicturePoste(posteId, secao),
+    []
+  );
+  const onPosteRemoveFoto = useCallback(
+    (posteId: string, secao: 'fotosAntes' | 'fotosDurante' | 'fotosDepois' | 'fotosMedicao', fotoIndex: number) =>
+      posteHandlersRef.current.removeFotoPoste(posteId, secao, fotoIndex),
+    []
+  );
+  const onPosteRemove = useCallback(
+    (posteId: string) => posteHandlersRef.current.removerPoste(posteId),
+    []
+  );
+  const onPosteOpenFullscreen = useCallback(
+    (foto: FotoData) => posteHandlersRef.current.openPhotoFullscreen(foto),
+    []
+  );
 
   // Fechar modal de foto
   const closePhotoModal = () => {
@@ -5927,256 +6123,25 @@ export default function NovaObra() {
                     </TouchableOpacity>
                   </View>
 
-                  {postesData.map((poste, index) => {
-                    const status = getPosteStatus(poste);
-                    const secoesPoste = getPostePhotoSections();
-                    const totalFotosPoste =
-                      poste.fotosAntes.length +
-                      poste.fotosDurante.length +
-                      poste.fotosDepois.length +
-                      (isServicoBookAterramento ? poste.fotosMedicao.length : 0);
-                    const identificacaoPoste = getPosteCodigo(poste);
-
-                    return (
-                      <View key={poste.id} style={styles.posteCard}>
-                        <Text style={styles.posteTitle}>
-                          Poste {index + 1}{poste.numero > 0 ? ` - ${identificacaoPoste}` : ''}
-                          {status === 'completo' && ' ✓'}
-                        </Text>
-
-                        <View style={styles.posteNumeroSection}>
-                          <Text style={styles.posteNumeroLabel}>🪧 Número do Poste *</Text>
-                          <TextInput
-                            style={styles.posteNumeroInput}
-                            placeholder="Ex: 5, 12, 23..."
-                            placeholderTextColor="#999"
-                            keyboardType="numeric"
-                            value={poste.numero > 0 ? String(poste.numero) : ''}
-                            onChangeText={(text) => {
-                              const valorNumerico = text.replace(/[^0-9]/g, '');
-                              const novoNumero = valorNumerico ? parseInt(valorNumerico, 10) : 0;
-                              setPostesData(prevPostes => prevPostes.map(p =>
-                                p.id === poste.id ? { ...p, numero: novoNumero } : p
-                              ));
-                            }}
-                          />
-                          {!poste.numero && (
-                            <Text style={styles.hint}>Informe o número para identificar como P1, P2, etc.</Text>
-                          )}
-                        </View>
-
-                        <TouchableOpacity
-                          style={styles.posteAditivoCheckbox}
-                          onPress={() => {
-                            setPostesData(prevPostes => prevPostes.map(p =>
-                              p.id === poste.id ? { ...p, isAditivo: !p.isAditivo } : p
-                            ));
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <View style={[styles.checkbox, poste.isAditivo && styles.checkboxChecked]}>
-                            {poste.isAditivo && <Text style={styles.checkboxCheck}>✓</Text>}
-                          </View>
-                          <Text style={styles.posteAditivoLabel}>🔧 Poste Aditivo (não previsto no croqui)</Text>
-                        </TouchableOpacity>
-
-                        {!!poste.numero && (
-                          <Text style={styles.hint}>Identificação: {identificacaoPoste}</Text>
-                        )}
-
-                        <Text style={styles.hint}>
-                          Fotos: {totalFotosPoste} | Status: {status === 'completo' ? 'Completo' : status === 'parcial' ? 'Parcial' : 'Pendente'}
-                        </Text>
-
-                        {/* Fotos Antes */}
-                        <View style={styles.postePhotoSection}>
-                          <Text style={styles.postePhotoLabel}>
-                            📸 {secoesPoste.primeira} ({poste.fotosAntes.length}) {poste.fotosAntes.length > 0 && '✓'}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.photoButtonSmall}
-                            onPress={() => takePicturePoste(poste.id, 'fotosAntes')}
-                            disabled={loading || uploadingPhoto}
-                          >
-                            <Text style={styles.photoButtonTextSmall}>
-                              {poste.fotosAntes.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
-                            </Text>
-                          </TouchableOpacity>
-                          {poste.fotosAntes.length > 0 && (
-                            <View style={styles.photoGrid}>
-                              {poste.fotosAntes.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
-                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                    <PhotoWithPlaca
-                                      uri={foto.uri}
-                                      obraNumero={obra}
-                                      tipoServico={tipoServico}
-                                      equipe={isAdminUser ? equipeExecutora : equipe}
-                                      latitude={foto.latitude}
-                                      longitude={foto.longitude}
-                                      utmX={foto.utmX}
-                                      utmY={foto.utmY}
-                                      utmZone={foto.utmZone}
-                                      style={styles.photoThumbnail}
-                                    />
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={styles.photoRemoveButton}
-                                    onPress={() => removeFotoPoste(poste.id, 'fotosAntes', fotoIndex)}
-                                  >
-                                    <Text style={styles.photoRemoveText}>×</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </View>
-
-                        {/* Fotos Durante */}
-                        <View style={styles.postePhotoSection}>
-                          <Text style={styles.postePhotoLabel}>
-                            📸 {secoesPoste.segunda} ({poste.fotosDurante.length}) {poste.fotosDurante.length > 0 && '✓'}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.photoButtonSmall}
-                            onPress={() => takePicturePoste(poste.id, 'fotosDurante')}
-                            disabled={loading || uploadingPhoto}
-                          >
-                            <Text style={styles.photoButtonTextSmall}>
-                              {poste.fotosDurante.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
-                            </Text>
-                          </TouchableOpacity>
-                          {poste.fotosDurante.length > 0 && (
-                            <View style={styles.photoGrid}>
-                              {poste.fotosDurante.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
-                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                    <PhotoWithPlaca
-                                      uri={foto.uri}
-                                      obraNumero={obra}
-                                      tipoServico={tipoServico}
-                                      equipe={isAdminUser ? equipeExecutora : equipe}
-                                      latitude={foto.latitude}
-                                      longitude={foto.longitude}
-                                      utmX={foto.utmX}
-                                      utmY={foto.utmY}
-                                      utmZone={foto.utmZone}
-                                      style={styles.photoThumbnail}
-                                    />
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={styles.photoRemoveButton}
-                                    onPress={() => removeFotoPoste(poste.id, 'fotosDurante', fotoIndex)}
-                                  >
-                                    <Text style={styles.photoRemoveText}>×</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </View>
-
-                        {/* Fotos Depois */}
-                        <View style={styles.postePhotoSection}>
-                          <Text style={styles.postePhotoLabel}>
-                            📸 {secoesPoste.terceira} ({poste.fotosDepois.length}) {poste.fotosDepois.length > 0 && '✓'}
-                          </Text>
-                          <TouchableOpacity
-                            style={styles.photoButtonSmall}
-                            onPress={() => takePicturePoste(poste.id, 'fotosDepois')}
-                            disabled={loading || uploadingPhoto}
-                          >
-                            <Text style={styles.photoButtonTextSmall}>
-                              {poste.fotosDepois.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
-                            </Text>
-                          </TouchableOpacity>
-                          {poste.fotosDepois.length > 0 && (
-                            <View style={styles.photoGrid}>
-                              {poste.fotosDepois.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
-                                  <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                    <PhotoWithPlaca
-                                      uri={foto.uri}
-                                      obraNumero={obra}
-                                      tipoServico={tipoServico}
-                                      equipe={isAdminUser ? equipeExecutora : equipe}
-                                      latitude={foto.latitude}
-                                      longitude={foto.longitude}
-                                      utmX={foto.utmX}
-                                      utmY={foto.utmY}
-                                      utmZone={foto.utmZone}
-                                      style={styles.photoThumbnail}
-                                    />
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={styles.photoRemoveButton}
-                                    onPress={() => removeFotoPoste(poste.id, 'fotosDepois', fotoIndex)}
-                                  >
-                                    <Text style={styles.photoRemoveText}>×</Text>
-                                  </TouchableOpacity>
-                                </View>
-                              ))}
-                            </View>
-                          )}
-                        </View>
-
-                        {isServicoBookAterramento && (
-                          <View style={styles.postePhotoSection}>
-                            <Text style={styles.postePhotoLabel}>
-                              📸 {secoesPoste.quarta} ({poste.fotosMedicao.length}) {poste.fotosMedicao.length > 0 && '✓'}
-                            </Text>
-                            <TouchableOpacity
-                              style={styles.photoButtonSmall}
-                              onPress={() => takePicturePoste(poste.id, 'fotosMedicao')}
-                              disabled={loading || uploadingPhoto}
-                            >
-                              <Text style={styles.photoButtonTextSmall}>
-                                {poste.fotosMedicao.length > 0 ? '+ Adicionar Mais Fotos' : '+ Adicionar Foto'}
-                              </Text>
-                            </TouchableOpacity>
-                            {poste.fotosMedicao.length > 0 && (
-                              <View style={styles.photoGrid}>
-                                {poste.fotosMedicao.map((foto, fotoIndex) => (
-                                  <View key={fotoIndex} style={styles.photoCard}>
-                                    <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
-                                      <PhotoWithPlaca
-                                        uri={foto.uri}
-                                        obraNumero={obra}
-                                        tipoServico={tipoServico}
-                                        equipe={isAdminUser ? equipeExecutora : equipe}
-                                        latitude={foto.latitude}
-                                        longitude={foto.longitude}
-                                        utmX={foto.utmX}
-                                        utmY={foto.utmY}
-                                        utmZone={foto.utmZone}
-                                        style={styles.photoThumbnail}
-                                      />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                      style={styles.photoRemoveButton}
-                                      onPress={() => removeFotoPoste(poste.id, 'fotosMedicao', fotoIndex)}
-                                    >
-                                      <Text style={styles.photoRemoveText}>×</Text>
-                                    </TouchableOpacity>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-                          </View>
-                        )}
-
-                        {/* Botão Remover Poste */}
-                        {postesData.length > 1 && (
-                          <TouchableOpacity
-                            style={styles.posteRemoveButton}
-                            onPress={() => removerPoste(poste.id)}
-                          >
-                            <Text style={styles.posteButtonText}>🗑️ Remover Poste</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    );
-                  })}
+                  {postesData.map((poste, index) => (
+                    <PosteCard
+                      key={poste.id}
+                      poste={poste}
+                      index={index}
+                      postesLength={postesData.length}
+                      isServicoBookAterramento={isServicoBookAterramento}
+                      obra={obra}
+                      tipoServico={tipoServico}
+                      equipeDisplay={isAdminUser ? equipeExecutora : equipe}
+                      loading={loading}
+                      uploadingPhoto={uploadingPhoto}
+                      setPostesData={setPostesData}
+                      onTakePicture={onPosteTakePicture}
+                      onRemoveFoto={onPosteRemoveFoto}
+                      onOpenFullscreen={onPosteOpenFullscreen}
+                      onRemovePoste={onPosteRemove}
+                    />
+                  ))}
 
                 </View>
               )}
@@ -6203,7 +6168,7 @@ export default function NovaObra() {
             {fotosAntes.length > 0 && (
               <View style={styles.photoGrid}>
                 {fotosAntes.map((foto, index) => (
-                  <View key={index} style={styles.photoCard}>
+                  <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                     <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6249,7 +6214,7 @@ export default function NovaObra() {
             {fotosDurante.length > 0 && (
               <View style={styles.photoGrid}>
                 {fotosDurante.map((foto, index) => (
-                  <View key={index} style={styles.photoCard}>
+                  <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                     <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6295,7 +6260,7 @@ export default function NovaObra() {
             {fotosDepois.length > 0 && (
               <View style={styles.photoGrid}>
                 {fotosDepois.map((foto, index) => (
-                  <View key={index} style={styles.photoCard}>
+                  <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                     <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6345,7 +6310,7 @@ export default function NovaObra() {
                 {fotosAbertura.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAbertura.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6391,7 +6356,7 @@ export default function NovaObra() {
                 {fotosFechamento.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosFechamento.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6442,7 +6407,7 @@ export default function NovaObra() {
                 {fotosDitaisAbertura.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosDitaisAbertura.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6488,7 +6453,7 @@ export default function NovaObra() {
                 {fotosDitaisImpedir.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosDitaisImpedir.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6534,7 +6499,7 @@ export default function NovaObra() {
                 {fotosDitaisTestar.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosDitaisTestar.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6580,7 +6545,7 @@ export default function NovaObra() {
                 {fotosDitaisAterrar.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosDitaisAterrar.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6626,7 +6591,7 @@ export default function NovaObra() {
                 {fotosDitaisSinalizar.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosDitaisSinalizar.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6674,7 +6639,7 @@ export default function NovaObra() {
                 {fotosAterramentoValaAberta.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAterramentoValaAberta.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6717,7 +6682,7 @@ export default function NovaObra() {
                 {fotosAterramentoHastes.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAterramentoHastes.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6760,7 +6725,7 @@ export default function NovaObra() {
                 {fotosAterramentoValaFechada.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAterramentoValaFechada.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6803,7 +6768,7 @@ export default function NovaObra() {
                 {fotosAterramentoMedicao.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAterramentoMedicao.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6888,7 +6853,7 @@ export default function NovaObra() {
                     {fotosTransformadorComponenteInstalado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorComponenteInstalado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6932,7 +6897,7 @@ export default function NovaObra() {
                     {fotosTransformadorTombamentoInstalado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorTombamentoInstalado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -6976,7 +6941,7 @@ export default function NovaObra() {
                     {fotosTransformadorTape.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorTape.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7020,7 +6985,7 @@ export default function NovaObra() {
                     {fotosTransformadorPlacaInstalado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorPlacaInstalado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7064,7 +7029,7 @@ export default function NovaObra() {
                     {fotosTransformadorInstalado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorInstalado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7108,7 +7073,7 @@ export default function NovaObra() {
                     {fotosTransformadorConexoesPrimariasInstalado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorConexoesPrimariasInstalado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7152,7 +7117,7 @@ export default function NovaObra() {
                     {fotosTransformadorConexoesSecundariasInstalado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorConexoesSecundariasInstalado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7201,7 +7166,7 @@ export default function NovaObra() {
                     {fotosTransformadorAntesRetirar.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorAntesRetirar.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7245,7 +7210,7 @@ export default function NovaObra() {
                     {fotosTransformadorLaudoRetirado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorLaudoRetirado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7289,7 +7254,7 @@ export default function NovaObra() {
                     {fotosTransformadorTombamentoRetirado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorTombamentoRetirado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7333,7 +7298,7 @@ export default function NovaObra() {
                     {fotosTransformadorPlacaRetirado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorPlacaRetirado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7377,7 +7342,7 @@ export default function NovaObra() {
                     {fotosTransformadorConexoesPrimariasRetirado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorConexoesPrimariasRetirado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7421,7 +7386,7 @@ export default function NovaObra() {
                     {fotosTransformadorConexoesSecundariasRetirado.length > 0 && (
                       <View style={styles.photoGrid}>
                         {fotosTransformadorConexoesSecundariasRetirado.map((foto, index) => (
-                          <View key={index} style={styles.photoCard}>
+                          <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                             <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7471,7 +7436,7 @@ export default function NovaObra() {
                 {fotosMedidorPadrao.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosMedidorPadrao.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7514,7 +7479,7 @@ export default function NovaObra() {
                 {fotosMedidorLeitura.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosMedidorLeitura.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7557,7 +7522,7 @@ export default function NovaObra() {
                 {fotosMedidorSeloBorn.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosMedidorSeloBorn.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7600,7 +7565,7 @@ export default function NovaObra() {
                 {fotosMedidorSeloCaixa.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosMedidorSeloCaixa.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7643,7 +7608,7 @@ export default function NovaObra() {
                 {fotosMedidorIdentificadorFase.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosMedidorIdentificadorFase.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7693,7 +7658,7 @@ export default function NovaObra() {
                 {fotosAltimetriaLadoFonte.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAltimetriaLadoFonte.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7736,7 +7701,7 @@ export default function NovaObra() {
                 {fotosAltimetriaMedicaoFonte.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAltimetriaMedicaoFonte.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7779,7 +7744,7 @@ export default function NovaObra() {
                 {fotosAltimetriaLadoCarga.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAltimetriaLadoCarga.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7822,7 +7787,7 @@ export default function NovaObra() {
                 {fotosAltimetriaMedicaoCarga.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosAltimetriaMedicaoCarga.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7872,7 +7837,7 @@ export default function NovaObra() {
                 {fotosVazamentoEvidencia.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoEvidencia.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7915,7 +7880,7 @@ export default function NovaObra() {
                 {fotosVazamentoEquipamentosLimpeza.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoEquipamentosLimpeza.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -7958,7 +7923,7 @@ export default function NovaObra() {
                 {fotosVazamentoTombamentoRetirado.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoTombamentoRetirado.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8001,7 +7966,7 @@ export default function NovaObra() {
                 {fotosVazamentoPlacaRetirado.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoPlacaRetirado.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8044,7 +8009,7 @@ export default function NovaObra() {
                 {fotosVazamentoTombamentoInstalado.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoTombamentoInstalado.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8087,7 +8052,7 @@ export default function NovaObra() {
                 {fotosVazamentoPlacaInstalado.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoPlacaInstalado.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8130,7 +8095,7 @@ export default function NovaObra() {
                 {fotosVazamentoInstalacao.length > 0 && (
                   <View style={styles.photoGrid}>
                     {fotosVazamentoInstalacao.map((foto, index) => (
-                      <View key={index} style={styles.photoCard}>
+                      <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                         <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8183,7 +8148,7 @@ export default function NovaObra() {
                   {fotosChecklistCroqui.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistCroqui.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8228,7 +8193,7 @@ export default function NovaObra() {
                   {fotosChecklistPanoramicaInicial.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistPanoramicaInicial.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8273,7 +8238,7 @@ export default function NovaObra() {
                   {fotosChecklistChaveComponente.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistChaveComponente.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -8486,7 +8451,7 @@ export default function NovaObra() {
                         {poste.posteInteiro.length > 0 && (
                           <View style={styles.photoGrid}>
                             {poste.posteInteiro.map((foto, fotoIndex) => (
-                              <View key={fotoIndex} style={styles.photoCard}>
+                              <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                 <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                   <PhotoWithPlaca
                                     uri={foto.uri}
@@ -8532,7 +8497,7 @@ export default function NovaObra() {
                           {poste.descricao.length > 0 && (
                             <View style={styles.photoGrid}>
                               {poste.descricao.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
+                                <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                   <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                     <PhotoWithPlaca
                                       uri={foto.uri}
@@ -8578,7 +8543,7 @@ export default function NovaObra() {
                           {poste.engaste.length > 0 && (
                             <View style={styles.photoGrid}>
                               {poste.engaste.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
+                                <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                   <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                     <PhotoWithPlaca
                                       uri={foto.uri}
@@ -8626,7 +8591,7 @@ export default function NovaObra() {
                         {poste.conexao1.length > 0 && (
                           <View style={styles.photoGrid}>
                             {poste.conexao1.map((foto, fotoIndex) => (
-                              <View key={fotoIndex} style={styles.photoCard}>
+                              <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                 <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                   <PhotoWithPlaca
                                     uri={foto.uri}
@@ -8670,7 +8635,7 @@ export default function NovaObra() {
                         {poste.conexao2.length > 0 && (
                           <View style={styles.photoGrid}>
                             {poste.conexao2.map((foto, fotoIndex) => (
-                              <View key={fotoIndex} style={styles.photoCard}>
+                              <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                 <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                   <PhotoWithPlaca
                                     uri={foto.uri}
@@ -8719,7 +8684,7 @@ export default function NovaObra() {
                         {poste.maiorEsforco.length > 0 && (
                           <View style={styles.photoGrid}>
                             {poste.maiorEsforco.map((foto, fotoIndex) => (
-                              <View key={fotoIndex} style={styles.photoCard}>
+                              <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                 <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                   <PhotoWithPlaca
                                     uri={foto.uri}
@@ -8763,7 +8728,7 @@ export default function NovaObra() {
                         {poste.menorEsforco.length > 0 && (
                           <View style={styles.photoGrid}>
                             {poste.menorEsforco.map((foto, fotoIndex) => (
-                              <View key={fotoIndex} style={styles.photoCard}>
+                              <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                 <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                   <PhotoWithPlaca
                                     uri={foto.uri}
@@ -8905,7 +8870,7 @@ export default function NovaObra() {
                       {emenda.fotos.length > 0 && (
                         <View style={styles.photoGrid}>
                           {emenda.fotos.map((foto, fotoIndex) => (
-                            <View key={fotoIndex} style={styles.photoCard}>
+                            <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                               <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                 <PhotoWithPlaca
                                   uri={foto.uri}
@@ -9044,7 +9009,7 @@ export default function NovaObra() {
                       {poda.fotos.length > 0 && (
                         <View style={styles.photoGrid}>
                           {poda.fotos.map((foto, fotoIndex) => (
-                            <View key={fotoIndex} style={styles.photoCard}>
+                            <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                               <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                 <PhotoWithPlaca
                                   uri={foto.uri}
@@ -9153,7 +9118,7 @@ export default function NovaObra() {
                       {sec.fotos.length > 0 && (
                         <View style={styles.photoGrid}>
                           {sec.fotos.map((foto, fotoIndex) => (
-                            <View key={fotoIndex} style={styles.photoCard}>
+                            <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                               <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                 <PhotoWithPlaca
                                   uri={foto.uri}
@@ -9264,7 +9229,7 @@ export default function NovaObra() {
                       {aterr.fotos.length > 0 && (
                         <View style={styles.photoGrid}>
                           {aterr.fotos.map((foto, fotoIndex) => (
-                            <View key={fotoIndex} style={styles.photoCard}>
+                            <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                               <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                 <PhotoWithPlaca
                                   uri={foto.uri}
@@ -9321,7 +9286,7 @@ export default function NovaObra() {
                   {fotosChecklistPadraoGeral.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistPadraoGeral.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -9366,7 +9331,7 @@ export default function NovaObra() {
                   {fotosChecklistPadraoInterno.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistPadraoInterno.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -9411,7 +9376,7 @@ export default function NovaObra() {
                   {fotosChecklistFrying.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistFrying.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -9456,7 +9421,7 @@ export default function NovaObra() {
                   {fotosChecklistAberturaFechamentoPulo.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistAberturaFechamentoPulo.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}
@@ -9573,7 +9538,7 @@ export default function NovaObra() {
                           {ponto.fotoHaste.length > 0 && (
                             <View style={styles.pontoPhotoPreview}>
                               {ponto.fotoHaste.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
+                                <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                   <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                     <PhotoWithPlaca
                                       uri={foto.uri}
@@ -9617,7 +9582,7 @@ export default function NovaObra() {
                           {ponto.fotoTermometro.length > 0 && (
                             <View style={styles.pontoPhotoPreview}>
                               {ponto.fotoTermometro.map((foto, fotoIndex) => (
-                                <View key={fotoIndex} style={styles.photoCard}>
+                                <View key={foto.photoId ?? foto.uri ?? fotoIndex} style={styles.photoCard}>
                                   <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                                     <PhotoWithPlaca
                                       uri={foto.uri}
@@ -9678,7 +9643,7 @@ export default function NovaObra() {
                   {fotosChecklistPanoramicaFinal.length > 0 && (
                     <View style={styles.photoGrid}>
                       {fotosChecklistPanoramicaFinal.map((foto, index) => (
-                        <View key={index} style={styles.photoCard}>
+                        <View key={foto.photoId ?? foto.uri ?? index} style={styles.photoCard}>
                           <TouchableOpacity onPress={() => openPhotoFullscreen(foto)} activeOpacity={0.8}>
                       <PhotoWithPlaca
                         uri={foto.uri}

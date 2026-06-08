@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase';
 import { ServiceCard, ServiceTypeSelector } from '../components/ServicosComponents';
 import { SERVICO_PHOTO_MAP, type Servico, type TipoServico, type FotoInfo as ServicoFotoInfo } from '../types/servico';
 import { appendPhotoToServicoLocal, createServico, fetchServicosForObra, getLocalServicos, markServicoComplete, saveServicoLocal, syncAllPendingServicos } from '../lib/servico-sync';
-import { getPendingObras, getLocalObras, syncObra, syncAllPendingObras, checkInternetConnection, markObraFinalizada, type PendingObra } from '../lib/offline-sync';
+import { getPendingObras, getLocalObras, saveLocalObras, syncObra, syncAllPendingObras, checkInternetConnection, markObraFinalizada, type PendingObra, type LocalObra } from '../lib/offline-sync';
 import { backupPhoto, getPhotoMetadatasByIds, getPhotosByObraWithFallback, type PhotoMetadata } from '../lib/photo-backup';
 import { processObraPhotos } from '../lib/photo-queue';
 import { validateServicoCompletion } from '../lib/servico-rules';
@@ -864,6 +864,28 @@ export default function ObraBooksPage() {
               return isObraVisibleForProfile(obra as any, userRole, equipe);
             })
             .map((obra) => ({ ...obra, origem: 'online' as const }));
+
+          // Cache sob demanda: salva localmente a obra aberta (com fotos/checklist)
+          // para ficar 100% disponivel offline depois — inclusive para admin, que
+          // nao baixa todas as obras em massa.
+          try {
+            const porId = new Map<string, LocalObra>((localObras || []).map((o) => [o.id, o]));
+            for (const row of onlineData as any[]) {
+              porId.set(row.id, {
+                ...row,
+                id: row.id,
+                synced: true,
+                locallyModified: false,
+                serverId: row.id,
+                origem: 'online',
+                last_modified: row.updated_at || row.created_at,
+                created_at: row.created_at,
+              } as LocalObra);
+            }
+            await saveLocalObras(Array.from(porId.values()));
+          } catch (cacheErr) {
+            console.error('Falha ao cachear obra para offline:', cacheErr);
+          }
         }
       }
 

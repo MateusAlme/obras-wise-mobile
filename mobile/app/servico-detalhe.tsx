@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Image, Modal, Dimensions, StatusBar, ActivityIndicator, Alert, BackHandler, TextInput, useWindowDimensions,
+  Image, Modal, Dimensions, StatusBar, ActivityIndicator, Alert, BackHandler, TextInput, useWindowDimensions, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1318,6 +1318,7 @@ export default function ServicoDetalhePage() {
               source={{ uri: viewerUri }}
               style={styles.modalPhoto}
               resizeMode="contain"
+              {...(Platform.OS === 'android' ? { resizeMethod: 'resize' as const } : {})}
             />
           )}
 
