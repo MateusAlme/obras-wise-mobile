@@ -10,7 +10,7 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import * as XLSX from 'xlsx'
+import { addFotosSheet, type FotoGroup } from '@/lib/xlsx-photos'
 
 const REPORT_PHOTO_SECTIONS: { key: keyof Obra; label: string; color: string; lightColor: string }[] = [
   { key: 'fotos_antes', label: 'Fotos Antes', color: 'blue', lightColor: 'blue' },
@@ -947,24 +947,64 @@ export default function ReportsPage() {
     try {
       const obrasToExport = filteredObras.filter(o => selectedObras.has(o.id))
 
-      const exportData = obrasToExport.map(obra => ({
-        'N Obra': obra.obra || '-' ,
-        'Placa': obra.placa || '-' ,
-        'Equipe': obra.equipe,
-        'Tipo de Servico': obra.tipo_servico,
-        'Total de Fotos': getTotalPhotosCount(obra),
-        'Data': format(new Date(obra.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
-        'Endereco': obra.endereco || '-' ,
-        'UTM Norte': obra.utm_norte || '-' ,
-        'UTM Leste': obra.utm_leste || '-' ,
-        'Observacoes': obra.observacoes || '-' ,
-      }))
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
 
-      const workbook = XLSX.utils.book_new()
-      const worksheet = XLSX.utils.json_to_sheet(exportData)
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Obras')
+      // ===== Aba 1: Obras (dados) =====
+      const wsObras = workbook.addWorksheet('Obras')
+      wsObras.columns = [
+        { header: 'N Obra', key: 'obra', width: 14 },
+        { header: 'Placa', key: 'placa', width: 14 },
+        { header: 'Equipe', key: 'equipe', width: 16 },
+        { header: 'Tipo de Servico', key: 'tipo', width: 22 },
+        { header: 'Total de Fotos', key: 'fotos', width: 14 },
+        { header: 'Data', key: 'data', width: 18 },
+        { header: 'Endereco', key: 'endereco', width: 30 },
+        { header: 'UTM Norte', key: 'utmN', width: 14 },
+        { header: 'UTM Leste', key: 'utmL', width: 14 },
+        { header: 'Observacoes', key: 'obs', width: 30 },
+      ]
+      wsObras.getRow(1).font = { bold: true }
+      for (const obra of obrasToExport) {
+        wsObras.addRow({
+          obra: obra.obra || '-',
+          placa: obra.placa || '-',
+          equipe: obra.equipe,
+          tipo: obra.tipo_servico,
+          fotos: getTotalPhotosCount(obra),
+          data: format(new Date(obra.created_at), 'dd/MM/yyyy HH:mm', { locale: ptBR }),
+          endereco: obra.endereco || '-',
+          utmN: obra.utm_norte || '-',
+          utmL: obra.utm_leste || '-',
+          obs: obra.observacoes || '-',
+        })
+      }
 
-      const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      // ===== Aba 2: Fotos (embutidas, agrupadas por obra) =====
+      const labelMap = new Map<string, string>(
+        REPORT_PHOTO_SECTIONS.map(s => [String(s.key), s.label])
+      )
+      const groups: FotoGroup[] = obrasToExport.map((obra) => {
+        const row = obra as unknown as Record<string, unknown>
+        const fotos: { label: string; url: string }[] = []
+        for (const key of Object.keys(row)) {
+          if (!key.startsWith('fotos_')) continue
+          const infos = convertPhotoIdsToFotoInfo(row[key])
+          infos.forEach((f, i) => {
+            if (f?.url && f.url.startsWith('http')) {
+              const base = labelMap.get(key) || key.replace(/^fotos_/, '').replace(/_/g, ' ')
+              fotos.push({ label: `${base} #${i + 1}`, url: f.url })
+            }
+          })
+        }
+        return {
+          title: `Obra ${obra.obra || '-'} — ${obra.tipo_servico || ''} — ${obra.equipe || ''}`,
+          fotos,
+        }
+      })
+      await addFotosSheet(workbook, groups)
+
+      const buffer = await workbook.xlsx.writeBuffer()
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })

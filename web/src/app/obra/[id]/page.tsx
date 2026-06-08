@@ -10,7 +10,7 @@ import PhotoGallery from '@/components/PhotoGallery'
 import { generatePDF } from '@/lib/pdf-generator'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import * as XLSX from 'xlsx'
+import { addFotosSheet, type FotoGroup, type FotoEmbed } from '@/lib/xlsx-photos'
 
 // Mapeamento de tipos de serviço para galerias de fotos permitidas
 const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
@@ -1788,174 +1788,228 @@ export default function ObraDetailPage() {
     if (!obra) return
     setExportingXlsx(true)
     try {
-      const sections = [
-        { key: 'fotos_antes', label: 'Fotos Antes' },
-        { key: 'fotos_durante', label: 'Fotos Durante' },
-        { key: 'fotos_depois', label: 'Fotos Depois' },
-        { key: 'fotos_abertura', label: 'Fotos Abertura de Chave' },
-        { key: 'fotos_fechamento', label: 'Fotos Fechamento de Chave' },
-        { key: 'fotos_ditais_abertura', label: 'DITAIS - Desligar/Abertura' },
-        { key: 'fotos_ditais_impedir', label: 'DITAIS - Impedir Religamento' },
-        { key: 'fotos_ditais_testar', label: 'DITAIS - Testar Ausencia de Tensao' },
-        { key: 'fotos_ditais_aterrar', label: 'DITAIS - Aterrar' },
-        { key: 'fotos_ditais_sinalizar', label: 'DITAIS - Sinalizar/Isolar' },
-        { key: 'fotos_aterramento_vala_aberta', label: 'Aterramento - Vala Aberta' },
-        { key: 'fotos_aterramento_hastes', label: 'Aterramento - Hastes Aplicadas' },
-        { key: 'fotos_aterramento_vala_fechada', label: 'Aterramento - Vala Fechada' },
-        { key: 'fotos_aterramento_medicao', label: 'Aterramento - Medicao Terrometro' },
-        { key: 'fotos_transformador_laudo', label: 'Transformador - Laudo' },
-        { key: 'fotos_transformador_componente_instalado', label: 'Transformador - Componente Instalado' },
-        { key: 'fotos_transformador_tombamento_instalado', label: 'Transformador - Tombamento (Instalado)' },
-        { key: 'fotos_transformador_tape', label: 'Transformador - Tape' },
-        { key: 'fotos_transformador_placa_instalado', label: 'Transformador - Placa (Instalado)' },
-        { key: 'fotos_transformador_instalado', label: 'Transformador - Instalado' },
-        { key: 'fotos_transformador_antes_retirar', label: 'Transformador - Antes de Retirar' },
-        { key: 'fotos_transformador_tombamento_retirado', label: 'Transformador - Tombamento (Retirado)' },
-        { key: 'fotos_transformador_placa_retirado', label: 'Transformador - Placa (Retirado)' },
-      ]
+      // Coleta fotos cobrindo todas as estruturas: top-level (~50 chaves) +
+      // JSONBs aninhados (postes_data, checklist_*_data). Cada grupo gera um
+      // cabeçalho na aba "Fotos". Grupos sem foto são pulados.
+      const groups: FotoGroup[] = []
 
-      const photoRows = [] as Array<Record<string, string | number>>
-      let totalPhotos = 0
+      const extractUrl = (photo: any): string | null => {
+        const url = photo?.url || photo?.uri
+        return typeof url === 'string' && url.startsWith('http') ? url : null
+      }
 
-      sections.forEach(({ key, label }) => {
-        const sectionPhotos = (obra as any)[key] as FotoInfo[] | undefined || []
-        totalPhotos += sectionPhotos.length
-        sectionPhotos.forEach((photo) => {
-          photoRows.push({
-            Secao: label,
-            Url: photo.url,
-            DataHora: photo.placaData?.dataHora || '',
-            Obra: photo.placaData?.obraNumero || obra.obra || '',
-            Equipe: photo.placaData?.equipe || obra.equipe || '',
-            TipoServico: photo.placaData?.tipoServico || obra.tipo_servico || '',
+      const pushGroupIfNotEmpty = (title: string, fotos: FotoEmbed[]) => {
+        if (fotos.length > 0) groups.push({ title, fotos })
+      }
+
+      const collectTopLevel = (
+        title: string,
+        fields: Array<{ key: string; label: string }>
+      ) => {
+        const fotos: FotoEmbed[] = []
+        fields.forEach(({ key, label }) => {
+          const arr = (obra as any)[key] as FotoInfo[] | undefined
+          ;(Array.isArray(arr) ? arr : []).forEach((photo, idx) => {
+            const url = extractUrl(photo)
+            if (url) fotos.push({ label: `${label} #${idx + 1}`, url })
           })
         })
-      })
+        pushGroupIfNotEmpty(title, fotos)
+      }
 
-      // ========== CRIAR ABA DE RELATÓRIO DE ATIPICIDADE ==========
-      const workbook = XLSX.utils.book_new()
-
-      // Criar array de dados ao invés de células manuais
-      const worksheetData: any[][] = []
-
-      // Linha 1: Cabeçalho (será mesclado depois)
-      worksheetData.push(['LOGO TECCEL', '', '', 'RELATÓRIO DE ATIPICIDADE', '', '', '', 'energisa', '', ''])
-
-      // Linha 2: Vazia (separador)
-      worksheetData.push(['', '', '', '', '', '', '', '', '', ''])
-
-      // Linha 3: DATA e OBRA
-      worksheetData.push([
-        `DATA: ${format(new Date(obra.data), 'dd/MM/yyyy')}`,
-        '', '', '',
-        `OBRA: ${obra.obra || '-'}`,
-        '', '', '', '', ''
+      // 1. Geral / DITAIS / Aterramentos / Aberturas (fluxo padrão)
+      collectTopLevel('Geral', [
+        { key: 'fotos_antes', label: 'Antes' },
+        { key: 'fotos_durante', label: 'Durante' },
+        { key: 'fotos_depois', label: 'Depois' },
+      ])
+      collectTopLevel('DITAIS', [
+        { key: 'fotos_ditais_abertura', label: 'Desligar/Abertura' },
+        { key: 'fotos_ditais_impedir', label: 'Impedir Religamento' },
+        { key: 'fotos_ditais_testar', label: 'Testar Ausência de Tensão' },
+        { key: 'fotos_ditais_aterrar', label: 'Aterrar' },
+        { key: 'fotos_ditais_sinalizar', label: 'Sinalizar/Isolar' },
+      ])
+      collectTopLevel('Aberturas e Fechamentos de Chave', [
+        { key: 'fotos_abertura', label: 'Abertura de Chave' },
+        { key: 'fotos_fechamento', label: 'Fechamento de Chave' },
+      ])
+      collectTopLevel('Aterramento', [
+        { key: 'fotos_aterramento_vala_aberta', label: 'Vala Aberta' },
+        { key: 'fotos_aterramento_hastes', label: 'Hastes Aplicadas' },
+        { key: 'fotos_aterramento_vala_fechada', label: 'Vala Fechada' },
+        { key: 'fotos_aterramento_medicao', label: 'Medição Terrômetro' },
       ])
 
-      // Linha 4: Vazia (separador)
-      worksheetData.push(['', '', '', '', '', '', '', '', '', ''])
+      // 2. Postes (Linha Viva / Cava / Book / Fundação) — postes_data
+      const postesData = Array.isArray((obra as any).postes_data) ? (obra as any).postes_data : []
+      postesData.forEach((poste: any, posteIdx: number) => {
+        const numero = poste?.numero ?? posteIdx + 1
+        const posteFotos: FotoEmbed[] = []
+        ;[
+          { key: 'fotos_antes', label: 'Antes' },
+          { key: 'fotos_durante', label: 'Durante' },
+          { key: 'fotos_depois', label: 'Depois' },
+          { key: 'fotos_medicao', label: 'Medição' },
+        ].forEach(({ key, label }) => {
+          const arr = Array.isArray(poste?.[key]) ? poste[key] : []
+          arr.forEach((photo: any, idx: number) => {
+            const url = extractUrl(photo)
+            if (url) posteFotos.push({ label: `${label} #${idx + 1}`, url })
+          })
+        })
+        pushGroupIfNotEmpty(`Poste ${numero}`, posteFotos)
+      })
 
-      // Linha 5: Header DESCRIÇÃO DA ATIPICIDADE
-      worksheetData.push(['DESCRIÇÃO DA ATIPICIDADE', '', '', '', '', '', '', '', '', ''])
+      // 3. Postes do Checklist de Fiscalização — checklist_postes_data
+      const checklistPostes = Array.isArray((obra as any).checklist_postes_data) ? (obra as any).checklist_postes_data : []
+      checklistPostes.forEach((poste: any, posteIdx: number) => {
+        const numero = poste?.numero ?? posteIdx + 1
+        const posteFotos: FotoEmbed[] = []
+        ;[
+          { key: 'posteInteiro', label: 'Poste Inteiro' },
+          { key: 'engaste', label: 'Engaste' },
+          { key: 'conexao1', label: 'Conexão 1' },
+          { key: 'conexao2', label: 'Conexão 2' },
+          { key: 'maiorEsforco', label: 'Maior Esforço' },
+          { key: 'menorEsforco', label: 'Menor Esforço' },
+          { key: 'descricao', label: 'Descrição' },
+        ].forEach(({ key, label }) => {
+          const arr = Array.isArray(poste?.[key]) ? poste[key] : []
+          arr.forEach((photo: any, idx: number) => {
+            const url = extractUrl(photo)
+            if (url) posteFotos.push({ label: `${label} #${idx + 1}`, url })
+          })
+        })
+        pushGroupIfNotEmpty(`Checklist — Poste ${numero}`, posteFotos)
+      })
 
-      // Linha 6: Vazia (separador)
-      worksheetData.push(['', '', '', '', '', '', '', '', '', ''])
+      // 4. Seccionamentos / Podas — checklist_seccionamentos_data
+      const seccionamentos = Array.isArray((obra as any).checklist_seccionamentos_data) ? (obra as any).checklist_seccionamentos_data : []
+      seccionamentos.forEach((sec: any, idx: number) => {
+        const numero = sec?.numero ?? idx + 1
+        const tipo = sec?.tipo === 'poda' ? 'Poda' : 'Seccionamento'
+        const arr = Array.isArray(sec?.fotos) ? sec.fotos : []
+        const secFotos: FotoEmbed[] = []
+        arr.forEach((photo: any, photoIdx: number) => {
+          const url = extractUrl(photo)
+          if (url) secFotos.push({ label: `Foto #${photoIdx + 1}`, url })
+        })
+        pushGroupIfNotEmpty(`${tipo} ${numero}`, secFotos)
+      })
 
-      // Linha 7: Headers das 3 colunas de atipicidades
-      worksheetData.push(['Nº', 'Atipicidade', 'Descrição', 'Nº', 'Atipicidade', 'Descrição', 'Nº', 'Atipicidade', 'Descrição', ''])
+      // 5. Aterramentos de Cerca — checklist_aterramentos_cerca_data
+      const aterramentosCerca = Array.isArray((obra as any).checklist_aterramentos_cerca_data) ? (obra as any).checklist_aterramentos_cerca_data : []
+      aterramentosCerca.forEach((aterr: any, idx: number) => {
+        const numero = aterr?.numero ?? idx + 1
+        const arr = Array.isArray(aterr?.fotos) ? aterr.fotos : []
+        const aterrFotos: FotoEmbed[] = []
+        arr.forEach((photo: any, photoIdx: number) => {
+          const url = extractUrl(photo)
+          if (url) aterrFotos.push({ label: `Foto #${photoIdx + 1}`, url })
+        })
+        pushGroupIfNotEmpty(`Aterramento de Cerca ${numero}`, aterrFotos)
+      })
 
-      // Obter atipicidades selecionadas com detalhes
-      const atipicidadesDetalhadas = (obra.atipicidades || [])
-        .map(id => ATIPICIDADES.find(a => a.id === id))
-        .filter(Boolean) as typeof ATIPICIDADES
+      // 6. Hastes e Termômetros — checklist_hastes_termometros_data
+      const hastes = Array.isArray((obra as any).checklist_hastes_termometros_data) ? (obra as any).checklist_hastes_termometros_data : []
+      hastes.forEach((ponto: any, idx: number) => {
+        const numero = ponto?.numero ?? idx + 1
+        const pontoFotos: FotoEmbed[] = []
+        ;[
+          { key: 'fotoHaste', label: 'Haste' },
+          { key: 'fotoTermometro', label: 'Termômetro' },
+        ].forEach(({ key, label }) => {
+          const arr = Array.isArray(ponto?.[key]) ? ponto[key] : []
+          arr.forEach((photo: any, photoIdx: number) => {
+            const url = extractUrl(photo)
+            if (url) pontoFotos.push({ label: `${label} #${photoIdx + 1}`, url })
+          })
+        })
+        pushGroupIfNotEmpty(`Ponto ${numero} (Haste/Termômetro)`, pontoFotos)
+      })
 
-      // Dividir em 3 colunas
-      const porColuna = Math.ceil(atipicidadesDetalhadas.length / 3)
-      const maxLinhas = Math.max(porColuna, 3) // Mínimo 3 linhas
+      // 7. Transformador (Instalado + Retirado), Medidor, Checklist Top-Level, Altimetria, Vazamento, Outros
+      collectTopLevel('Transformador (Instalado)', [
+        { key: 'fotos_transformador_laudo', label: 'Laudo' },
+        { key: 'fotos_transformador_componente_instalado', label: 'Componente Instalado' },
+        { key: 'fotos_transformador_tombamento_instalado', label: 'Tombamento' },
+        { key: 'fotos_transformador_tape', label: 'Tape' },
+        { key: 'fotos_transformador_placa_instalado', label: 'Placa' },
+        { key: 'fotos_transformador_instalado', label: 'Instalado' },
+        { key: 'fotos_transformador_conexoes_primarias_instalado', label: 'Conexões Primárias' },
+        { key: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Conexões Secundárias' },
+      ])
+      collectTopLevel('Transformador (Retirado)', [
+        { key: 'fotos_transformador_antes_retirar', label: 'Antes de Retirar' },
+        { key: 'fotos_transformador_laudo_retirado', label: 'Laudo' },
+        { key: 'fotos_transformador_tombamento_retirado', label: 'Tombamento' },
+        { key: 'fotos_transformador_placa_retirado', label: 'Placa' },
+        { key: 'fotos_transformador_conexoes_primarias_retirado', label: 'Conexões Primárias' },
+        { key: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Conexões Secundárias' },
+      ])
+      collectTopLevel('Medidor', [
+        { key: 'fotos_medidor_padrao', label: 'Padrão' },
+        { key: 'fotos_medidor_leitura', label: 'Leitura' },
+        { key: 'fotos_medidor_selo_born', label: 'Selo Born' },
+        { key: 'fotos_medidor_selo_caixa', label: 'Selo Caixa' },
+        { key: 'fotos_medidor_identificador_fase', label: 'Identificador de Fase' },
+      ])
+      collectTopLevel('Checklist (Top-Level)', [
+        { key: 'fotos_checklist_croqui', label: 'Croqui' },
+        { key: 'fotos_checklist_panoramica_inicial', label: 'Panorâmica Inicial' },
+        { key: 'fotos_checklist_chede', label: 'CHEDE' },
+        { key: 'fotos_checklist_aterramento_cerca', label: 'Aterramento de Cerca' },
+        { key: 'fotos_checklist_padrao_geral', label: 'Padrão Geral' },
+        { key: 'fotos_checklist_padrao_interno', label: 'Padrão Interno' },
+        { key: 'fotos_checklist_panoramica_final', label: 'Panorâmica Final' },
+        { key: 'fotos_checklist_postes', label: 'Postes' },
+        { key: 'fotos_checklist_seccionamentos', label: 'Seccionamentos' },
+        { key: 'fotos_checklist_frying', label: 'Frying' },
+        { key: 'fotos_checklist_abertura_fechamento_pulo', label: 'Abertura/Fechamento/Pulo' },
+      ])
+      collectTopLevel('Altimetria', [
+        { key: 'fotos_altimetria_lado_fonte', label: 'Lado Fonte' },
+        { key: 'fotos_altimetria_medicao_fonte', label: 'Medição Fonte' },
+        { key: 'fotos_altimetria_lado_carga', label: 'Lado Carga' },
+        { key: 'fotos_altimetria_medicao_carga', label: 'Medição Carga' },
+      ])
+      collectTopLevel('Vazamento', [
+        { key: 'fotos_vazamento_evidencia', label: 'Evidência' },
+        { key: 'fotos_vazamento_equipamentos_limpeza', label: 'Equipamentos de Limpeza' },
+        { key: 'fotos_vazamento_tombamento_retirado', label: 'Tombamento (Retirado)' },
+        { key: 'fotos_vazamento_placa_retirado', label: 'Placa (Retirado)' },
+        { key: 'fotos_vazamento_tombamento_instalado', label: 'Tombamento (Instalado)' },
+        { key: 'fotos_vazamento_placa_instalado', label: 'Placa (Instalado)' },
+        { key: 'fotos_vazamento_instalacao', label: 'Instalação' },
+      ])
+      collectTopLevel('Outros', [
+        { key: 'fotos_apr', label: 'APR' },
+        { key: 'fotos_impedimento', label: 'Impedimento' },
+      ])
 
-      // Adicionar linhas de atipicidades (3 colunas)
-      for (let i = 0; i < maxLinhas; i++) {
-        const row: any[] = []
+      const ExcelJS = (await import('exceljs')).default
+      const workbook = new ExcelJS.Workbook()
 
-        // Coluna 1
-        const atip1 = atipicidadesDetalhadas[i]
-        if (atip1) {
-          row.push(atip1.id, atip1.titulo, atip1.descricao)
-        } else {
-          row.push('', '', '')
-        }
+      // ========== ABA: FOTOS (embutidas) ==========
+      // Sempre cria a aba — se não houver grupos, mostra cabeçalho com aviso.
+      const fotosGroups: FotoGroup[] = groups.length > 0
+        ? [
+            {
+              title: `Obra ${obra.obra || '-'} — ${obra.tipo_servico || ''} — ${obra.equipe || ''}`,
+              fotos: [],
+            },
+            ...groups,
+          ]
+        : [
+            {
+              title: `Obra ${obra.obra || '-'} — Nenhuma foto encontrada`,
+              fotos: [],
+            },
+          ]
+      await addFotosSheet(workbook, fotosGroups)
 
-        // Coluna 2
-        const atip2 = atipicidadesDetalhadas[i + porColuna]
-        if (atip2) {
-          row.push(atip2.id, atip2.titulo, atip2.descricao)
-        } else {
-          row.push('', '', '')
-        }
-
-        // Coluna 3
-        const atip3 = atipicidadesDetalhadas[i + porColuna * 2]
-        if (atip3) {
-          row.push(atip3.id, atip3.titulo, atip3.descricao)
-        } else {
-          row.push('', '', '')
-        }
-
-        row.push('') // Coluna extra
-        worksheetData.push(row)
-      }
-
-      // Criar worksheet a partir dos dados
-      const ws = XLSX.utils.aoa_to_sheet(worksheetData)
-
-      // Configurar mesclagens de células
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, // LOGO TECCEL
-        { s: { r: 0, c: 3 }, e: { r: 0, c: 6 } }, // RELATÓRIO DE ATIPICIDADE
-        { s: { r: 0, c: 7 }, e: { r: 0, c: 9 } }, // energisa
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 3 } }, // DATA
-        { s: { r: 2, c: 4 }, e: { r: 2, c: 9 } }, // OBRA
-        { s: { r: 4, c: 0 }, e: { r: 4, c: 9 } }, // DESCRIÇÃO DA ATIPICIDADE
-      ]
-
-      // Configurar larguras das colunas
-      ws['!cols'] = [
-        { wch: 4 },  // Nº (col 1)
-        { wch: 35 }, // Atipicidade (col 1)
-        { wch: 45 }, // Descrição (col 1)
-        { wch: 4 },  // Nº (col 2)
-        { wch: 35 }, // Atipicidade (col 2)
-        { wch: 45 }, // Descrição (col 2)
-        { wch: 4 },  // Nº (col 3)
-        { wch: 35 }, // Atipicidade (col 3)
-        { wch: 45 }, // Descrição (col 3)
-        { wch: 2 },  // Extra
-      ]
-
-      // Configurar alturas das linhas
-      const rowHeights: any[] = []
-      rowHeights[0] = { hpx: 40 }  // Cabeçalho
-      rowHeights[2] = { hpx: 25 }  // DATA/OBRA
-      rowHeights[4] = { hpx: 30 }  // DESCRIÇÃO header
-      rowHeights[6] = { hpx: 25 }  // Headers colunas
-
-      // Atipicidades - altura dinâmica
-      for (let i = 7; i < worksheetData.length; i++) {
-        rowHeights[i] = { hpx: 60 }
-      }
-
-      ws['!rows'] = rowHeights
-
-      // Adicionar worksheet ao workbook
-      XLSX.utils.book_append_sheet(workbook, ws, 'Relatório Atipicidade')
-
-      // ========== ABA DE FOTOS ==========
-      if (photoRows.length) {
-        const fotosSheet = XLSX.utils.json_to_sheet(photoRows)
-        XLSX.utils.book_append_sheet(workbook, fotosSheet, 'Fotos')
-      }
-
-      const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      const buffer = await workbook.xlsx.writeBuffer()
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       })
