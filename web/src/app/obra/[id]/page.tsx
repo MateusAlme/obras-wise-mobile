@@ -10,7 +10,7 @@ import PhotoGallery from '@/components/PhotoGallery'
 import { generatePDF } from '@/lib/pdf-generator'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { addFotosSheet, type FotoGroup, type FotoEmbed } from '@/lib/xlsx-photos'
+// Lib xlsx-photos é importada dinamicamente dentro de handleExportXlsx
 
 // Mapeamento de tipos de serviço para galerias de fotos permitidas
 const GALERIAS_POR_TIPO_SERVICO: Record<string, string[]> = {
@@ -1788,227 +1788,254 @@ export default function ObraDetailPage() {
     if (!obra) return
     setExportingXlsx(true)
     try {
-      // Coleta fotos cobrindo todas as estruturas: top-level (~50 chaves) +
-      // JSONBs aninhados (postes_data, checklist_*_data). Cada grupo gera um
-      // cabeçalho na aba "Fotos". Grupos sem foto são pulados.
-      const groups: FotoGroup[] = []
+      const ExcelJS = (await import('exceljs')).default
+      const { fetchResizedImage } = await import('@/lib/xlsx-photos')
 
+      const workbook = new ExcelJS.Workbook()
+      const ws = workbook.addWorksheet('Relatório de Atipicidade')
+
+      // Larguras das 3 colunas A, B, C
+      ws.getColumn(1).width = 30
+      ws.getColumn(2).width = 50
+      ws.getColumn(3).width = 50
+
+      const thinBorder = {
+        top: { style: 'thin' as const },
+        bottom: { style: 'thin' as const },
+        left: { style: 'thin' as const },
+        right: { style: 'thin' as const },
+      }
+      const applyBorder = (cellRef: string) => {
+        ws.getCell(cellRef).border = thinBorder
+      }
+
+      // ============ CABEÇALHO ============
+      ws.mergeCells('A1:C2')
+      const headerCell = ws.getCell('A1')
+      headerCell.value = 'RELATÓRIO DE ATIPICIDADE'
+      headerCell.font = { bold: true, size: 16 }
+      headerCell.alignment = { vertical: 'middle', horizontal: 'center' }
+      headerCell.border = thinBorder
+      ws.getRow(1).height = 25
+      ws.getRow(2).height = 25
+
+      // Linha de data / obra
+      ws.mergeCells('A3:B4')
+      const dataCell = ws.getCell('A3')
+      const dataFormatada = (() => {
+        const raw = (obra.data as any) || obra.created_at
+        const d = raw ? new Date(raw) : new Date()
+        return isNaN(d.getTime()) ? '-' : format(d, 'dd/MM/yyyy')
+      })()
+      dataCell.value = `DATA: ${dataFormatada}    OBRA: ${obra.obra || '-'}`
+      dataCell.font = { bold: true, size: 11 }
+      dataCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true, indent: 1 }
+      dataCell.border = thinBorder
+      ws.mergeCells('C3:C4')
+      applyBorder('C3')
+      ws.getRow(3).height = 22
+      ws.getRow(4).height = 22
+
+      // ============ TABELA DE ATIPICIDADES ============
+      // Cabeçalho da seção
+      const headerSecRow = 5
+      ws.mergeCells(`A${headerSecRow}:B${headerSecRow}`)
+      const headerA = ws.getCell(`A${headerSecRow}`)
+      headerA.value = 'DESCRIÇÃO DA ATIPICIDADE'
+      headerA.font = { bold: true, size: 11 }
+      headerA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDDDDD' } }
+      headerA.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+      headerA.border = thinBorder
+      applyBorder(`B${headerSecRow}`)
+
+      const headerC = ws.getCell(`C${headerSecRow}`)
+      headerC.value = 'Descrição Técnica da Execução da Obra:'
+      headerC.font = { bold: true, size: 11 }
+      headerC.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDDDDD' } }
+      headerC.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+      headerC.border = thinBorder
+      ws.getRow(headerSecRow).height = 22
+
+      // 3 linhas pra atipicidades + descrição técnica concatenada (merge C nas 3)
+      const atipicidadesDetalhadas = (obra.atipicidades || [])
+        .map(id => ATIPICIDADES.find(a => a.id === id))
+        .filter(Boolean) as typeof ATIPICIDADES
+      const descricaoTecnica = obra.descricao_atipicidade || ''
+
+      const firstAtipRow = headerSecRow + 1
+      for (let i = 0; i < 3; i++) {
+        const r = firstAtipRow + i
+        ws.getRow(r).height = 70
+
+        const cellA = ws.getCell(`A${r}`)
+        cellA.value = 'Por que a Obra é Atípica:'
+        cellA.font = { italic: true, size: 10, bold: true }
+        cellA.alignment = { vertical: 'middle', wrapText: true, indent: 1 }
+        cellA.border = thinBorder
+
+        const cellB = ws.getCell(`B${r}`)
+        const atip = atipicidadesDetalhadas[i]
+        cellB.value = atip ? `${atip.id}. ${atip.titulo}` : '0.'
+        cellB.alignment = { vertical: 'middle', wrapText: true, indent: 1 }
+        cellB.border = thinBorder
+
+        // Borda na coluna C para todas as 3 linhas (será mesclada depois)
+        applyBorder(`C${r}`)
+      }
+      ws.mergeCells(`C${firstAtipRow}:C${firstAtipRow + 2}`)
+      const cellCMerged = ws.getCell(`C${firstAtipRow}`)
+      cellCMerged.value = descricaoTecnica
+      cellCMerged.alignment = { vertical: 'top', wrapText: true, indent: 1 }
+
+      // Linha "Serviço:"
+      const servicoRow = firstAtipRow + 3
+      const cellServicoA = ws.getCell(`A${servicoRow}`)
+      cellServicoA.value = 'Serviço:'
+      cellServicoA.font = { italic: true, bold: true }
+      cellServicoA.alignment = { vertical: 'middle', indent: 1 }
+      cellServicoA.border = thinBorder
+      ws.mergeCells(`B${servicoRow}:C${servicoRow}`)
+      const cellServicoBC = ws.getCell(`B${servicoRow}`)
+      cellServicoBC.value = obra.tipo_servico || '-'
+      cellServicoBC.alignment = { vertical: 'middle', indent: 1 }
+      cellServicoBC.border = thinBorder
+      applyBorder(`C${servicoRow}`)
+      ws.getRow(servicoRow).height = 24
+
+      // ============ TABELA DE VALORES ============
+      const valoresHeaderRow = servicoRow + 2
+      const valoresCols: Array<['A' | 'B' | 'C', string]> = [
+        ['A', 'Valor - Realizado medição contratual no Siago'],
+        ['B', 'Descrição'],
+        ['C', 'Valor - Mão de Obra R$'],
+      ]
+      valoresCols.forEach(([col, val]) => {
+        const cell = ws.getCell(`${col}${valoresHeaderRow}`)
+        cell.value = val
+        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF555555' } }
+        cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+        cell.border = thinBorder
+      })
+      ws.getRow(valoresHeaderRow).height = 22
+
+      const semRow = valoresHeaderRow + 1
+      const comRow = valoresHeaderRow + 2
+      ;[
+        { row: semRow, label: 'SEM  Atipicidade', desc: 'VALOR DA MEDIÇÃO SEM ATIPICIDADE' },
+        { row: comRow, label: 'COM  Atipicidade', desc: 'VALOR DA MEDIÇÃO COM ATIPICIDADE' },
+      ].forEach(({ row: r, label, desc }) => {
+        const cellA = ws.getCell(`A${r}`)
+        cellA.value = label
+        cellA.font = { italic: true, bold: true, size: 10 }
+        cellA.alignment = { vertical: 'middle', indent: 1 }
+        cellA.border = thinBorder
+
+        const cellB = ws.getCell(`B${r}`)
+        cellB.value = desc
+        cellB.alignment = { vertical: 'middle', indent: 1 }
+        cellB.border = thinBorder
+
+        applyBorder(`C${r}`)
+        ws.getRow(r).height = 20
+      })
+
+      // ============ GALERIA POR POSTE ============
       const extractUrl = (photo: any): string | null => {
         const url = photo?.url || photo?.uri
         return typeof url === 'string' && url.startsWith('http') ? url : null
       }
 
-      const pushGroupIfNotEmpty = (title: string, fotos: FotoEmbed[]) => {
-        if (fotos.length > 0) groups.push({ title, fotos })
-      }
-
-      const collectTopLevel = (
-        title: string,
-        fields: Array<{ key: string; label: string }>
-      ) => {
-        const fotos: FotoEmbed[] = []
-        fields.forEach(({ key, label }) => {
-          const arr = (obra as any)[key] as FotoInfo[] | undefined
-          ;(Array.isArray(arr) ? arr : []).forEach((photo, idx) => {
-            const url = extractUrl(photo)
-            if (url) fotos.push({ label: `${label} #${idx + 1}`, url })
-          })
-        })
-        pushGroupIfNotEmpty(title, fotos)
-      }
-
-      // 1. Geral / DITAIS / Aterramentos / Aberturas (fluxo padrão)
-      collectTopLevel('Geral', [
-        { key: 'fotos_antes', label: 'Antes' },
-        { key: 'fotos_durante', label: 'Durante' },
-        { key: 'fotos_depois', label: 'Depois' },
-      ])
-      collectTopLevel('DITAIS', [
-        { key: 'fotos_ditais_abertura', label: 'Desligar/Abertura' },
-        { key: 'fotos_ditais_impedir', label: 'Impedir Religamento' },
-        { key: 'fotos_ditais_testar', label: 'Testar Ausência de Tensão' },
-        { key: 'fotos_ditais_aterrar', label: 'Aterrar' },
-        { key: 'fotos_ditais_sinalizar', label: 'Sinalizar/Isolar' },
-      ])
-      collectTopLevel('Aberturas e Fechamentos de Chave', [
-        { key: 'fotos_abertura', label: 'Abertura de Chave' },
-        { key: 'fotos_fechamento', label: 'Fechamento de Chave' },
-      ])
-      collectTopLevel('Aterramento', [
-        { key: 'fotos_aterramento_vala_aberta', label: 'Vala Aberta' },
-        { key: 'fotos_aterramento_hastes', label: 'Hastes Aplicadas' },
-        { key: 'fotos_aterramento_vala_fechada', label: 'Vala Fechada' },
-        { key: 'fotos_aterramento_medicao', label: 'Medição Terrômetro' },
-      ])
-
-      // 2. Postes (Linha Viva / Cava / Book / Fundação) — postes_data
       const postesData = Array.isArray((obra as any).postes_data) ? (obra as any).postes_data : []
-      postesData.forEach((poste: any, posteIdx: number) => {
-        const numero = poste?.numero ?? posteIdx + 1
-        const posteFotos: FotoEmbed[] = []
-        ;[
-          { key: 'fotos_antes', label: 'Antes' },
-          { key: 'fotos_durante', label: 'Durante' },
-          { key: 'fotos_depois', label: 'Depois' },
-          { key: 'fotos_medicao', label: 'Medição' },
-        ].forEach(({ key, label }) => {
-          const arr = Array.isArray(poste?.[key]) ? poste[key] : []
-          arr.forEach((photo: any, idx: number) => {
-            const url = extractUrl(photo)
-            if (url) posteFotos.push({ label: `${label} #${idx + 1}`, url })
-          })
-        })
-        pushGroupIfNotEmpty(`Poste ${numero}`, posteFotos)
-      })
+      let row = comRow + 2 // espaço antes da galeria
 
-      // 3. Postes do Checklist de Fiscalização — checklist_postes_data
-      const checklistPostes = Array.isArray((obra as any).checklist_postes_data) ? (obra as any).checklist_postes_data : []
-      checklistPostes.forEach((poste: any, posteIdx: number) => {
-        const numero = poste?.numero ?? posteIdx + 1
-        const posteFotos: FotoEmbed[] = []
-        ;[
-          { key: 'posteInteiro', label: 'Poste Inteiro' },
-          { key: 'engaste', label: 'Engaste' },
-          { key: 'conexao1', label: 'Conexão 1' },
-          { key: 'conexao2', label: 'Conexão 2' },
-          { key: 'maiorEsforco', label: 'Maior Esforço' },
-          { key: 'menorEsforco', label: 'Menor Esforço' },
-          { key: 'descricao', label: 'Descrição' },
-        ].forEach(({ key, label }) => {
-          const arr = Array.isArray(poste?.[key]) ? poste[key] : []
-          arr.forEach((photo: any, idx: number) => {
-            const url = extractUrl(photo)
-            if (url) posteFotos.push({ label: `${label} #${idx + 1}`, url })
-          })
-        })
-        pushGroupIfNotEmpty(`Checklist — Poste ${numero}`, posteFotos)
-      })
+      if (postesData.length === 0) {
+        ws.mergeCells(`A${row}:C${row}`)
+        const aviso = ws.getCell(`A${row}`)
+        aviso.value = 'Nenhum poste cadastrado nesta obra.'
+        aviso.font = { italic: true, color: { argb: 'FF888888' } }
+        aviso.alignment = { vertical: 'middle', horizontal: 'center' }
+        ws.getRow(row).height = 30
+      } else {
+        for (const poste of postesData) {
+          const numero = poste?.numero ?? '?'
+          const fotoAntes = extractUrl(Array.isArray(poste?.fotos_antes) ? poste.fotos_antes[0] : null)
+          const fotoDurante = extractUrl(Array.isArray(poste?.fotos_durante) ? poste.fotos_durante[0] : null)
+          const fotoDepois = extractUrl(Array.isArray(poste?.fotos_depois) ? poste.fotos_depois[0] : null)
+          if (!fotoAntes && !fotoDurante && !fotoDepois) continue
 
-      // 4. Seccionamentos / Podas — checklist_seccionamentos_data
-      const seccionamentos = Array.isArray((obra as any).checklist_seccionamentos_data) ? (obra as any).checklist_seccionamentos_data : []
-      seccionamentos.forEach((sec: any, idx: number) => {
-        const numero = sec?.numero ?? idx + 1
-        const tipo = sec?.tipo === 'poda' ? 'Poda' : 'Seccionamento'
-        const arr = Array.isArray(sec?.fotos) ? sec.fotos : []
-        const secFotos: FotoEmbed[] = []
-        arr.forEach((photo: any, photoIdx: number) => {
-          const url = extractUrl(photo)
-          if (url) secFotos.push({ label: `Foto #${photoIdx + 1}`, url })
-        })
-        pushGroupIfNotEmpty(`${tipo} ${numero}`, secFotos)
-      })
+          // Header do poste
+          ws.mergeCells(`A${row}:C${row}`)
+          const posteHeaderCell = ws.getCell(`A${row}`)
+          posteHeaderCell.value = `POSTE ${numero}`
+          posteHeaderCell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } }
+          posteHeaderCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } }
+          posteHeaderCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 }
+          posteHeaderCell.border = thinBorder
+          ws.getRow(row).height = 22
+          row += 1
 
-      // 5. Aterramentos de Cerca — checklist_aterramentos_cerca_data
-      const aterramentosCerca = Array.isArray((obra as any).checklist_aterramentos_cerca_data) ? (obra as any).checklist_aterramentos_cerca_data : []
-      aterramentosCerca.forEach((aterr: any, idx: number) => {
-        const numero = aterr?.numero ?? idx + 1
-        const arr = Array.isArray(aterr?.fotos) ? aterr.fotos : []
-        const aterrFotos: FotoEmbed[] = []
-        arr.forEach((photo: any, photoIdx: number) => {
-          const url = extractUrl(photo)
-          if (url) aterrFotos.push({ label: `Foto #${photoIdx + 1}`, url })
-        })
-        pushGroupIfNotEmpty(`Aterramento de Cerca ${numero}`, aterrFotos)
-      })
-
-      // 6. Hastes e Termômetros — checklist_hastes_termometros_data
-      const hastes = Array.isArray((obra as any).checklist_hastes_termometros_data) ? (obra as any).checklist_hastes_termometros_data : []
-      hastes.forEach((ponto: any, idx: number) => {
-        const numero = ponto?.numero ?? idx + 1
-        const pontoFotos: FotoEmbed[] = []
-        ;[
-          { key: 'fotoHaste', label: 'Haste' },
-          { key: 'fotoTermometro', label: 'Termômetro' },
-        ].forEach(({ key, label }) => {
-          const arr = Array.isArray(ponto?.[key]) ? ponto[key] : []
-          arr.forEach((photo: any, photoIdx: number) => {
-            const url = extractUrl(photo)
-            if (url) pontoFotos.push({ label: `${label} #${photoIdx + 1}`, url })
-          })
-        })
-        pushGroupIfNotEmpty(`Ponto ${numero} (Haste/Termômetro)`, pontoFotos)
-      })
-
-      // 7. Transformador (Instalado + Retirado), Medidor, Checklist Top-Level, Altimetria, Vazamento, Outros
-      collectTopLevel('Transformador (Instalado)', [
-        { key: 'fotos_transformador_laudo', label: 'Laudo' },
-        { key: 'fotos_transformador_componente_instalado', label: 'Componente Instalado' },
-        { key: 'fotos_transformador_tombamento_instalado', label: 'Tombamento' },
-        { key: 'fotos_transformador_tape', label: 'Tape' },
-        { key: 'fotos_transformador_placa_instalado', label: 'Placa' },
-        { key: 'fotos_transformador_instalado', label: 'Instalado' },
-        { key: 'fotos_transformador_conexoes_primarias_instalado', label: 'Conexões Primárias' },
-        { key: 'fotos_transformador_conexoes_secundarias_instalado', label: 'Conexões Secundárias' },
-      ])
-      collectTopLevel('Transformador (Retirado)', [
-        { key: 'fotos_transformador_antes_retirar', label: 'Antes de Retirar' },
-        { key: 'fotos_transformador_laudo_retirado', label: 'Laudo' },
-        { key: 'fotos_transformador_tombamento_retirado', label: 'Tombamento' },
-        { key: 'fotos_transformador_placa_retirado', label: 'Placa' },
-        { key: 'fotos_transformador_conexoes_primarias_retirado', label: 'Conexões Primárias' },
-        { key: 'fotos_transformador_conexoes_secundarias_retirado', label: 'Conexões Secundárias' },
-      ])
-      collectTopLevel('Medidor', [
-        { key: 'fotos_medidor_padrao', label: 'Padrão' },
-        { key: 'fotos_medidor_leitura', label: 'Leitura' },
-        { key: 'fotos_medidor_selo_born', label: 'Selo Born' },
-        { key: 'fotos_medidor_selo_caixa', label: 'Selo Caixa' },
-        { key: 'fotos_medidor_identificador_fase', label: 'Identificador de Fase' },
-      ])
-      collectTopLevel('Checklist (Top-Level)', [
-        { key: 'fotos_checklist_croqui', label: 'Croqui' },
-        { key: 'fotos_checklist_panoramica_inicial', label: 'Panorâmica Inicial' },
-        { key: 'fotos_checklist_chede', label: 'CHEDE' },
-        { key: 'fotos_checklist_aterramento_cerca', label: 'Aterramento de Cerca' },
-        { key: 'fotos_checklist_padrao_geral', label: 'Padrão Geral' },
-        { key: 'fotos_checklist_padrao_interno', label: 'Padrão Interno' },
-        { key: 'fotos_checklist_panoramica_final', label: 'Panorâmica Final' },
-        { key: 'fotos_checklist_postes', label: 'Postes' },
-        { key: 'fotos_checklist_seccionamentos', label: 'Seccionamentos' },
-        { key: 'fotos_checklist_frying', label: 'Frying' },
-        { key: 'fotos_checklist_abertura_fechamento_pulo', label: 'Abertura/Fechamento/Pulo' },
-      ])
-      collectTopLevel('Altimetria', [
-        { key: 'fotos_altimetria_lado_fonte', label: 'Lado Fonte' },
-        { key: 'fotos_altimetria_medicao_fonte', label: 'Medição Fonte' },
-        { key: 'fotos_altimetria_lado_carga', label: 'Lado Carga' },
-        { key: 'fotos_altimetria_medicao_carga', label: 'Medição Carga' },
-      ])
-      collectTopLevel('Vazamento', [
-        { key: 'fotos_vazamento_evidencia', label: 'Evidência' },
-        { key: 'fotos_vazamento_equipamentos_limpeza', label: 'Equipamentos de Limpeza' },
-        { key: 'fotos_vazamento_tombamento_retirado', label: 'Tombamento (Retirado)' },
-        { key: 'fotos_vazamento_placa_retirado', label: 'Placa (Retirado)' },
-        { key: 'fotos_vazamento_tombamento_instalado', label: 'Tombamento (Instalado)' },
-        { key: 'fotos_vazamento_placa_instalado', label: 'Placa (Instalado)' },
-        { key: 'fotos_vazamento_instalacao', label: 'Instalação' },
-      ])
-      collectTopLevel('Outros', [
-        { key: 'fotos_apr', label: 'APR' },
-        { key: 'fotos_impedimento', label: 'Impedimento' },
-      ])
-
-      const ExcelJS = (await import('exceljs')).default
-      const workbook = new ExcelJS.Workbook()
-
-      // ========== ABA: FOTOS (embutidas) ==========
-      // Sempre cria a aba — se não houver grupos, mostra cabeçalho com aviso.
-      const fotosGroups: FotoGroup[] = groups.length > 0
-        ? [
-            {
-              title: `Obra ${obra.obra || '-'} — ${obra.tipo_servico || ''} — ${obra.equipe || ''}`,
-              fotos: [],
-            },
-            ...groups,
+          // Labels ANTES / DURANTE / APÓS
+          const labelCols: Array<['A' | 'B' | 'C', string]> = [
+            ['A', 'ANTES'],
+            ['B', 'DURANTE'],
+            ['C', 'APÓS'],
           ]
-        : [
-            {
-              title: `Obra ${obra.obra || '-'} — Nenhuma foto encontrada`,
-              fotos: [],
-            },
-          ]
-      await addFotosSheet(workbook, fotosGroups)
+          labelCols.forEach(([col, label]) => {
+            const cell = ws.getCell(`${col}${row}`)
+            cell.value = label
+            cell.font = { bold: true, size: 10 }
+            cell.alignment = { vertical: 'middle', horizontal: 'center' }
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEEEEE' } }
+            cell.border = thinBorder
+          })
+          ws.getRow(row).height = 18
+          row += 1
 
+          // Linha das fotos (alta)
+          const fotosRow = row
+          ws.getRow(fotosRow).height = 240
+          ;(['A', 'B', 'C'] as const).forEach((col) => applyBorder(`${col}${fotosRow}`))
+
+          const colMap: Record<'A' | 'B' | 'C', number> = { A: 0, B: 1, C: 2 }
+          const urlsPorColuna: Record<'A' | 'B' | 'C', string | null> = {
+            A: fotoAntes,
+            B: fotoDurante,
+            C: fotoDepois,
+          }
+          for (const col of ['A', 'B', 'C'] as const) {
+            const url = urlsPorColuna[col]
+            if (!url) continue
+            try {
+              const resized = await fetchResizedImage(url, 800, 0.8)
+              if (!resized) continue
+              const base64 = resized.dataUrl.replace(/^data:image\/\w+;base64,/, '')
+              const imageId = workbook.addImage({ base64, extension: 'jpeg' })
+
+              // Cabe na coluna (~210px de largura disponível) e altura ~230
+              const maxW = 210
+              const maxH = 225
+              let dw = maxW
+              let dh = Math.round(maxW * (resized.height / resized.width))
+              if (dh > maxH) {
+                dh = maxH
+                dw = Math.round(maxH * (resized.width / resized.height))
+              }
+
+              ws.addImage(imageId, {
+                tl: { col: colMap[col] + 0.1, row: fotosRow - 1 + 0.05 },
+                ext: { width: dw, height: dh },
+              })
+            } catch (err) {
+              console.warn(`Falha ao embutir foto do poste ${numero}/${col}:`, err)
+            }
+          }
+
+          row += 2 // espaço entre postes
+        }
+      }
+
+      // ============ DOWNLOAD ============
       const buffer = await workbook.xlsx.writeBuffer()
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -2016,7 +2043,7 @@ export default function ObraDetailPage() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `obra_${obra.obra || 'sem_numero'}_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`
+      link.download = `RELATORIO_ATIPICIDADE_OBRA_${obra.obra || 'sem_numero'}_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`
       link.click()
       URL.revokeObjectURL(url)
     } catch (error) {
