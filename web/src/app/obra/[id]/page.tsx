@@ -782,10 +782,69 @@ export default function ObraDetailPage() {
     ), 0)
   }
 
+  // Conta fotos dentro de checklist_postes_data (Checklist de Fiscalização).
+  // Necessário pra sort de duplicatas — sem isso, obras de checklist com
+  // duplicação aparentemente "vazia" no postes_data podem ser escolhidas como
+  // base sobre a linha que realmente tem os dados estruturados.
+  function countChecklistPostesPhotos(obraData: any): number {
+    if (!Array.isArray(obraData?.checklist_postes_data)) return 0
+    return obraData.checklist_postes_data.reduce((acc: number, p: any) => (
+      acc
+      + (p?.posteInteiro?.length || 0)
+      + (p?.engaste?.length || 0)
+      + (p?.conexao1?.length || 0)
+      + (p?.conexao2?.length || 0)
+      + (p?.maiorEsforco?.length || 0)
+      + (p?.menorEsforco?.length || 0)
+      + (p?.descricao?.length || 0)
+    ), 0)
+  }
+
+  // Merge poste-a-poste preservando fotos de cada sub-campo. Indexa por
+  // numero/id pra detectar mesmo poste vindo em linhas duplicadas.
+  function mergeChecklistPostesDataForDisplay(existingData: any, incomingData: any): any[] | undefined {
+    const existing = Array.isArray(existingData) ? existingData : []
+    const incoming = Array.isArray(incomingData) ? incomingData : []
+    if (existing.length === 0) return incoming.length > 0 ? incoming : undefined
+    if (incoming.length === 0) return existing
+
+    const photoFields = [
+      'posteInteiro', 'engaste', 'conexao1', 'conexao2',
+      'maiorEsforco', 'menorEsforco', 'descricao',
+      'fotos_antes', 'fotos_durante', 'fotos_depois',
+    ]
+    const merged = existing.map((p) => ({ ...p }))
+    const keyOf = (p: any, index: number) => String(p?.numero ?? p?.id ?? index)
+    const byKey = new Map(merged.map((p, i) => [keyOf(p, i), i]))
+
+    incoming.forEach((p, index) => {
+      const key = keyOf(p, index)
+      const currentIndex = byKey.get(key)
+      if (currentIndex === undefined) {
+        byKey.set(key, merged.length)
+        merged.push({ ...p })
+        return
+      }
+
+      const current = merged[currentIndex]
+      const next = { ...current, ...p }
+      for (const field of photoFields) {
+        next[field] = mergePhotoRefsForDisplay(current?.[field], p?.[field])
+      }
+      merged[currentIndex] = next
+    })
+
+    return merged
+  }
+
   function mergeDuplicateObrasForDisplay(rows: any[], preferredId: string): any {
     if (rows.length <= 1) return rows[0]
     const sorted = [...rows].sort((a, b) => {
-      const byPhotos = countRawPostesPhotos(b) - countRawPostesPhotos(a)
+      // Considera fotos de ambas as arquiteturas (postes_data de Linha Viva
+      // + checklist_postes_data de Fiscalização) pra escolher a base certa.
+      const photosA = countRawPostesPhotos(a) + countChecklistPostesPhotos(a)
+      const photosB = countRawPostesPhotos(b) + countChecklistPostesPhotos(b)
+      const byPhotos = photosB - photosA
       if (byPhotos !== 0) return byPhotos
       if (a.id === preferredId) return -1
       if (b.id === preferredId) return 1
@@ -795,7 +854,8 @@ export default function ObraDetailPage() {
     const merged = { ...sorted[0] }
     for (const row of sorted.slice(1)) {
       merged.postes_data = mergePostesDataForDisplay(merged.postes_data, row.postes_data)
-      for (const field of ['fotos_antes', 'fotos_durante', 'fotos_depois']) {
+      merged.checklist_postes_data = mergeChecklistPostesDataForDisplay(merged.checklist_postes_data, row.checklist_postes_data)
+      for (const field of ['fotos_antes', 'fotos_durante', 'fotos_depois', 'fotos_checklist_postes']) {
         merged[field] = mergePhotoRefsForDisplay(merged[field], row[field])
       }
     }
