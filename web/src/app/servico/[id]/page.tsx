@@ -186,6 +186,23 @@ function convertPostesDataField(postesData: any): any[] {
   }))
 }
 
+// Converte os sub-campos de fotos de checklist_postes_data (Checklist de
+// Fiscalização). Diferente de postes_data, aqui as fotos vivem nos campos
+// posteInteiro/engaste/conexao1/conexao2/maiorEsforco/menorEsforco/descricao.
+function convertChecklistPostesDataField(postesData: any): any[] {
+  if (!Array.isArray(postesData)) return []
+  return postesData.map((poste: any) => ({
+    ...poste,
+    posteInteiro: convertPhotoField(poste?.posteInteiro),
+    engaste: convertPhotoField(poste?.engaste),
+    conexao1: convertPhotoField(poste?.conexao1),
+    conexao2: convertPhotoField(poste?.conexao2),
+    maiorEsforco: convertPhotoField(poste?.maiorEsforco),
+    menorEsforco: convertPhotoField(poste?.menorEsforco),
+    descricao: convertPhotoField(poste?.descricao),
+  }))
+}
+
 type ServicoData = {
   id: string
   obra_id: string
@@ -261,6 +278,7 @@ export default function ServicoDetailPage() {
         }
       }
       converted.postes_data = convertPostesDataField((data as any).postes_data)
+      converted.checklist_postes_data = convertChecklistPostesDataField((data as any).checklist_postes_data)
       setServico(converted)
     } catch (error) {
       console.error('Erro ao carregar serviço:', error)
@@ -447,10 +465,17 @@ export default function ServicoDetailPage() {
     }
   }
 
-  const galerias = servico
-    ? (GALERIAS_POR_TIPO_SERVICO[servico.tipo_servico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois'])
-    : []
   const hasPostesData = Array.isArray(servico?.postes_data) && servico.postes_data.length > 0
+  const hasChecklistPostesData = Array.isArray(servico?.checklist_postes_data) && servico.checklist_postes_data.length > 0
+
+  const galerias = servico
+    ? (() => {
+        const all = GALERIAS_POR_TIPO_SERVICO[servico.tipo_servico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois']
+        // Quando há checklist_postes_data estruturado, suprime fotos_checklist_postes
+        // pra não duplicar a galeria "Postes" flat com a estruturada por sub-campo.
+        return hasChecklistPostesData ? all.filter((k) => k !== 'fotos_checklist_postes') : all
+      })()
+    : []
 
   const isConcluido = servico?.status === 'completo'
 
@@ -650,20 +675,61 @@ export default function ServicoDetailPage() {
                   )
                 })}
             </div>
-          ) : galerias.map(key => {
-            const photos: FotoInfo[] = servico[key] || []
-            if (!photos.length && !galleryProps.allowAdd) return null
-            return (
-              <PhotoGallery
-                key={key}
-                photos={photos}
-                title={SECTION_LABELS[key] || key}
-                sectionKey={key}
-                {...galleryProps}
-              />
-            )
-          })}
-          {!hasPostesData && galerias.every(key => !(servico[key]?.length)) && (
+          ) : (
+            <>
+              {hasChecklistPostesData && (
+                <div className="space-y-6 mb-6">
+                  {[...servico.checklist_postes_data]
+                    .sort((a: any, b: any) => Number(a?.numero || 0) - Number(b?.numero || 0))
+                    .map((poste: any, posteIndex: number) => {
+                      const sections = [
+                        { key: 'posteInteiro', label: 'Poste Inteiro' },
+                        { key: 'descricao', label: 'Descrição do Poste' },
+                        { key: 'engaste', label: 'Engaste' },
+                        { key: 'conexao1', label: 'Conexão 1' },
+                        { key: 'conexao2', label: 'Conexão 2' },
+                        { key: 'maiorEsforco', label: 'Maior Esforço' },
+                        { key: 'menorEsforco', label: 'Menor Esforço' },
+                      ] as const
+                      const numero = poste?.numero ?? posteIndex + 1
+                      const status = poste?.status || 'N/A'
+                      return (
+                        <div key={`chk_poste_${poste?.id || posteIndex}`} className="rounded-2xl border border-purple-200 dark:border-purple-700 bg-purple-50/50 dark:bg-purple-900/10 p-4">
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="px-3 py-1 rounded-full text-sm font-bold bg-purple-600 text-white">P{numero}</span>
+                            <span className="text-sm text-gray-600 dark:text-slate-300">Status: {status}</span>
+                          </div>
+                          {sections.map((section) => (
+                            <PhotoGallery
+                              key={`${posteIndex}_${section.key}`}
+                              photos={Array.isArray(poste?.[section.key]) ? poste[section.key] : []}
+                              title={section.label}
+                              sectionKey={`checklist_postes_data_${posteIndex}_${section.key}`}
+                              {...galleryProps}
+                              allowAdd={false}
+                            />
+                          ))}
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
+              {galerias.map(key => {
+                const photos: FotoInfo[] = servico[key] || []
+                if (!photos.length && !galleryProps.allowAdd) return null
+                return (
+                  <PhotoGallery
+                    key={key}
+                    photos={photos}
+                    title={SECTION_LABELS[key] || key}
+                    sectionKey={key}
+                    {...galleryProps}
+                  />
+                )
+              })}
+            </>
+          )}
+          {!hasPostesData && !hasChecklistPostesData && galerias.every(key => !(servico[key]?.length)) && (
             <div className="text-center py-20">
               <svg className="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
