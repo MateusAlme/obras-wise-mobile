@@ -469,12 +469,7 @@ export default function ServicoDetailPage() {
   const hasChecklistPostesData = Array.isArray(servico?.checklist_postes_data) && servico.checklist_postes_data.length > 0
 
   const galerias = servico
-    ? (() => {
-        const all = GALERIAS_POR_TIPO_SERVICO[servico.tipo_servico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois']
-        // Quando há checklist_postes_data estruturado, suprime fotos_checklist_postes
-        // pra não duplicar a galeria "Postes" flat com a estruturada por sub-campo.
-        return hasChecklistPostesData ? all.filter((k) => k !== 'fotos_checklist_postes') : all
-      })()
+    ? (GALERIAS_POR_TIPO_SERVICO[servico.tipo_servico] ?? ['fotos_antes', 'fotos_durante', 'fotos_depois'])
     : []
 
   const isConcluido = servico?.status === 'completo'
@@ -675,10 +670,14 @@ export default function ServicoDetailPage() {
                   )
                 })}
             </div>
-          ) : (
-            <>
-              {hasChecklistPostesData && (
-                <div className="space-y-6 mb-6">
+          ) : galerias.map(key => {
+            // Substitui a galeria flat fotos_checklist_postes pela versão
+            // estruturada (cards por poste com sub-galerias) quando há
+            // checklist_postes_data. Mantém a posição definida em
+            // GALERIAS_POR_TIPO_SERVICO — fica entre Panorâmica Final e Seccionamentos.
+            if (key === 'fotos_checklist_postes' && hasChecklistPostesData) {
+              return (
+                <div key="checklist_postes_data" className="space-y-6">
                   {[...servico.checklist_postes_data]
                     .sort((a: any, b: any) => Number(a?.numero || 0) - Number(b?.numero || 0))
                     .map((poste: any, posteIndex: number) => {
@@ -713,22 +712,20 @@ export default function ServicoDetailPage() {
                       )
                     })}
                 </div>
-              )}
-              {galerias.map(key => {
-                const photos: FotoInfo[] = servico[key] || []
-                if (!photos.length && !galleryProps.allowAdd) return null
-                return (
-                  <PhotoGallery
-                    key={key}
-                    photos={photos}
-                    title={SECTION_LABELS[key] || key}
-                    sectionKey={key}
-                    {...galleryProps}
-                  />
-                )
-              })}
-            </>
-          )}
+              )
+            }
+            const photos: FotoInfo[] = servico[key] || []
+            if (!photos.length && !galleryProps.allowAdd) return null
+            return (
+              <PhotoGallery
+                key={key}
+                photos={photos}
+                title={SECTION_LABELS[key] || key}
+                sectionKey={key}
+                {...galleryProps}
+              />
+            )
+          })}
           {!hasPostesData && !hasChecklistPostesData && galerias.every(key => !(servico[key]?.length)) && (
             <div className="text-center py-20">
               <svg className="w-16 h-16 text-gray-200 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
