@@ -387,6 +387,49 @@ export default function ServicoDetailPage() {
     }
   }
 
+  // Galerias de postes usam sectionKeys aninhados, ex:
+  //   postes_data_<idxOrdenado>_fotos_antes
+  //   checklist_postes_data_<idxOrdenado>_posteInteiro
+  // O índice é a posição APÓS a ordenação por `numero` feita na renderização,
+  // então localizamos o poste no array original por identidade para não gravar
+  // no poste errado quando a ordem do array difere da ordem exibida.
+  function resolvePosteSection(
+    sectionKey: string
+  ): { arrayKey: string; origIndex: number; field: string; current: FotoInfo[] } | null {
+    if (!servico) return null
+    let arrayKey: string | null = null
+    let idxStr = ''
+    let field = ''
+    let m = sectionKey.match(/^checklist_postes_data_(\d+)_(.+)$/)
+    if (m) {
+      arrayKey = 'checklist_postes_data'
+      idxStr = m[1]
+      field = m[2]
+    } else if ((m = sectionKey.match(/^postes_data_(\d+)_(.+)$/))) {
+      arrayKey = 'postes_data'
+      idxStr = m[1]
+      field = m[2]
+    }
+    if (!arrayKey) return null
+    const original: any[] = Array.isArray(servico[arrayKey]) ? servico[arrayKey] : []
+    const sorted = [...original].sort((a: any, b: any) => Number(a?.numero || 0) - Number(b?.numero || 0))
+    const target = sorted[Number(idxStr)]
+    if (!target) return null
+    const origIndex = original.indexOf(target)
+    if (origIndex < 0) return null
+    const current: FotoInfo[] = Array.isArray(target[field]) ? target[field] : []
+    return { arrayKey, origIndex, field, current }
+  }
+
+  async function persistPosteField(arrayKey: string, origIndex: number, field: string, nextPhotos: FotoInfo[]) {
+    if (!servico) return
+    const original: any[] = Array.isArray(servico[arrayKey]) ? servico[arrayKey] : []
+    const newArr = original.map((p, i) => (i === origIndex ? { ...p, [field]: nextPhotos } : p))
+    const { error } = await supabase.from('servicos').update({ [arrayKey]: newArr }).eq('id', servico.id)
+    if (error) throw error
+    setServico({ ...servico, [arrayKey]: newArr })
+  }
+
   async function handleAddPhoto(sectionKey: string, file: File): Promise<FotoInfo | null> {
     if (!servico) return null
     try {
@@ -396,6 +439,11 @@ export default function ServicoDetailPage() {
       if (upErr) throw upErr
       const url = supabase.storage.from('obra-photos').getPublicUrl(path).data.publicUrl
       const newPhoto: FotoInfo = { url, latitude: null, longitude: null, utmX: null, utmY: null, utmZone: null, placaData: null }
+      const poste = resolvePosteSection(sectionKey)
+      if (poste) {
+        await persistPosteField(poste.arrayKey, poste.origIndex, poste.field, [...poste.current, newPhoto])
+        return newPhoto
+      }
       const current: FotoInfo[] = servico[sectionKey] || []
       const next = [...current, newPhoto]
       const { error } = await supabase.from('servicos').update({ [sectionKey]: next }).eq('id', servico.id)
@@ -412,6 +460,13 @@ export default function ServicoDetailPage() {
   async function handleUpdatePhoto(sectionKey: string, index: number, updatedPhoto: FotoInfo): Promise<FotoInfo | null> {
     if (!servico) return null
     try {
+      const poste = resolvePosteSection(sectionKey)
+      if (poste) {
+        const next = [...poste.current]
+        next[index] = updatedPhoto
+        await persistPosteField(poste.arrayKey, poste.origIndex, poste.field, next)
+        return updatedPhoto
+      }
       const current: FotoInfo[] = [...(servico[sectionKey] || [])]
       current[index] = updatedPhoto
       const { error } = await supabase.from('servicos').update({ [sectionKey]: current }).eq('id', servico.id)
@@ -432,6 +487,14 @@ export default function ServicoDetailPage() {
       const { error: upErr } = await supabase.storage.from('obra-photos').upload(path, file)
       if (upErr) throw upErr
       const url = supabase.storage.from('obra-photos').getPublicUrl(path).data.publicUrl
+      const poste = resolvePosteSection(sectionKey)
+      if (poste) {
+        const next = [...poste.current]
+        const nextPhoto: FotoInfo = { ...next[index], url }
+        next[index] = nextPhoto
+        await persistPosteField(poste.arrayKey, poste.origIndex, poste.field, next)
+        return nextPhoto
+      }
       const current: FotoInfo[] = [...(servico[sectionKey] || [])]
       const nextPhoto: FotoInfo = { ...current[index], url }
       current[index] = nextPhoto
@@ -448,11 +511,17 @@ export default function ServicoDetailPage() {
   async function handleDeletePhoto(sectionKey: string, index: number, photo: FotoInfo): Promise<boolean> {
     if (!servico) return false
     try {
-      const current: FotoInfo[] = [...(servico[sectionKey] || [])]
-      const next = current.filter((_, i) => i !== index)
-      const { error } = await supabase.from('servicos').update({ [sectionKey]: next }).eq('id', servico.id)
-      if (error) throw error
-      setServico({ ...servico, [sectionKey]: next })
+      const poste = resolvePosteSection(sectionKey)
+      if (poste) {
+        const next = poste.current.filter((_, i) => i !== index)
+        await persistPosteField(poste.arrayKey, poste.origIndex, poste.field, next)
+      } else {
+        const current: FotoInfo[] = [...(servico[sectionKey] || [])]
+        const next = current.filter((_, i) => i !== index)
+        const { error } = await supabase.from('servicos').update({ [sectionKey]: next }).eq('id', servico.id)
+        if (error) throw error
+        setServico({ ...servico, [sectionKey]: next })
+      }
       // Try to remove from storage
       if (photo.url) {
         const match = photo.url.match(/obra-photos\/(.+)$/)
@@ -663,7 +732,6 @@ export default function ServicoDetailPage() {
                           title={section.label}
                           sectionKey={`postes_data_${posteIndex}_${section.key}`}
                           {...galleryProps}
-                          allowAdd={false}
                         />
                       ))}
                     </div>
@@ -705,7 +773,6 @@ export default function ServicoDetailPage() {
                               title={section.label}
                               sectionKey={`checklist_postes_data_${posteIndex}_${section.key}`}
                               {...galleryProps}
-                              allowAdd={false}
                             />
                           ))}
                         </div>
