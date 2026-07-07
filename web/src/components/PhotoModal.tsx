@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import PhotoWithPlaca from './PhotoWithPlaca'
+import { latLongToUTM, formatUTM } from '@/lib/geocoding'
 import type { FotoInfo } from '@/lib/supabase'
 
 interface PhotoModalProps {
@@ -146,93 +147,150 @@ export default function PhotoModal({
       // Desenhar a imagem
       ctx.drawImage(img, 0, 0)
 
-      // Adicionar placa no canto inferior esquerdo (design moderno, GRANDE e LEGÍVEL)
-      const placaWidth = Math.max(800, canvas.width * 0.4) // Aumentado de 450px/25% para 800px/40%
-      const padding = 30
-      const innerPadding = 40 // Aumentado de 25 para 40
-      const titleFontSize = Math.max(48, placaWidth / 12) // Aumentado significativamente
-      const labelFontSize = Math.max(32, placaWidth / 16) // Aumentado de 16/22 para 32/16
-      const valueFontSize = Math.max(36, placaWidth / 15) // Aumentado de 18/20 para 36/15
-      const lineSpacing = valueFontSize * 2.5 // Aumentado espaçamento
+      // ── Placa proporcional que espelha o preview (fullscreen) ──────────────
+      // Unidade de escala baseada na largura da imagem (baseline 1000px)
+      const S = canvas.width / 1000
+      const titleFont = 24 * S
+      const valueFont = 20 * S
+      const labelFont = 18 * S
+      const smallFont = 15 * S
+      const pad = 18 * S // padding interno
+      const gap = 12 * S // espaço entre label e valor
+      const margin = 20 * S // margem da borda da foto
+      const radius = 12 * S
+      const sep = Math.max(1, S) // espessura do separador
+      const rowH = valueFont * 1.35
 
-      // Calcular altura necessária
-      let contentLines = 4 // Obra, Data/Hora, Serviço, Equipe
-      if (photo.latitude && photo.longitude) contentLines += 2 // UTM, Endereço, GPS
-      const placaHeight = titleFontSize + innerPadding + (contentLines * lineSpacing) + innerPadding
+      // Truncar texto com reticências para caber em uma largura (usa a fonte atual do ctx)
+      const fit = (text: string, maxW: number) => {
+        if (ctx.measureText(text).width <= maxW) return text
+        let t = text
+        while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1)
+        return t + '…'
+      }
 
-      const placaX = padding
-      const placaY = canvas.height - placaHeight - padding
+      // Montar as linhas da placa (label, valor, estilo)
+      type Row = { label: string; value: string; mono?: boolean; small?: boolean; highlight?: boolean }
+      const rows: Row[] = [
+        { label: 'Obra', value: previewPlaca.obraNumero || '-', highlight: true },
+        { label: 'Data/Hora', value: previewPlaca.dataHora || '-' },
+      ]
+      if (previewPlaca.tipoServico) rows.push({ label: 'Serviço', value: previewPlaca.tipoServico })
+      if (previewPlaca.equipe) rows.push({ label: 'Equipe', value: previewPlaca.equipe })
 
-      // Fundo escuro com gradiente
-      const gradient = ctx.createLinearGradient(placaX, placaY, placaX, placaY + placaHeight)
-      gradient.addColorStop(0, 'rgba(15, 23, 42, 0.95)')
-      gradient.addColorStop(1, 'rgba(15, 23, 42, 0.98)')
-      ctx.fillStyle = gradient
-      ctx.fillRect(placaX, placaY, placaWidth, placaHeight)
+      // UTM (mesma lógica do preview)
+      const utmX = photo.utmX ?? photo.utm_x
+      const utmY = photo.utmY ?? photo.utm_y
+      const utmZone = photo.utmZone ?? photo.utm_zone
+      let utmDisplay = ''
+      if (utmX && utmY && utmZone) {
+        utmDisplay = `${utmZone} ${Math.round(utmX).toLocaleString('pt-BR')}E ${Math.round(utmY).toLocaleString('pt-BR')}N`
+      } else if (photo.latitude && photo.longitude) {
+        utmDisplay = formatUTM(latLongToUTM(photo.latitude, photo.longitude))
+      }
+      if (utmDisplay) rows.push({ label: 'UTM', value: utmDisplay, mono: true, small: true })
 
-      // Borda superior azul (mais grossa)
-      ctx.fillStyle = '#3b82f6'
-      ctx.fillRect(placaX, placaY, placaWidth, 8)
+      const hasGps = Boolean(photo.latitude && photo.longitude)
 
-      let yPos = placaY + innerPadding
+      // Calcular a largura da placa a partir do conteúdo (limitada a 45% da foto)
+      const minWidth = 260 * S
+      const maxWidth = canvas.width * 0.45
+      ctx.font = `bold ${titleFont}px Arial`
+      let contentW = titleFont * 0.8 + ctx.measureText('Registro Fotográfico').width
+      for (const row of rows) {
+        ctx.font = `${labelFont}px Arial`
+        const labelW = ctx.measureText(row.label + ':').width
+        ctx.font = `${row.small ? smallFont : valueFont}px Arial`
+        const valueW = ctx.measureText(row.value).width
+        contentW = Math.max(contentW, labelW + gap + valueW)
+      }
+      const boxWidth = Math.min(maxWidth, Math.max(minWidth, contentW + pad * 2))
 
-      // Título "Registro Fotográfico" com ícone
-      ctx.fillStyle = '#3b82f6'
-      ctx.font = `bold ${titleFontSize}px Arial`
-      ctx.fillText('📍 Registro Fotográfico', placaX + innerPadding, yPos)
-      yPos += titleFontSize + 20
+      // Calcular a altura total
+      let boxHeight = pad
+      boxHeight += titleFont + 8 * S // título + gap
+      boxHeight += sep + 8 * S // separador + gap
+      boxHeight += rows.length * rowH
+      if (hasGps) boxHeight += 8 * S + sep + 8 * S + smallFont * 1.3
+      boxHeight += pad
 
-      // Separador horizontal
-      ctx.fillStyle = 'rgba(148, 163, 184, 0.3)'
-      ctx.fillRect(placaX + innerPadding, yPos, placaWidth - (innerPadding * 2), 2)
-      yPos += 30
+      const boxX = margin
+      const boxY = canvas.height - boxHeight - margin
 
-      // Helper para desenhar linha de informação (layout vertical melhor)
-      const drawInfoLine = (label: string, value: string, isHighlight = false) => {
-        // Label (menor, cinza)
+      // Helper de retângulo arredondado
+      const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
+        ctx.beginPath()
+        ctx.moveTo(x + r, y)
+        ctx.arcTo(x + w, y, x + w, y + h, r)
+        ctx.arcTo(x + w, y + h, x, y + h, r)
+        ctx.arcTo(x, y + h, x, y, r)
+        ctx.arcTo(x, y, x + w, y, r)
+        ctx.closePath()
+      }
+
+      // Fundo escuro arredondado com borda azul (igual ao preview)
+      roundRect(boxX, boxY, boxWidth, boxHeight, radius)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'
+      ctx.fill()
+      ctx.strokeStyle = 'rgba(37, 99, 235, 0.7)'
+      ctx.lineWidth = 2 * S
+      ctx.stroke()
+
+      ctx.textBaseline = 'top'
+      let yPos = boxY + pad
+
+      // Título com marcador azul
+      ctx.fillStyle = '#60a5fa'
+      ctx.beginPath()
+      ctx.arc(boxX + pad + titleFont * 0.28, yPos + titleFont * 0.5, titleFont * 0.28, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.textAlign = 'left'
+      ctx.font = `bold ${titleFont}px Arial`
+      ctx.fillText('Registro Fotográfico', boxX + pad + titleFont * 0.8, yPos)
+      yPos += titleFont + 8 * S
+
+      // Separador
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.35)'
+      ctx.fillRect(boxX + pad, yPos, boxWidth - pad * 2, sep)
+      yPos += sep + 8 * S
+
+      // Linhas de informação: label à esquerda, valor à direita
+      for (const row of rows) {
+        ctx.textAlign = 'left'
+        ctx.font = `${labelFont}px Arial`
         ctx.fillStyle = '#94a3b8'
-        ctx.font = `${labelFontSize * 0.75}px Arial`
-        ctx.fillText(label + ':', placaX + innerPadding, yPos)
-        yPos += labelFontSize * 1.2
+        ctx.fillText(row.label + ':', boxX + pad, yPos)
+        const labelW = ctx.measureText(row.label + ':').width
 
-        // Value (maior, destaque)
-        ctx.fillStyle = isHighlight ? '#ffffff' : '#e2e8f0'
-        ctx.font = `bold ${valueFontSize}px Arial`
-        ctx.fillText(value, placaX + innerPadding, yPos)
-        yPos += lineSpacing
+        ctx.textAlign = 'right'
+        ctx.font = row.mono
+          ? `${row.small ? smallFont : valueFont}px "Courier New", monospace`
+          : `${row.highlight ? 'bold ' : ''}${row.small ? smallFont : valueFont}px Arial`
+        ctx.fillStyle = row.mono ? '#4ade80' : '#ffffff'
+        const valMaxW = boxWidth - pad * 2 - labelW - gap
+        ctx.fillText(fit(row.value, valMaxW), boxX + boxWidth - pad, yPos)
+        yPos += rowH
       }
 
-      // Informações principais
-      drawInfoLine('Obra', previewPlaca.obraNumero, true)
-      drawInfoLine('Data/Hora', previewPlaca.dataHora)
-      drawInfoLine('Serviço', previewPlaca.tipoServico)
-      drawInfoLine('Equipe', previewPlaca.equipe)
-
-      // Coordenadas GPS (se disponíveis)
-      if (photo.latitude && photo.longitude) {
-        yPos += 10
-
-        // Separador
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.3)'
-        ctx.fillRect(placaX + innerPadding, yPos, placaWidth - (innerPadding * 2), 2)
-        yPos += 25
-
-        // UTM
-        ctx.fillStyle = '#22c55e'
-        ctx.font = `${labelFontSize * 0.75}px Arial`
-        ctx.fillText('UTM:', placaX + innerPadding, yPos)
-        yPos += labelFontSize * 1.2
-
-        ctx.fillStyle = '#4ade80'
-        ctx.font = `bold ${valueFontSize * 0.85}px "Courier New", monospace`
-        ctx.fillText(`24S  ${photo.latitude.toFixed(4)}E  ${photo.longitude.toFixed(3)}N`, placaX + innerPadding, yPos)
-        yPos += lineSpacing
-
-        // GPS
+      // Rodapé GPS
+      if (hasGps) {
+        yPos += 8 * S
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.35)'
+        ctx.fillRect(boxX + pad, yPos, boxWidth - pad * 2, sep)
+        yPos += sep + 8 * S
+        ctx.textAlign = 'left'
+        ctx.font = `${smallFont}px Arial`
         ctx.fillStyle = '#64748b'
-        ctx.font = `${labelFontSize * 0.65}px Arial`
-        ctx.fillText(`📍 GPS: ${photo.latitude.toFixed(7)}, ${photo.longitude.toFixed(7)}`, placaX + innerPadding, yPos)
+        ctx.fillText(
+          `GPS: ${photo.latitude!.toFixed(6)}, ${photo.longitude!.toFixed(6)}`,
+          boxX + pad,
+          yPos,
+        )
       }
+
+      // Restaurar padrões do contexto
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'alphabetic'
 
       // Converter canvas para blob
       canvas.toBlob((blob) => {
